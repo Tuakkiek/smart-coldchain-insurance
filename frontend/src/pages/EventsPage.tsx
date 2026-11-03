@@ -154,12 +154,37 @@ export const EventsPage: React.FC = () => {
                   backgroundColor: 'var(--color-surface-secondary)',
                   borderRadius: 'var(--radius-md)',
                   fontSize: 'var(--text-sm)',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--color-text-secondary)',
+                  color: 'var(--color-text-primary)',
                   marginTop: 'var(--space-2)',
                 }}
               >
-                {JSON.stringify(evt.details, null, 2)}
+                {evt.type === 'TEMPERATURE_BREACH_STARTED' && (
+                  <div>
+                    Nhiệt độ đo được:{' '}
+                    <strong style={{ color: 'var(--color-danger)' }}>
+                      {(evt.details as any).temperature_c ?? (evt.details as any).temperature}°C
+                    </strong>{' '}
+                    (vượt ngưỡng cam kết {(evt.details as any).temp_min_c}°C – {(evt.details as any).temp_max_c}°C).
+                  </div>
+                )}
+                {evt.type === 'INSURANCE_TRIGGERED' && (
+                  <div>
+                    Đã đủ điều kiện kích hoạt bảo hiểm! Vi phạm liên tục{' '}
+                    <strong style={{ color: 'var(--color-danger)' }}>
+                      {(evt.details as any).duration_minutes} phút
+                    </strong>.
+                  </div>
+                )}
+                {evt.type === 'SENSOR_DATA_GAP' && (
+                  <div>
+                    Mất tín hiệu cảm biến trong {(evt.details as any).gap_minutes} phút.
+                  </div>
+                )}
+                {evt.type !== 'TEMPERATURE_BREACH_STARTED' &&
+                  evt.type !== 'INSURANCE_TRIGGERED' &&
+                  evt.type !== 'SENSOR_DATA_GAP' && (
+                    <span className="font-mono">{JSON.stringify(evt.details)}</span>
+                  )}
               </div>
 
               <div

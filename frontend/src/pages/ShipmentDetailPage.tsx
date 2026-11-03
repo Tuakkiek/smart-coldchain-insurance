@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -10,6 +10,9 @@ import {
 } from '../components/data-display/StatusBadge';
 import { LoadingState } from '../components/feedback/LoadingState';
 import { ErrorState } from '../components/feedback/ErrorState';
+import { SimulatedRouteMap } from '../components/data-display/SimulatedRouteMap';
+import { TelemetryChart } from '../components/data-display/TelemetryChart';
+import { EventTimeline } from '../components/data-display/EventTimeline';
 import { getShipmentById, getShipmentTelemetry } from '../api/shipments';
 import { getShipmentEvents } from '../api/events';
 import { ShipmentOut, TelemetryOut, EventOut } from '../types/api';
@@ -19,11 +22,11 @@ import {
   Thermometer,
   Shield,
   Clock,
-  Layers,
+  RefreshCw,
   Copy,
   Check,
-  AlertCircle,
-  ExternalLink,
+  Activity,
+  Layers,
 } from 'lucide-react';
 
 export const ShipmentDetailPage: React.FC = () => {
@@ -34,12 +37,20 @@ export const ShipmentDetailPage: React.FC = () => {
   const [telemetry, setTelemetry] = useState<TelemetryOut[]>([]);
   const [events, setEvents] = useState<EventOut[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
-  const fetchData = async () => {
+  const isMountedRef = useRef(true);
+
+  const fetchData = async (isBackground = false) => {
     if (!id) return;
-    setLoading(true);
+    if (!isBackground) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     setError(null);
     try {
       const [shipmentData, telemetryData, eventsData] = await Promise.all([
@@ -47,19 +58,40 @@ export const ShipmentDetailPage: React.FC = () => {
         getShipmentTelemetry(id).catch(() => ({ items: [] })),
         getShipmentEvents(id).catch(() => ({ items: [] })),
       ]);
-      setShipment(shipmentData);
-      setTelemetry(telemetryData.items);
-      setEvents(eventsData.items);
+      if (isMountedRef.current) {
+        setShipment(shipmentData);
+        setTelemetry(telemetryData.items);
+        setEvents(eventsData.items);
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Lỗi tải chi tiết lô hàng');
+      if (isMountedRef.current && !isBackground) {
+        setError(err instanceof Error ? err.message : 'Lỗi tải chi tiết lô hàng');
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
     fetchData();
-  }, [id]);
+
+    // Auto-polling every 6 seconds as required by Phase 5
+    let interval: NodeJS.Timeout | null = null;
+    if (autoRefresh) {
+      interval = setInterval(() => {
+        fetchData(true);
+      }, 6000);
+    }
+
+    return () => {
+      isMountedRef.current = false;
+      if (interval) clearInterval(interval);
+    };
+  }, [id, autoRefresh]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -68,7 +100,7 @@ export const ShipmentDetailPage: React.FC = () => {
   };
 
   if (loading) {
-    return <LoadingState message="Đang nạp chi tiết lô hàng..." />;
+    return <LoadingState message="Đang nạp chi tiết lô hàng và bản đồ tuyến đường..." />;
   }
 
   if (error || !shipment) {
@@ -76,7 +108,7 @@ export const ShipmentDetailPage: React.FC = () => {
       <ErrorState
         title="Không tìm thấy lô hàng"
         message={error || 'Lô hàng không tồn tại trong hệ thống'}
-        onRetry={fetchData}
+        onRetry={() => fetchData(false)}
       />
     );
   }
@@ -88,7 +120,11 @@ export const ShipmentDetailPage: React.FC = () => {
 
   return (
     <div>
-      <div style={{ marginBottom: 'var(--space-4)' }}>
+      {/* Top back button & controls */}
+      <div
+        className="flex-row items-center justify-between"
+        style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap', gap: 'var(--space-2)' }}
+      >
         <Button
           variant="tertiary"
           size="sm"
@@ -97,6 +133,37 @@ export const ShipmentDetailPage: React.FC = () => {
         >
           Quay lại danh sách
         </Button>
+
+        <div className="flex-row items-center gap-3">
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--color-text-secondary)',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            <span>Tự động cập nhật (6s)</span>
+          </label>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => fetchData(true)}
+            loading={refreshing}
+            icon={<RefreshCw size={14} />}
+          >
+            Làm mới
+          </Button>
+        </div>
       </div>
 
       <PageHeader
@@ -113,38 +180,16 @@ export const ShipmentDetailPage: React.FC = () => {
         }
       />
 
-      {/* Mandatory simulated location banner */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-2)',
-          padding: 'var(--space-3) var(--space-4)',
-          backgroundColor: 'var(--color-surface)',
-          border: '1px solid var(--color-border-subtle)',
-          borderRadius: 'var(--radius-md)',
-          fontSize: 'var(--text-xs)',
-          color: 'var(--color-text-secondary)',
-          marginBottom: 'var(--space-6)',
-        }}
-      >
-        <MapPin size={16} style={{ color: 'var(--color-accent)' }} />
-        <span>
-          <strong>Vị trí mô phỏng từ Backend:</strong> Toàn bộ tọa độ được tính toán nội suy từ{' '}
-          <strong>{shipment.origin.name}</strong> đến <strong>{shipment.destination.name}</strong> dựa trên số mẫu đo.
-        </span>
-      </div>
-
       {/* Grid of Key Properties */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
           gap: 'var(--space-5)',
           marginBottom: 'var(--space-6)',
         }}
       >
-        {/* Telemetry card */}
+        {/* Telemetry quick card */}
         <Card title="Cảm biến Nhiệt độ / Độ ẩm">
           <div style={{ marginTop: 'var(--space-2)' }}>
             <div
@@ -168,7 +213,7 @@ export const ShipmentDetailPage: React.FC = () => {
                 marginTop: 'var(--space-2)',
               }}
             >
-              Ngưỡng cam kết: {shipment.temp_min_c}°C đến {shipment.temp_max_c}°C
+              Ngưỡng cam kết: <strong>{shipment.temp_min_c}°C – {shipment.temp_max_c}°C</strong>
             </div>
             {shipment.latest_telemetry && (
               <div
@@ -178,48 +223,29 @@ export const ShipmentDetailPage: React.FC = () => {
                   marginTop: 'var(--space-1)',
                 }}
               >
-                Độ ẩm: {shipment.latest_telemetry.humidity_pct.toFixed(1)}% • Thiết bị:{' '}
+                Độ ẩm: <strong>{shipment.latest_telemetry.humidity_pct.toFixed(1)}%</strong> • Thiết bị:{' '}
                 {shipment.latest_telemetry.device_id}
               </div>
             )}
           </div>
         </Card>
 
-        {/* Route card */}
-        <Card title="Hành trình vận chuyển (Mô phỏng)">
+        {/* Route info card */}
+        <Card title="Tuyến vận chuyển">
           <div style={{ marginTop: 'var(--space-2)' }}>
-            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
               {shipment.origin.name}
             </div>
-            <div
-              style={{
-                fontSize: 'var(--text-xs)',
-                color: 'var(--color-text-tertiary)',
-                margin: '2px 0 6px 0',
-              }}
-            >
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', margin: '2px 0 6px 0' }}>
               ({shipment.origin.latitude.toFixed(4)}, {shipment.origin.longitude.toFixed(4)})
             </div>
-            <div
-              style={{
-                fontSize: 'var(--text-xs)',
-                color: 'var(--color-accent)',
-                fontWeight: 600,
-                marginBottom: '6px',
-              }}
-            >
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-accent)', fontWeight: 600, marginBottom: '6px' }}>
               ↓ Tuyến đường mô phỏng (Tiến độ: {shipment.location ? `${shipment.location.progress_pct.toFixed(0)}%` : '0%'})
             </div>
-            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
               {shipment.destination.name}
             </div>
-            <div
-              style={{
-                fontSize: 'var(--text-xs)',
-                color: 'var(--color-text-tertiary)',
-                marginTop: '2px',
-              }}
-            >
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
               ({shipment.destination.latitude.toFixed(4)}, {shipment.destination.longitude.toFixed(4)})
             </div>
           </div>
@@ -249,7 +275,7 @@ export const ShipmentDetailPage: React.FC = () => {
                 marginTop: 'var(--space-2)',
               }}
             >
-              Điều kiện vi phạm: Vượt ngưỡng liên tục {shipment.violation_duration_minutes} phút
+              Điều kiện vi phạm: Vượt ngưỡng liên tục <strong>{shipment.violation_duration_minutes} phút</strong>
             </div>
             <div style={{ marginTop: 'var(--space-3)' }}>
               <InsuranceStatusBadge
@@ -261,10 +287,37 @@ export const ShipmentDetailPage: React.FC = () => {
         </Card>
       </div>
 
+      {/* PHASE 3: INTERACTIVE LEAFLET MAP PANEL */}
+      <Card
+        title="Bản đồ Lộ trình Tuyến xe (Mô phỏng)"
+        description="Vị trí xe và tiến độ hành trình được tính toán nội suy từ dữ liệu mẫu cảm biến Backend."
+        style={{ marginBottom: 'var(--space-6)' }}
+      >
+        <SimulatedRouteMap
+          origin={shipment.origin}
+          destination={shipment.destination}
+          currentLocation={shipment.location}
+          height="380px"
+        />
+      </Card>
+
+      {/* PHASE 3: TELEMETRY CHART */}
+      <Card
+        title="Biểu đồ Biến thiên Nhiệt độ & Độ ẩm"
+        description="Lịch sử các lần gửi mẫu từ cảm biến kèm hai đường giới hạn an toàn."
+        style={{ marginBottom: 'var(--space-6)' }}
+      >
+        <TelemetryChart
+          telemetry={telemetry}
+          tempMinC={shipment.temp_min_c}
+          tempMaxC={shipment.temp_max_c}
+        />
+      </Card>
+
       {/* Blockchain Status section */}
       <Card
         title="Trạng thái Smart Contract & Blockchain"
-        description="Bằng chứng bồi thường được ghi nhận bất biến trên mạng Blockchain"
+        description="Bằng chứng bồi thường tự động được ghi nhận bất biến trên mạng Blockchain."
         style={{ marginBottom: 'var(--space-6)' }}
       >
         {shipment.blockchain ? (
@@ -333,7 +386,7 @@ export const ShipmentDetailPage: React.FC = () => {
         )}
       </Card>
 
-      {/* Telemetry samples & Event Timeline */}
+      {/* Bottom 2 columns: Event Timeline & Telemetry Table */}
       <div
         style={{
           display: 'grid',
@@ -341,9 +394,17 @@ export const ShipmentDetailPage: React.FC = () => {
           gap: 'var(--space-6)',
         }}
       >
-        {/* Telemetry records */}
+        {/* Event Timeline */}
         <Card
-          title="Lịch sử Mẫu Cảm biến"
+          title="Dòng Thời gian Sự kiện (Events Timeline)"
+          description="Các cảnh báo vi phạm và trạng thái kích hoạt bảo hiểm"
+        >
+          <EventTimeline events={events} />
+        </Card>
+
+        {/* Telemetry records table */}
+        <Card
+          title="Bảng Mẫu Cảm biến Gần nhất"
           description={`Tổng cộng: ${telemetry.length} bản ghi telemetry`}
         >
           {telemetry.length === 0 ? (
@@ -369,7 +430,7 @@ export const ShipmentDetailPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {telemetry.slice(-10).map((tel) => {
+                  {telemetry.slice(-10).reverse().map((tel) => {
                     const isSampleBreach =
                       tel.temperature_c < shipment.temp_min_c ||
                       tel.temperature_c > shipment.temp_max_c;
@@ -408,61 +469,7 @@ export const ShipmentDetailPage: React.FC = () => {
             </div>
           )}
         </Card>
-
-        {/* Event Timeline */}
-        <Card
-          title="Dòng Sự kiện Nghiệp vụ"
-          description="Lịch sử vi phạm và kích hoạt bồi thường"
-        >
-          {events.length === 0 ? (
-            <div style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--text-sm)' }}>
-              Không có sự kiện vi phạm hoặc gián đoạn nào. Lô hàng hoạt động bình thường.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              {events.map((evt) => (
-                <div
-                  key={evt.id}
-                  style={{
-                    padding: 'var(--space-3)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border-subtle)',
-                    backgroundColor: 'var(--color-surface)',
-                  }}
-                >
-                  <div className="flex-row items-center justify-between">
-                    <span
-                      style={{
-                        fontSize: 'var(--text-xs)',
-                        fontWeight: 600,
-                        color:
-                          evt.type === 'INSURANCE_TRIGGERED'
-                            ? 'var(--color-danger)'
-                            : 'var(--color-warning)',
-                      }}
-                    >
-                      {evt.type}
-                    </span>
-                    <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
-                      {new Date(evt.occurred_at).toLocaleTimeString('vi-VN')}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 'var(--text-xs)',
-                      color: 'var(--color-text-secondary)',
-                      marginTop: '4px',
-                    }}
-                  >
-                    Chi tiết: {JSON.stringify(evt.details)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
       </div>
     </div>
   );
 };
-
