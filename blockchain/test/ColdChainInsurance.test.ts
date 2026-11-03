@@ -94,11 +94,12 @@ describe("ColdChainInsurance", function () {
   describe("createPolicy", function () {
     it("Should create a policy successfully", async function () {
       const fixture = await loadFixture(deployFixture);
-      const { insurance, beneficiary, shipmentKey, payoutAmount, expiry } = fixture;
+      const { insurance, owner, beneficiary, shipmentKey, payoutAmount, expiry } = fixture;
 
       await createPolicyHelper(fixture);
 
       const policy = await insurance.getPolicy(shipmentKey);
+      expect(policy.insurer).to.equal(owner.address);
       expect(policy.beneficiary).to.equal(beneficiary.address);
       expect(policy.payoutAmount).to.equal(payoutAmount);
       expect(policy.expiry).to.equal(expiry);
@@ -114,7 +115,7 @@ describe("ColdChainInsurance", function () {
         insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry)
       )
         .to.emit(insurance, "PolicyCreated")
-        .withArgs(shipmentKey, beneficiary.address, payoutAmount, expiry);
+        .withArgs(shipmentKey, owner.address, beneficiary.address, payoutAmount, expiry);
     });
 
     it("Should reject duplicate shipment key with custom error", async function () {

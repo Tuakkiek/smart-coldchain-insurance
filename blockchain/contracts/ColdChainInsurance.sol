@@ -11,6 +11,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *         - Hạn chế quyền gọi reportViolation cho oracle address.
  *         - Tự động chi trả token demo khi nhận sự kiện vi phạm hợp lệ.
  *         - Chống gửi trùng (duplicate payout).
+ *         - Hỗ trợ hoàn token ký quỹ cho insurer khi chuyến hàng kết thúc an toàn và policy hết hạn.
  * @dev Contract MVP — chỉ dùng trên local chain hoặc testnet.
  *      Backend đóng vai trò oracle gửi giao dịch có bằng chứng tham chiếu.
  *      Quy tắc:
@@ -22,12 +23,14 @@ contract ColdChainInsurance is ReentrancyGuard {
     // ─── Custom Errors ───────────────────────────────────────────────
     error ColdChain__CallerNotOwner();
     error ColdChain__CallerNotOracle();
+    error ColdChain__CallerNotInsurer();
     error ColdChain__ZeroAddress();
     error ColdChain__PolicyAlreadyExists(bytes32 shipmentKey);
     error ColdChain__InvalidPayoutAmount();
     error ColdChain__InvalidExpiry(uint256 expiry, uint256 currentTimestamp);
     error ColdChain__PolicyNotActive(bytes32 shipmentKey, PolicyStatus currentStatus);
     error ColdChain__PolicyExpired(uint256 expiry, uint256 currentTimestamp);
+    error ColdChain__PolicyNotExpired(uint256 expiry, uint256 currentTimestamp);
     error ColdChain__TokenTransferFailed();
 
     // ─── State Variables ─────────────────────────────────────────────
@@ -47,12 +50,14 @@ contract ColdChainInsurance is ReentrancyGuard {
     enum PolicyStatus {
         NotExist,   // 0 — chưa tồn tại
         Active,     // 1 — đã đăng ký và được cấp vốn, còn hiệu lực
-        PaidOut     // 2 — đã chi trả
+        PaidOut,    // 2 — đã chi trả do vi phạm nhiệt độ
+        Refunded    // 3 — đã hoàn tiền cho insurer do hết hạn an toàn
     }
 
     /// @notice Thông tin một policy bảo hiểm
     struct Policy {
-        address beneficiary;    // Địa chỉ nhận bồi thường
+        address insurer;        // Địa chỉ bên mua/bảo hiểm (người ký quỹ)
+        address beneficiary;    // Địa chỉ nhận bồi thường khi có sự cố
         uint256 payoutAmount;   // Số token demo chi trả
         uint256 expiry;         // Unix timestamp hết hạn
         PolicyStatus status;    // Trạng thái hiện tại
@@ -68,6 +73,7 @@ contract ColdChainInsurance is ReentrancyGuard {
     /// @notice Phát khi policy mới được tạo thành công
     event PolicyCreated(
         bytes32 indexed shipmentKey,
+        address indexed insurer,
         address indexed beneficiary,
         uint256 payoutAmount,
         uint256 expiry
@@ -80,6 +86,13 @@ contract ColdChainInsurance is ReentrancyGuard {
         uint256 payoutAmount,
         bytes32 evidenceHash,
         uint256 detectedAt
+    );
+
+    /// @notice Phát khi hoàn lại token ký quỹ cho insurer vì policy hết hạn an toàn
+    event PolicyRefunded(
+        bytes32 indexed shipmentKey,
+        address indexed insurer,
+        uint256 amount
     );
 
     /// @notice Phát khi oracle address được cập nhật
@@ -160,6 +173,7 @@ contract ColdChainInsurance is ReentrancyGuard {
 
         // Lưu policy
         policies[_shipmentKey] = Policy({
+            insurer: msg.sender,
             beneficiary: _beneficiary,
             payoutAmount: _payoutAmount,
             expiry: _expiry,
@@ -168,7 +182,7 @@ contract ColdChainInsurance is ReentrancyGuard {
             detectedAt: 0
         });
 
-        emit PolicyCreated(_shipmentKey, _beneficiary, _payoutAmount, _expiry);
+        emit PolicyCreated(_shipmentKey, msg.sender, _beneficiary, _payoutAmount, _expiry);
     }
 
     /**
@@ -213,15 +227,50 @@ contract ColdChainInsurance is ReentrancyGuard {
         );
     }
 
+    /**
+     * @notice Hoàn lại số token đã khóa cho bên bảo hiểm (insurer) khi policy đã hết hạn
+     *         mà không xảy ra bất kỳ vi phạm nào.
+     *         Chỉ insurer của policy hoặc contract owner mới được gọi.
+     * @param _shipmentKey keccak256(UTF8(shipment_id))
+     */
+    function refundExpiredPolicy(bytes32 _shipmentKey) external nonReentrant {
+        Policy storage policy = policies[_shipmentKey];
+
+        // Kiểm tra policy đang ở trạng thái Active
+        if (policy.status != PolicyStatus.Active) {
+            revert ColdChain__PolicyNotActive(_shipmentKey, policy.status);
+        }
+
+        // Kiểm tra policy ĐÃ hết hạn
+        if (block.timestamp <= policy.expiry) {
+            revert ColdChain__PolicyNotExpired(policy.expiry, block.timestamp);
+        }
+
+        // Chỉ insurer của policy hoặc owner mới được kích hoạt hoàn tiền
+        if (msg.sender != policy.insurer && msg.sender != owner) {
+            revert ColdChain__CallerNotInsurer();
+        }
+
+        // Checks-Effects-Interactions: cập nhật trạng thái trước khi transfer
+        policy.status = PolicyStatus.Refunded;
+
+        uint256 amount = policy.payoutAmount;
+        bool transferred = payoutToken.transfer(policy.insurer, amount);
+        if (!transferred) revert ColdChain__TokenTransferFailed();
+
+        emit PolicyRefunded(_shipmentKey, policy.insurer, amount);
+    }
+
     // ─── View Functions ──────────────────────────────────────────────
 
     /**
      * @notice Đọc thông tin policy theo shipmentKey.
      * @param _shipmentKey keccak256(UTF8(shipment_id))
+     * @return insurer Địa chỉ người ký quỹ bảo hiểm
      * @return beneficiary Địa chỉ nhận bồi thường
      * @return payoutAmount Số token chi trả
      * @return expiry Thời hạn policy
-     * @return status Trạng thái policy (0=NotExist, 1=Active, 2=PaidOut)
+     * @return status Trạng thái policy (0=NotExist, 1=Active, 2=PaidOut, 3=Refunded)
      * @return evidenceHash Hash bằng chứng (bytes32(0) nếu chưa chi trả)
      * @return detectedAt Thời điểm phát hiện (0 nếu chưa chi trả)
      */
@@ -229,6 +278,7 @@ contract ColdChainInsurance is ReentrancyGuard {
         external
         view
         returns (
+            address insurer,
             address beneficiary,
             uint256 payoutAmount,
             uint256 expiry,
@@ -239,6 +289,7 @@ contract ColdChainInsurance is ReentrancyGuard {
     {
         Policy storage p = policies[_shipmentKey];
         return (
+            p.insurer,
             p.beneficiary,
             p.payoutAmount,
             p.expiry,
