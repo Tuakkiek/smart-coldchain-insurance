@@ -1,0 +1,287 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
+
+describe("ColdChainInsurance", function () {
+  // ─── Fixture ─────────────────────────────────────────────────────
+  async function deployFixture() {
+    const [owner, oracle, beneficiary, stranger] = await ethers.getSigners();
+
+    // Deploy MockInsuranceToken
+    const initialSupply = ethers.parseEther("1000000");
+    const MockToken = await ethers.getContractFactory("MockInsuranceToken");
+    const token = await MockToken.deploy(initialSupply);
+    await token.waitForDeployment();
+
+    // Deploy ColdChainInsurance
+    const Insurance = await ethers.getContractFactory("ColdChainInsurance");
+    const insurance = await Insurance.deploy(
+      await token.getAddress(),
+      oracle.address
+    );
+    await insurance.waitForDeployment();
+
+    // Dữ liệu demo
+    const shipmentId = "8b4fb8a2-2996-4da2-90b9-35019517f56f";
+    const shipmentKey = ethers.keccak256(ethers.toUtf8Bytes(shipmentId));
+    const payoutAmount = ethers.parseEther("1000");
+    const expiry =
+      (await ethers.provider.getBlock("latest"))!.timestamp + 86400 * 30;
+    const evidenceHash = ethers.keccak256(
+      ethers.toUtf8Bytes("c3afece0-1668-4f96-aad6-58349f8f0a64")
+    );
+    const detectedAt =
+      (await ethers.provider.getBlock("latest"))!.timestamp + 3600;
+
+    return {
+      token,
+      insurance,
+      owner,
+      oracle,
+      beneficiary,
+      stranger,
+      shipmentKey,
+      payoutAmount,
+      expiry,
+      evidenceHash,
+      detectedAt,
+    };
+  }
+
+  /** Helper: approve + createPolicy */
+  async function createPolicyHelper(fixture: Awaited<ReturnType<typeof deployFixture>>) {
+    const { token, insurance, owner, beneficiary, shipmentKey, payoutAmount, expiry } = fixture;
+    const insuranceAddr = await insurance.getAddress();
+    await token.connect(owner).approve(insuranceAddr, payoutAmount);
+    await insurance
+      .connect(owner)
+      .createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry);
+  }
+
+  // ─── Deployment Tests ────────────────────────────────────────────
+
+  describe("Deployment", function () {
+    it("Should set the correct owner", async function () {
+      const { insurance, owner } = await loadFixture(deployFixture);
+      expect(await insurance.owner()).to.equal(owner.address);
+    });
+
+    it("Should set the correct oracle", async function () {
+      const { insurance, oracle } = await loadFixture(deployFixture);
+      expect(await insurance.oracle()).to.equal(oracle.address);
+    });
+
+    it("Should set the correct payout token", async function () {
+      const { insurance, token } = await loadFixture(deployFixture);
+      expect(await insurance.payoutToken()).to.equal(await token.getAddress());
+    });
+  });
+
+  // ─── createPolicy Tests ──────────────────────────────────────────
+
+  describe("createPolicy", function () {
+    it("Should create a policy successfully", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, beneficiary, shipmentKey, payoutAmount, expiry } = fixture;
+
+      await createPolicyHelper(fixture);
+
+      const policy = await insurance.getPolicy(shipmentKey);
+      expect(policy.beneficiary).to.equal(beneficiary.address);
+      expect(policy.payoutAmount).to.equal(payoutAmount);
+      expect(policy.expiry).to.equal(expiry);
+      expect(policy.status).to.equal(1); // Active
+    });
+
+    it("Should emit PolicyCreated event", async function () {
+      const { token, insurance, owner, beneficiary, shipmentKey, payoutAmount, expiry } =
+        await loadFixture(deployFixture);
+
+      await token.connect(owner).approve(await insurance.getAddress(), payoutAmount);
+      await expect(
+        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry)
+      )
+        .to.emit(insurance, "PolicyCreated")
+        .withArgs(shipmentKey, beneficiary.address, payoutAmount, expiry);
+    });
+
+    it("Should reject duplicate shipment key", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { token, insurance, owner, beneficiary, shipmentKey, payoutAmount, expiry } = fixture;
+
+      await createPolicyHelper(fixture);
+
+      // Thử tạo lại cùng shipmentKey
+      await token.connect(owner).approve(await insurance.getAddress(), payoutAmount);
+      await expect(
+        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry)
+      ).to.be.revertedWith("ColdChain: policy already exists");
+    });
+
+    it("Should reject zero beneficiary address", async function () {
+      const { token, insurance, owner, shipmentKey, payoutAmount, expiry } =
+        await loadFixture(deployFixture);
+
+      await token.connect(owner).approve(await insurance.getAddress(), payoutAmount);
+      await expect(
+        insurance
+          .connect(owner)
+          .createPolicy(shipmentKey, ethers.ZeroAddress, payoutAmount, expiry)
+      ).to.be.revertedWith("ColdChain: beneficiary is zero address");
+    });
+
+    it("Should reject zero payout amount", async function () {
+      const { insurance, owner, beneficiary, shipmentKey, expiry } =
+        await loadFixture(deployFixture);
+
+      await expect(
+        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, 0, expiry)
+      ).to.be.revertedWith("ColdChain: payout amount must be > 0");
+    });
+
+    it("Should reject expired policy", async function () {
+      const { token, insurance, owner, beneficiary, shipmentKey, payoutAmount } =
+        await loadFixture(deployFixture);
+
+      await token.connect(owner).approve(await insurance.getAddress(), payoutAmount);
+      await expect(
+        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, 1) // timestamp = 1 (quá khứ)
+      ).to.be.revertedWith("ColdChain: expiry must be in the future");
+    });
+
+    it("Should lock tokens in contract", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { token, insurance, payoutAmount } = fixture;
+
+      await createPolicyHelper(fixture);
+
+      const contractBalance = await token.balanceOf(await insurance.getAddress());
+      expect(contractBalance).to.equal(payoutAmount);
+    });
+  });
+
+  // ─── reportViolation Tests ───────────────────────────────────────
+
+  describe("reportViolation", function () {
+    it("Should payout successfully when called by oracle", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { token, insurance, oracle, beneficiary, shipmentKey, payoutAmount, evidenceHash, detectedAt } = fixture;
+
+      await createPolicyHelper(fixture);
+
+      const balanceBefore = await token.balanceOf(beneficiary.address);
+      await insurance
+        .connect(oracle)
+        .reportViolation(shipmentKey, evidenceHash, detectedAt);
+      const balanceAfter = await token.balanceOf(beneficiary.address);
+
+      expect(balanceAfter - balanceBefore).to.equal(payoutAmount);
+    });
+
+    it("Should emit InsurancePaid event", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, oracle, beneficiary, shipmentKey, payoutAmount, evidenceHash, detectedAt } = fixture;
+
+      await createPolicyHelper(fixture);
+
+      await expect(
+        insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt)
+      )
+        .to.emit(insurance, "InsurancePaid")
+        .withArgs(shipmentKey, beneficiary.address, payoutAmount, evidenceHash, detectedAt);
+    });
+
+    it("Should set policy status to PaidOut", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, oracle, shipmentKey, evidenceHash, detectedAt } = fixture;
+
+      await createPolicyHelper(fixture);
+      await insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt);
+
+      const policy = await insurance.getPolicy(shipmentKey);
+      expect(policy.status).to.equal(2); // PaidOut
+    });
+
+    it("Should store evidenceHash and detectedAt", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, oracle, shipmentKey, evidenceHash, detectedAt } = fixture;
+
+      await createPolicyHelper(fixture);
+      await insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt);
+
+      const policy = await insurance.getPolicy(shipmentKey);
+      expect(policy.evidenceHash).to.equal(evidenceHash);
+      expect(policy.detectedAt).to.equal(detectedAt);
+    });
+
+    it("Should reject non-oracle caller", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, stranger, shipmentKey, evidenceHash, detectedAt } = fixture;
+
+      await createPolicyHelper(fixture);
+
+      await expect(
+        insurance.connect(stranger).reportViolation(shipmentKey, evidenceHash, detectedAt)
+      ).to.be.revertedWith("ColdChain: caller is not oracle");
+    });
+
+    it("Should reject duplicate payout", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, oracle, shipmentKey, evidenceHash, detectedAt } = fixture;
+
+      await createPolicyHelper(fixture);
+      await insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt);
+
+      // Gọi lần hai — phải bị từ chối
+      await expect(
+        insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt)
+      ).to.be.revertedWith("ColdChain: policy not active or not found");
+    });
+
+    it("Should reject unknown policy", async function () {
+      const { insurance, oracle, evidenceHash, detectedAt } =
+        await loadFixture(deployFixture);
+
+      const fakeKey = ethers.keccak256(ethers.toUtf8Bytes("nonexistent-shipment"));
+      await expect(
+        insurance.connect(oracle).reportViolation(fakeKey, evidenceHash, detectedAt)
+      ).to.be.revertedWith("ColdChain: policy not active or not found");
+    });
+  });
+
+  // ─── setOracle Tests ─────────────────────────────────────────────
+
+  describe("setOracle", function () {
+    it("Should allow owner to update oracle", async function () {
+      const { insurance, owner, stranger } = await loadFixture(deployFixture);
+
+      await insurance.connect(owner).setOracle(stranger.address);
+      expect(await insurance.oracle()).to.equal(stranger.address);
+    });
+
+    it("Should emit OracleUpdated event", async function () {
+      const { insurance, owner, oracle, stranger } = await loadFixture(deployFixture);
+
+      await expect(insurance.connect(owner).setOracle(stranger.address))
+        .to.emit(insurance, "OracleUpdated")
+        .withArgs(oracle.address, stranger.address);
+    });
+
+    it("Should reject non-owner caller", async function () {
+      const { insurance, stranger } = await loadFixture(deployFixture);
+
+      await expect(
+        insurance.connect(stranger).setOracle(stranger.address)
+      ).to.be.revertedWith("ColdChain: caller is not owner");
+    });
+
+    it("Should reject zero address", async function () {
+      const { insurance, owner } = await loadFixture(deployFixture);
+
+      await expect(
+        insurance.connect(owner).setOracle(ethers.ZeroAddress)
+      ).to.be.revertedWith("ColdChain: new oracle is zero address");
+    });
+  });
+});
+
