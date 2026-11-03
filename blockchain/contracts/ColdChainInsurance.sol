@@ -19,6 +19,17 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *        - detectedAt = Unix timestamp giây UTC
  */
 contract ColdChainInsurance is ReentrancyGuard {
+    // ─── Custom Errors ───────────────────────────────────────────────
+    error ColdChain__CallerNotOwner();
+    error ColdChain__CallerNotOracle();
+    error ColdChain__ZeroAddress();
+    error ColdChain__PolicyAlreadyExists(bytes32 shipmentKey);
+    error ColdChain__InvalidPayoutAmount();
+    error ColdChain__InvalidExpiry(uint256 expiry, uint256 currentTimestamp);
+    error ColdChain__PolicyNotActive(bytes32 shipmentKey, PolicyStatus currentStatus);
+    error ColdChain__PolicyExpired(uint256 expiry, uint256 currentTimestamp);
+    error ColdChain__TokenTransferFailed();
+
     // ─── State Variables ─────────────────────────────────────────────
 
     /// @notice Địa chỉ owner (admin), người deploy contract.
@@ -80,12 +91,12 @@ contract ColdChainInsurance is ReentrancyGuard {
     // ─── Modifiers ───────────────────────────────────────────────────
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "ColdChain: caller is not owner");
+        if (msg.sender != owner) revert ColdChain__CallerNotOwner();
         _;
     }
 
     modifier onlyOracle() {
-        require(msg.sender == oracle, "ColdChain: caller is not oracle");
+        if (msg.sender != oracle) revert ColdChain__CallerNotOracle();
         _;
     }
 
@@ -96,8 +107,9 @@ contract ColdChainInsurance is ReentrancyGuard {
      * @param _oracle Địa chỉ oracle ban đầu (Backend signer).
      */
     constructor(address _payoutToken, address _oracle) {
-        require(_payoutToken != address(0), "ColdChain: token is zero address");
-        require(_oracle != address(0), "ColdChain: oracle is zero address");
+        if (_payoutToken == address(0) || _oracle == address(0)) {
+            revert ColdChain__ZeroAddress();
+        }
 
         owner = msg.sender;
         payoutToken = IERC20(_payoutToken);
@@ -111,7 +123,7 @@ contract ColdChainInsurance is ReentrancyGuard {
      * @param _newOracle Địa chỉ oracle mới.
      */
     function setOracle(address _newOracle) external onlyOwner {
-        require(_newOracle != address(0), "ColdChain: new oracle is zero address");
+        if (_newOracle == address(0)) revert ColdChain__ZeroAddress();
         address prev = oracle;
         oracle = _newOracle;
         emit OracleUpdated(prev, _newOracle);
@@ -133,17 +145,18 @@ contract ColdChainInsurance is ReentrancyGuard {
         uint256 _payoutAmount,
         uint256 _expiry
     ) external nonReentrant {
-        require(
-            policies[_shipmentKey].status == PolicyStatus.NotExist,
-            "ColdChain: policy already exists"
-        );
-        require(_beneficiary != address(0), "ColdChain: beneficiary is zero address");
-        require(_payoutAmount > 0, "ColdChain: payout amount must be > 0");
-        require(_expiry > block.timestamp, "ColdChain: expiry must be in the future");
+        if (policies[_shipmentKey].status != PolicyStatus.NotExist) {
+            revert ColdChain__PolicyAlreadyExists(_shipmentKey);
+        }
+        if (_beneficiary == address(0)) revert ColdChain__ZeroAddress();
+        if (_payoutAmount == 0) revert ColdChain__InvalidPayoutAmount();
+        if (_expiry <= block.timestamp) {
+            revert ColdChain__InvalidExpiry(_expiry, block.timestamp);
+        }
 
         // Chuyển token từ insurer (msg.sender) vào contract để khóa vốn
         bool transferred = payoutToken.transferFrom(msg.sender, address(this), _payoutAmount);
-        require(transferred, "ColdChain: token transfer failed");
+        if (!transferred) revert ColdChain__TokenTransferFailed();
 
         // Lưu policy
         policies[_shipmentKey] = Policy({
@@ -173,13 +186,14 @@ contract ColdChainInsurance is ReentrancyGuard {
         Policy storage policy = policies[_shipmentKey];
 
         // Kiểm tra policy tồn tại và đang hoạt động
-        require(
-            policy.status == PolicyStatus.Active,
-            "ColdChain: policy not active or not found"
-        );
+        if (policy.status != PolicyStatus.Active) {
+            revert ColdChain__PolicyNotActive(_shipmentKey, policy.status);
+        }
 
         // Kiểm tra policy chưa hết hạn
-        require(block.timestamp <= policy.expiry, "ColdChain: policy expired");
+        if (block.timestamp > policy.expiry) {
+            revert ColdChain__PolicyExpired(policy.expiry, block.timestamp);
+        }
 
         // Cập nhật trạng thái TRƯỚC khi transfer (Checks-Effects-Interactions)
         policy.status = PolicyStatus.PaidOut;
@@ -188,7 +202,7 @@ contract ColdChainInsurance is ReentrancyGuard {
 
         // Chuyển token cho beneficiary
         bool transferred = payoutToken.transfer(policy.beneficiary, policy.payoutAmount);
-        require(transferred, "ColdChain: payout transfer failed");
+        if (!transferred) revert ColdChain__TokenTransferFailed();
 
         emit InsurancePaid(
             _shipmentKey,
@@ -234,4 +248,3 @@ contract ColdChainInsurance is ReentrancyGuard {
         );
     }
 }
-

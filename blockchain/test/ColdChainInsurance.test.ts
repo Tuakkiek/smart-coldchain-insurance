@@ -75,6 +75,18 @@ describe("ColdChainInsurance", function () {
       const { insurance, token } = await loadFixture(deployFixture);
       expect(await insurance.payoutToken()).to.equal(await token.getAddress());
     });
+
+    it("Should reject zero address in constructor", async function () {
+      const { token, oracle } = await loadFixture(deployFixture);
+      const Insurance = await ethers.getContractFactory("ColdChainInsurance");
+      await expect(
+        Insurance.deploy(ethers.ZeroAddress, oracle.address)
+      ).to.be.revertedWithCustomError(Insurance, "ColdChain__ZeroAddress");
+
+      await expect(
+        Insurance.deploy(await token.getAddress(), ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(Insurance, "ColdChain__ZeroAddress");
+    });
   });
 
   // ─── createPolicy Tests ──────────────────────────────────────────
@@ -105,7 +117,7 @@ describe("ColdChainInsurance", function () {
         .withArgs(shipmentKey, beneficiary.address, payoutAmount, expiry);
     });
 
-    it("Should reject duplicate shipment key", async function () {
+    it("Should reject duplicate shipment key with custom error", async function () {
       const fixture = await loadFixture(deployFixture);
       const { token, insurance, owner, beneficiary, shipmentKey, payoutAmount, expiry } = fixture;
 
@@ -115,10 +127,12 @@ describe("ColdChainInsurance", function () {
       await token.connect(owner).approve(await insurance.getAddress(), payoutAmount);
       await expect(
         insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry)
-      ).to.be.revertedWith("ColdChain: policy already exists");
+      )
+        .to.be.revertedWithCustomError(insurance, "ColdChain__PolicyAlreadyExists")
+        .withArgs(shipmentKey);
     });
 
-    it("Should reject zero beneficiary address", async function () {
+    it("Should reject zero beneficiary address with custom error", async function () {
       const { token, insurance, owner, shipmentKey, payoutAmount, expiry } =
         await loadFixture(deployFixture);
 
@@ -127,26 +141,26 @@ describe("ColdChainInsurance", function () {
         insurance
           .connect(owner)
           .createPolicy(shipmentKey, ethers.ZeroAddress, payoutAmount, expiry)
-      ).to.be.revertedWith("ColdChain: beneficiary is zero address");
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__ZeroAddress");
     });
 
-    it("Should reject zero payout amount", async function () {
+    it("Should reject zero payout amount with custom error", async function () {
       const { insurance, owner, beneficiary, shipmentKey, expiry } =
         await loadFixture(deployFixture);
 
       await expect(
         insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, 0, expiry)
-      ).to.be.revertedWith("ColdChain: payout amount must be > 0");
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__InvalidPayoutAmount");
     });
 
-    it("Should reject expired policy", async function () {
+    it("Should reject expired policy with custom error", async function () {
       const { token, insurance, owner, beneficiary, shipmentKey, payoutAmount } =
         await loadFixture(deployFixture);
 
       await token.connect(owner).approve(await insurance.getAddress(), payoutAmount);
       await expect(
         insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, 1) // timestamp = 1 (quá khứ)
-      ).to.be.revertedWith("ColdChain: expiry must be in the future");
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__InvalidExpiry");
     });
 
     it("Should lock tokens in contract", async function () {
@@ -214,7 +228,7 @@ describe("ColdChainInsurance", function () {
       expect(policy.detectedAt).to.equal(detectedAt);
     });
 
-    it("Should reject non-oracle caller", async function () {
+    it("Should reject non-oracle caller with custom error", async function () {
       const fixture = await loadFixture(deployFixture);
       const { insurance, stranger, shipmentKey, evidenceHash, detectedAt } = fixture;
 
@@ -222,10 +236,10 @@ describe("ColdChainInsurance", function () {
 
       await expect(
         insurance.connect(stranger).reportViolation(shipmentKey, evidenceHash, detectedAt)
-      ).to.be.revertedWith("ColdChain: caller is not oracle");
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__CallerNotOracle");
     });
 
-    it("Should reject duplicate payout", async function () {
+    it("Should reject duplicate payout with custom error", async function () {
       const fixture = await loadFixture(deployFixture);
       const { insurance, oracle, shipmentKey, evidenceHash, detectedAt } = fixture;
 
@@ -235,17 +249,17 @@ describe("ColdChainInsurance", function () {
       // Gọi lần hai — phải bị từ chối
       await expect(
         insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt)
-      ).to.be.revertedWith("ColdChain: policy not active or not found");
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__PolicyNotActive");
     });
 
-    it("Should reject unknown policy", async function () {
+    it("Should reject unknown policy with custom error", async function () {
       const { insurance, oracle, evidenceHash, detectedAt } =
         await loadFixture(deployFixture);
 
       const fakeKey = ethers.keccak256(ethers.toUtf8Bytes("nonexistent-shipment"));
       await expect(
         insurance.connect(oracle).reportViolation(fakeKey, evidenceHash, detectedAt)
-      ).to.be.revertedWith("ColdChain: policy not active or not found");
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__PolicyNotActive");
     });
   });
 
@@ -267,21 +281,20 @@ describe("ColdChainInsurance", function () {
         .withArgs(oracle.address, stranger.address);
     });
 
-    it("Should reject non-owner caller", async function () {
+    it("Should reject non-owner caller with custom error", async function () {
       const { insurance, stranger } = await loadFixture(deployFixture);
 
       await expect(
         insurance.connect(stranger).setOracle(stranger.address)
-      ).to.be.revertedWith("ColdChain: caller is not owner");
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__CallerNotOwner");
     });
 
-    it("Should reject zero address", async function () {
+    it("Should reject zero address with custom error", async function () {
       const { insurance, owner } = await loadFixture(deployFixture);
 
       await expect(
         insurance.connect(owner).setOracle(ethers.ZeroAddress)
-      ).to.be.revertedWith("ColdChain: new oracle is zero address");
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__ZeroAddress");
     });
   });
 });
-
