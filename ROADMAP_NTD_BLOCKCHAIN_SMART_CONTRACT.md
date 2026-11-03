@@ -91,7 +91,7 @@ Không cần xây marketplace, DAO, NFT hoặc nhiều loại token trong MVP. G
 
 **Việc cần làm**
 
-1. Tạo nhánh `feat/blockchain-contract`.
+1. Tạo nhánh `feat/blockchain_smart_contract`.
 2. Đọc `docs/contracts/api-v1.md` của Member 1; nếu chưa có, yêu cầu chốt trường `shipment_id`, policy và event trước khi viết integration assumptions.
 3. Chốt `shipmentKey`, `evidenceHash`, timestamp, oracle address và định dạng payout demo.
 4. Viết bản đầu của `blockchain/INTEGRATION.md` gồm function signature và ví dụ dữ liệu.

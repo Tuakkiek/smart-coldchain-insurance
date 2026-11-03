@@ -19,3 +19,10 @@ venv/
 node_modules/
 dist/
 build/
+
+# Hardhat / Blockchain
+blockchain/artifacts/
+blockchain/cache/
+blockchain/typechain-types/
+blockchain/coverage/
+blockchain/coverage.json
