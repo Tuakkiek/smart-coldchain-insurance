@@ -1,7 +1,8 @@
-"""Deterministic straight-line location for the Phase 2 telemetry endpoint.
+"""Deterministic straight-line route driven by accepted telemetry samples.
 
-Phase 3 can refine route behaviour without changing the REST schema. These are
-simulated coordinates and must never be presented as device GPS.
+The first sample is 5% of the way from origin to destination. The twentieth
+sample reaches the destination; later samples stay there. This is a simulated
+position, never device GPS or a real road route.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ SAMPLES_TO_DESTINATION = 20
 
 
 def location_for_sample(shipment: Shipment, sample_number: int) -> tuple[float, float, float]:
-    progress_pct = min(max(sample_number, 0) / SAMPLES_TO_DESTINATION * 100.0, 100.0)
+    progress_pct = min(max(sample_number, 0) * (100.0 / SAMPLES_TO_DESTINATION), 100.0)
     fraction = progress_pct / 100.0
     latitude = shipment.origin_latitude + (
         shipment.destination_latitude - shipment.origin_latitude

@@ -96,6 +96,29 @@ def test_multiple_telemetry_samples_and_simulated_location(api):
     assert client.get(f"/api/v1/shipments/{shipment_id}/events").json() == {"items": []}
 
 
+def test_route_reaches_destination_and_stays_there(api):
+    client, _app = api
+    shipment_id = create_shipment(client)["id"]
+    route = f"/api/v1/shipments/{shipment_id}/telemetry"
+    for sample_number in range(1, 22):
+        response = client.post(
+            route,
+            json={"device_id": "ESP32-01", "temperature_c": 5.0, "humidity_pct": 72.5},
+        )
+        assert response.status_code == 201, response.text
+        location = response.json()["location"]
+        assert location["progress_pct"] == min(sample_number * 5.0, 100.0)
+        assert location["latitude"] == pytest.approx(10.03 + 0.02 * location["progress_pct"] / 100)
+        assert location["longitude"] == pytest.approx(105.77 + 0.04 * location["progress_pct"] / 100)
+        assert location["location_source"] == "backend_simulated"
+
+    detail = client.get(f"/api/v1/shipments/{shipment_id}").json()
+    history = client.get(route).json()["items"]
+    assert len(history) == 21
+    assert detail["location"] == history[-1]["location"]
+    assert history[-1]["location"] == history[-2]["location"]
+
+
 @pytest.mark.parametrize(
     "changes",
     [
