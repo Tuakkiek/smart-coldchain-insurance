@@ -12,6 +12,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *         - Tự động chi trả token demo khi nhận sự kiện vi phạm hợp lệ.
  *         - Chống gửi trùng (duplicate payout).
  *         - Hỗ trợ hoàn token ký quỹ cho insurer khi chuyến hàng kết thúc an toàn và policy hết hạn.
+ *         - Kiểm tra khả năng thanh toán (solvency check) đảm bảo hợp đồng đủ tiền trước khi chi trả.
  * @dev Contract MVP — chỉ dùng trên local chain hoặc testnet.
  *      Backend đóng vai trò oracle gửi giao dịch có bằng chứng tham chiếu.
  *      Quy tắc:
@@ -32,6 +33,7 @@ contract ColdChainInsurance is ReentrancyGuard {
     error ColdChain__PolicyExpired(uint256 expiry, uint256 currentTimestamp);
     error ColdChain__PolicyNotExpired(uint256 expiry, uint256 currentTimestamp);
     error ColdChain__TokenTransferFailed();
+    error ColdChain__ContractInsufficientBalance(uint256 available, uint256 required);
 
     // ─── State Variables ─────────────────────────────────────────────
 
@@ -209,6 +211,12 @@ contract ColdChainInsurance is ReentrancyGuard {
             revert ColdChain__PolicyExpired(policy.expiry, block.timestamp);
         }
 
+        // Kiểm tra số dư quỹ bảo hiểm (Solvency / Unfunded Check)
+        uint256 balance = payoutToken.balanceOf(address(this));
+        if (balance < policy.payoutAmount) {
+            revert ColdChain__ContractInsufficientBalance(balance, policy.payoutAmount);
+        }
+
         // Cập nhật trạng thái TRƯỚC khi transfer (Checks-Effects-Interactions)
         policy.status = PolicyStatus.PaidOut;
         policy.evidenceHash = _evidenceHash;
@@ -249,6 +257,12 @@ contract ColdChainInsurance is ReentrancyGuard {
         // Chỉ insurer của policy hoặc owner mới được kích hoạt hoàn tiền
         if (msg.sender != policy.insurer && msg.sender != owner) {
             revert ColdChain__CallerNotInsurer();
+        }
+
+        // Kiểm tra số dư contract
+        uint256 balance = payoutToken.balanceOf(address(this));
+        if (balance < policy.payoutAmount) {
+            revert ColdChain__ContractInsufficientBalance(balance, policy.payoutAmount);
         }
 
         // Checks-Effects-Interactions: cập nhật trạng thái trước khi transfer
@@ -297,5 +311,23 @@ contract ColdChainInsurance is ReentrancyGuard {
             p.evidenceHash,
             p.detectedAt
         );
+    }
+
+    /**
+     * @notice Kiểm tra policy có đang hoạt động và còn hiệu lực hay không.
+     * @param _shipmentKey keccak256(UTF8(shipment_id))
+     * @return active True nếu policy tồn tại, Active và chưa hết hạn
+     */
+    function isPolicyActive(bytes32 _shipmentKey) external view returns (bool active) {
+        Policy storage p = policies[_shipmentKey];
+        return (p.status == PolicyStatus.Active && block.timestamp <= p.expiry);
+    }
+
+    /**
+     * @notice Lấy số dư token demo hiện có của hợp đồng bảo hiểm.
+     * @return balance Số dư token đang giữ trong contract
+     */
+    function getContractBalance() external view returns (uint256 balance) {
+        return payoutToken.balanceOf(address(this));
     }
 }
