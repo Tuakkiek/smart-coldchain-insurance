@@ -8,7 +8,7 @@ Tài liệu này là bản chốt **phía Backend** cho Phase 0. Member 2 dùng 
 - Base path: `/api/v1`. JSON dùng `snake_case`, UTF-8, `Content-Type: application/json`.
 - `shipment_id` và mọi `id` trong response là **UUID v4 dạng chuỗi chữ thường chuẩn** (ví dụ `8b4fb8a2-2996-4da2-90b9-35019517f56f`). Backend tạo ID; client không truyền ID khi tạo lô hàng. Path `{id}` và `{shipment_id}` là cùng ID này. `code` là mã nghiệp vụ do người tạo nhập, duy nhất trong hệ thống, không dùng làm khóa Blockchain.
 - Mọi timestamp trong REST API là ISO 8601 UTC, dạng `YYYY-MM-DDTHH:mm:ssZ` (có thể có phần giây thập phân). Input timestamp phải có múi giờ; Backend chuẩn hóa về UTC. `received_at`/`occurred_at` do Backend tạo. `recorded_at` là thời gian tùy chọn từ thiết bị, chỉ để đối chiếu, không dùng tính thời gian vi phạm.
-- Tọa độ trong response là **mô phỏng ở Backend**, nội suy từ `origin` đến `destination`; không đại diện GPS hoặc đường giao thông thực. Mọi vị trí telemetry có `location_source: "backend_simulated"`. Khi chưa có telemetry, `latest_telemetry` và `location` là `null`.
+- Tọa độ trong response là **mô phỏng ở Backend**, nội suy đường thẳng từ `origin` đến `destination` theo số mẫu telemetry đã nhận: mẫu đầu tiên ở 5%, mẫu thứ 20 ở 100%, các mẫu sau giữ vị trí đích. Đây không phải GPS hoặc đường giao thông thực. Mọi vị trí telemetry có `location_source: "backend_simulated"`. Khi chưa có telemetry, `status` là `created`, `latest_telemetry` và `location` là `null`.
 - `insured_amount_vnd` là số tiền mô tả chính sách demo bằng VND, **không phải** số token được chuyển trên chain. Việc cấu hình token demo do Member 2 thống nhất riêng.
 - Các endpoint chưa được triển khai trong Phase 0. Tài liệu này là hợp đồng để triển khai ở các Phase sau.
 

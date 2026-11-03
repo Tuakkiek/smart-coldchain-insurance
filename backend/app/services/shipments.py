@@ -94,7 +94,13 @@ def list_events(session: Session, shipment_id: str) -> list[ShipmentEvent]:
 
 
 def add_telemetry(session: Session, shipment_id: str, payload: TelemetryCreate) -> Telemetry:
-    shipment = get_shipment(session, shipment_id)
+    # Serialize samples for the same shipment on MySQL so each gets a distinct
+    # progress step even when two device requests arrive at once.
+    shipment = session.scalars(
+        select(Shipment).where(Shipment.id == shipment_id).with_for_update()
+    ).one_or_none()
+    if shipment is None:
+        raise ShipmentNotFound
     sample_count = session.scalar(
         select(func.count(Telemetry.id)).where(Telemetry.shipment_id == shipment_id)
     ) or 0
