@@ -1,0 +1,139 @@
+import {
+  ShipmentOut,
+  ShipmentsOut,
+  TelemetryListOut,
+  EventListOut,
+  DemoScenarioOut,
+  DemoScenarioPayload,
+  HealthOut,
+} from '../types/api';
+import {
+  mockShipments,
+  mockTelemetryHistory,
+  mockEvents,
+} from './fixtures';
+
+class MockAdapter {
+  private shipments: ShipmentOut[] = JSON.parse(JSON.stringify(mockShipments));
+  private telemetry: Record<string, typeof mockTelemetryHistory[string]> = JSON.parse(JSON.stringify(mockTelemetryHistory));
+  private events: Record<string, typeof mockEvents[string]> = JSON.parse(JSON.stringify(mockEvents));
+
+  async getHealth(): Promise<HealthOut> {
+    return { status: 'ok' };
+  }
+
+  async listShipments(): Promise<ShipmentsOut> {
+    return {
+      items: [...this.shipments],
+      total: this.shipments.length,
+    };
+  }
+
+  async getShipment(id: string): Promise<ShipmentOut> {
+    const item = this.shipments.find((s) => s.id === id);
+    if (!item) {
+      throw new Error(`Mock 404: Shipment ${id} not found`);
+    }
+    return JSON.parse(JSON.stringify(item));
+  }
+
+  async listTelemetry(id: string): Promise<TelemetryListOut> {
+    const samples = this.telemetry[id] || [];
+    return {
+      items: JSON.parse(JSON.stringify(samples)),
+    };
+  }
+
+  async listEvents(id: string): Promise<EventListOut> {
+    const events = this.events[id] || [];
+    return {
+      items: JSON.parse(JSON.stringify(events)),
+    };
+  }
+
+  async listAllEvents(): Promise<EventListOut> {
+    const all = Object.values(this.events).flat();
+    all.sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
+    return {
+      items: JSON.parse(JSON.stringify(all)),
+    };
+  }
+
+  async runDemoScenario(id: string, payload: DemoScenarioPayload): Promise<DemoScenarioOut> {
+    const item = this.shipments.find((s) => s.id === id);
+    if (!item) {
+      throw new Error(`Mock 404: Shipment ${id} not found`);
+    }
+
+    const now = new Date().toISOString();
+
+    if (payload.scenario === 'temperature_breach') {
+      item.status = 'insurance_triggered';
+      item.latest_telemetry = {
+        id: `tel-demo-${Date.now()}`,
+        device_id: item.latest_telemetry?.device_id || 'ESP32-DEMO',
+        temperature_c: 12.8,
+        humidity_pct: 85.0,
+        recorded_at: now,
+        received_at: now,
+      };
+      item.insurance = {
+        insured_amount_vnd: item.insurance.insured_amount_vnd,
+        status: 'triggered',
+        payout_status: 'paid',
+      };
+      item.blockchain = {
+        network: 'localhost',
+        transaction_hash: '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(''),
+        confirmation_status: 'success',
+      };
+
+      // Add breach event
+      if (!this.events[id]) this.events[id] = [];
+      this.events[id].push({
+        id: `evt-demo-${Date.now()}`,
+        shipment_id: id,
+        type: 'INSURANCE_TRIGGERED',
+        occurred_at: now,
+        details: {
+          breach_started_at: now,
+          duration_minutes: item.violation_duration_minutes,
+        },
+      });
+
+      return {
+        shipment_id: id,
+        scenario: 'temperature_breach',
+        generated_samples: 2,
+        shipment_status: 'insurance_triggered',
+      };
+    } else {
+      // Normal scenario reset
+      item.status = 'in_transit';
+      item.latest_telemetry = {
+        id: `tel-demo-${Date.now()}`,
+        device_id: item.latest_telemetry?.device_id || 'ESP32-DEMO',
+        temperature_c: (item.temp_min_c + item.temp_max_c) / 2,
+        humidity_pct: 65.0,
+        recorded_at: now,
+        received_at: now,
+      };
+      item.insurance = {
+        insured_amount_vnd: item.insurance.insured_amount_vnd,
+        status: 'active',
+        payout_status: 'not_requested',
+      };
+      item.blockchain = null;
+
+      return {
+        shipment_id: id,
+        scenario: 'normal',
+        generated_samples: 1,
+        shipment_status: 'in_transit',
+      };
+    }
+  }
+}
+
+export const mockAdapter = new MockAdapter();
+

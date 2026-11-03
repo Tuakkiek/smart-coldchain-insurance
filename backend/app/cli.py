@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import re
 from uuid import uuid4
 
 from sqlalchemy import select
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import load_settings
 from app.core.database import Base, make_engine, make_session_factory
@@ -83,17 +86,55 @@ def seed_demo(session_factory) -> None:
             print(f"Created: {shipment.code} ({shipment.id})")
 
 
+def create_database(database_url: str | URL) -> None:
+    url = make_url(database_url)
+    if url.get_backend_name() != "mysql" or not url.database:
+        raise ValueError("A MySQL database name is required")
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", url.database):
+        raise ValueError("MYSQL_DATABASE may contain only letters, digits, _ or -")
+
+    server_url = URL.create(
+        url.drivername,
+        username=url.username,
+        password=url.password,
+        host=url.host,
+        port=url.port,
+        query=url.query,
+    )
+    engine = make_engine(server_url)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                f"CREATE DATABASE IF NOT EXISTS `{url.database}` "
+                "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+            )
+    finally:
+        engine.dispose()
+    print(f"MySQL database ready: {url.database}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("init-db", "seed-demo"))
+    parser.add_argument("command", choices=("create-db", "init-db", "seed-demo"))
     args = parser.parse_args()
     settings = load_settings()
-    engine = make_engine(settings.database_url)
-    Base.metadata.create_all(engine)
-    print("Database tables ready.")
-    if args.command == "seed-demo":
-        seed_demo(make_session_factory(engine))
-    engine.dispose()
+    try:
+        if args.command == "create-db":
+            create_database(settings.database_url)
+            return
+        engine = make_engine(settings.database_url)
+        try:
+            Base.metadata.create_all(engine)
+            print("Database tables ready.")
+            if args.command == "seed-demo":
+                seed_demo(make_session_factory(engine))
+        finally:
+            engine.dispose()
+    except ValueError as exc:
+        parser.exit(2, f"Configuration error: {exc}\n")
+    except SQLAlchemyError as exc:
+        code = exc.orig.args[0] if hasattr(exc, "orig") and exc.orig.args else "unknown"
+        parser.exit(2, f"MySQL operation failed (error {code}). Check .env, database and account privileges.\n")
 
 
 if __name__ == "__main__":
