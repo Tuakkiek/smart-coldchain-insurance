@@ -1,11 +1,11 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
+import { loadFixture, time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 describe("ColdChainInsurance", function () {
   // ─── Fixture ─────────────────────────────────────────────────────
   async function deployFixture() {
-    const [owner, oracle, beneficiary, stranger] = await ethers.getSigners();
+    const [owner, oracle, beneficiary, stranger, insurer2] = await ethers.getSigners();
 
     // Deploy MockInsuranceToken
     const initialSupply = ethers.parseEther("1000000");
@@ -40,6 +40,7 @@ describe("ColdChainInsurance", function () {
       oracle,
       beneficiary,
       stranger,
+      insurer2,
       shipmentKey,
       payoutAmount,
       expiry,
@@ -261,6 +262,149 @@ describe("ColdChainInsurance", function () {
       await expect(
         insurance.connect(oracle).reportViolation(fakeKey, evidenceHash, detectedAt)
       ).to.be.revertedWithCustomError(insurance, "ColdChain__PolicyNotActive");
+    });
+
+    it("Should reject reportViolation after policy expiry", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, oracle, shipmentKey, evidenceHash, detectedAt, expiry } = fixture;
+
+      await createPolicyHelper(fixture);
+
+      // Nhảy thời gian vượt quá hạn policy
+      await time.increaseTo(expiry + 1);
+
+      await expect(
+        insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt)
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__PolicyExpired");
+    });
+  });
+
+  // ─── refundExpiredPolicy Tests ───────────────────────────────────
+
+  describe("refundExpiredPolicy", function () {
+    it("Should allow insurer to refund tokens when policy expired safely", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { token, insurance, owner, shipmentKey, payoutAmount, expiry } = fixture;
+
+      await createPolicyHelper(fixture);
+
+      // Nhảy thời gian qua hạn policy
+      await time.increaseTo(expiry + 10);
+
+      const balanceBefore = await token.balanceOf(owner.address);
+      await expect(insurance.connect(owner).refundExpiredPolicy(shipmentKey))
+        .to.emit(insurance, "PolicyRefunded")
+        .withArgs(shipmentKey, owner.address, payoutAmount);
+
+      const balanceAfter = await token.balanceOf(owner.address);
+      expect(balanceAfter - balanceBefore).to.equal(payoutAmount);
+
+      const policy = await insurance.getPolicy(shipmentKey);
+      expect(policy.status).to.equal(3); // Refunded
+    });
+
+    it("Should allow owner to trigger refund for insurer", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { token, insurance, owner, stranger, shipmentKey, payoutAmount, expiry } = fixture;
+
+      // stranger là insurer
+      await token.transfer(stranger.address, payoutAmount);
+      await token.connect(stranger).approve(await insurance.getAddress(), payoutAmount);
+      await insurance
+        .connect(stranger)
+        .createPolicy(shipmentKey, fixture.beneficiary.address, payoutAmount, expiry);
+
+      await time.increaseTo(expiry + 10);
+
+      const balanceBefore = await token.balanceOf(stranger.address);
+      // owner gọi refund thay cho stranger
+      await insurance.connect(owner).refundExpiredPolicy(shipmentKey);
+      const balanceAfter = await token.balanceOf(stranger.address);
+
+      expect(balanceAfter - balanceBefore).to.equal(payoutAmount);
+    });
+
+    it("Should reject refund if policy has not expired yet", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, owner, shipmentKey } = fixture;
+
+      await createPolicyHelper(fixture);
+
+      // Chưa hết hạn
+      await expect(
+        insurance.connect(owner).refundExpiredPolicy(shipmentKey)
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__PolicyNotExpired");
+    });
+
+    it("Should reject refund by unauthorized stranger", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, stranger, shipmentKey, expiry } = fixture;
+
+      await createPolicyHelper(fixture);
+      await time.increaseTo(expiry + 10);
+
+      await expect(
+        insurance.connect(stranger).refundExpiredPolicy(shipmentKey)
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__CallerNotInsurer");
+    });
+
+    it("Should reject duplicate refund", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, owner, shipmentKey, expiry } = fixture;
+
+      await createPolicyHelper(fixture);
+      await time.increaseTo(expiry + 10);
+
+      await insurance.connect(owner).refundExpiredPolicy(shipmentKey);
+
+      // Thử refund lần hai
+      await expect(
+        insurance.connect(owner).refundExpiredPolicy(shipmentKey)
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__PolicyNotActive");
+    });
+
+    it("Should reject refund for already PaidOut policy", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, oracle, owner, shipmentKey, evidenceHash, detectedAt, expiry } = fixture;
+
+      await createPolicyHelper(fixture);
+      await insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt);
+
+      await time.increaseTo(expiry + 10);
+
+      await expect(
+        insurance.connect(owner).refundExpiredPolicy(shipmentKey)
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__PolicyNotActive");
+    });
+  });
+
+  // ─── View Helpers & Solvency Tests ───────────────────────────────
+
+  describe("View Helpers & Solvency", function () {
+    it("Should return correct isPolicyActive status", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, shipmentKey, expiry } = fixture;
+
+      // Trước khi tạo
+      expect(await insurance.isPolicyActive(shipmentKey)).to.be.false;
+
+      // Sau khi tạo
+      await createPolicyHelper(fixture);
+      expect(await insurance.isPolicyActive(shipmentKey)).to.be.true;
+
+      // Sau khi hết hạn
+      await time.increaseTo(expiry + 1);
+      expect(await insurance.isPolicyActive(shipmentKey)).to.be.false;
+    });
+
+    it("Should return correct getContractBalance", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, payoutAmount } = fixture;
+
+      expect(await insurance.getContractBalance()).to.equal(0);
+
+      await createPolicyHelper(fixture);
+      expect(await insurance.getContractBalance()).to.equal(payoutAmount);
     });
   });
 
