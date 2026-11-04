@@ -65,7 +65,7 @@ Tài liệu này là bản chốt **phía Backend** cho Phase 0. Member 2 dùng 
 }
 ```
 
-`status`: `created` (chưa có mẫu), `in_transit` (đã có mẫu), `sensor_data_gap` (quá ngưỡng mất tín hiệu cấu hình), `insurance_triggered` (đã đủ điều kiện vi phạm). Một mẫu ngoài ngưỡng chưa đủ thời lượng vẫn giữ `in_transit` và được phản ánh qua event.
+`status`: `created` (chưa có mẫu), `in_transit` (đã có mẫu), `sensor_data_gap` (mẫu gần nhất quá ngưỡng mất tín hiệu), `insurance_triggered` (đã đủ điều kiện vi phạm). Khi hết tín hiệu, `sensor_data_gap` được tính lúc đọc API; `insurance.status` vẫn ghi nhớ `triggered` nếu đã kích hoạt. Một mẫu ngoài ngưỡng chưa đủ thời lượng vẫn giữ `in_transit` và được phản ánh qua event.
 
 `insurance.status`: `active` hoặc `triggered` (Backend xác định đủ điều kiện). `payout_status`: `not_requested`, `pending`, `paid`, `failed`. `paid` chỉ được đặt sau khi có xác nhận thành công từ chain; khi tắt Blockchain, sự kiện có thể `triggered` nhưng `payout_status` vẫn là `not_requested`.
 
@@ -205,12 +205,14 @@ Ví dụ các field thay đổi trong ShipmentDetail sau mẫu trên:
 | `type` | `details` |
 |---|---|
 | `TEMPERATURE_BREACH_STARTED` | `temperature_c`, `temp_min_c`, `temp_max_c` (số). |
-| `INSURANCE_TRIGGERED` | `breach_started_at` (ISO 8601 UTC), `duration_minutes` (số phút đã quan sát). |
+| `INSURANCE_TRIGGERED` | `breach_started_at` (ISO 8601 UTC), `duration_minutes` (số phút đã quan sát), `consecutive_samples` (số mẫu liên tục ngoài ngưỡng). |
 | `SENSOR_DATA_GAP` | `last_received_at` (ISO 8601 UTC), `gap_minutes` (số phút không có mẫu). |
 
 `items` sắp xếp theo `occurred_at` tăng dần, rồi theo ID.
 
-Mỗi mẫu được so với ngưỡng của chính lô hàng. Mặc định cần ở ngoài khoảng nhiệt độ **liên tục 15 phút** (hoặc `violation_duration_minutes` của lô hàng) theo thời gian `received_at` mới tạo `INSURANCE_TRIGGERED`, tối đa một lần cho mỗi khoảng vi phạm. Mẫu trở về trong ngưỡng trước hạn sẽ reset khoảng. Nếu quá lâu không có dữ liệu, hệ thống ghi `SENSOR_DATA_GAP` và không tự khẳng định vi phạm liên tục. Ngưỡng gap là cấu hình Backend, được công bố khi triển khai Phase 4.
+Mỗi mẫu được so với ngưỡng **bao gồm hai đầu mút** `[temp_min_c, temp_max_c]` của chính lô hàng. Mặc định cần ở ngoài ngưỡng liên tục **15 phút** (hoặc `violation_duration_minutes` của lô hàng), tính bằng `received_at` do Backend tạo; `recorded_at` của thiết bị không tham gia tính. Mẫu đầu tiên ngoài ngưỡng tạo `TEMPERATURE_BREACH_STARTED`. Mẫu về ngưỡng reset chuỗi đo; lần vi phạm sau tạo event bắt đầu mới. Khi đủ thời lượng, Backend tạo `INSURANCE_TRIGGERED` và đặt `insurance.status: "triggered"`, `status: "insurance_triggered"`. Một lô hàng chỉ kích hoạt bảo hiểm một lần; `payout_status` vẫn là `not_requested` cho tới Phase 5.
+
+`SENSOR_GAP_MINUTES` mặc định **5 phút** (số nguyên dương). Hai mẫu cách nhau **hơn** ngưỡng này không chứng minh được vi phạm liên tục: mẫu mới tạo `SENSOR_DATA_GAP`, rồi bắt đầu chuỗi mới nếu vẫn ngoài ngưỡng. Khi đang chờ mẫu mới, `GET` shipment trả `status: "sensor_data_gap"` nếu mẫu gần nhất đã quá hạn; event gap được ghi khi mẫu kế tiếp đến. Không tự suy diễn nhiệt độ hoặc kích hoạt bảo hiểm trong khoảng mất dữ liệu.
 
 ## Health và demo
 
@@ -219,10 +221,10 @@ Mỗi mẫu được so với ngưỡng của chính lô hàng. Mặc định c�
 `POST /api/v1/demo/shipments/{id}/scenario` chỉ tồn tại trong môi trường development, nhận `{"scenario":"normal"}` hoặc `{"scenario":"temperature_breach"}`. Trả `200 OK`:
 
 ```json
-{"shipment_id":"8b4fb8a2-2996-4da2-90b9-35019517f56f","scenario":"temperature_breach","generated_samples":2,"shipment_status":"insurance_triggered"}
+{"shipment_id":"8b4fb8a2-2996-4da2-90b9-35019517f56f","scenario":"temperature_breach","generated_samples":4,"shipment_status":"insurance_triggered"}
 ```
 
-Demo gọi cùng service đánh giá như telemetry thật và có thể dùng virtual clock để rút ngắn trình diễn 15 phút. Production trả `404` cho endpoint này.
+Demo gọi cùng service đánh giá như telemetry thật. `normal` tạo một mẫu trong ngưỡng; `temperature_breach` tạo các mẫu ngoài ngưỡng cách nhau tối đa `SENSOR_GAP_MINUTES`, dùng đồng hồ ảo để đạt đủ thời lượng chính sách mà không chờ thực tế. Với mặc định 15/5 phút, kịch bản tạo bốn mẫu. Nên dùng lô hàng demo riêng: đồng hồ ảo có thể tạo `received_at` trong tương lai, nhưng không trước `created_at` của lô hàng. Một kịch bản vượt 100 mẫu bị từ chối `422`. Production trả `404` và không liệt kê endpoint này trong OpenAPI.
 
 ## Lỗi chung
 

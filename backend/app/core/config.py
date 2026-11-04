@@ -19,10 +19,14 @@ class Settings:
     app_env: str = "development"
     log_level: str = "INFO"
     cors_origins: tuple[str, ...] = ()
+    sensor_gap_minutes: int = 5
 
 
 def load_settings() -> Settings:
     load_dotenv(BACKEND_DIR / ".env")
+    sensor_gap_minutes = int(os.getenv("SENSOR_GAP_MINUTES", "5"))
+    if sensor_gap_minutes <= 0:
+        raise ValueError("SENSOR_GAP_MINUTES must be positive")
     query = {"charset": "utf8mb4"}
     if ca_path := os.getenv("MYSQL_SSL_CA"):
         query["ssl_ca"] = ca_path
@@ -43,4 +47,5 @@ def load_settings() -> Settings:
             for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
             if origin.strip()
         ),
+        sensor_gap_minutes=sensor_gap_minutes,
     )

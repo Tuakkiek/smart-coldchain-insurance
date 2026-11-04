@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Session
@@ -17,10 +18,16 @@ def test_runtime_settings_use_mysql_and_keep_special_password(monkeypatch):
     monkeypatch.setenv("MYSQL_DATABASE", "smart_coldchain")
     monkeypatch.setenv("MYSQL_USER", "coldchain_app")
     monkeypatch.setenv("MYSQL_PASSWORD", "p@ss/w:rd")
+    monkeypatch.setenv("SENSOR_GAP_MINUTES", "7")
     settings = load_settings()
     assert settings.database_url.drivername == "mysql+pymysql"
     assert settings.database_url.password == "p@ss/w:rd"
     assert settings.database_url.query["charset"] == "utf8mb4"
+    assert settings.sensor_gap_minutes == 7
+
+    monkeypatch.setenv("SENSOR_GAP_MINUTES", "0")
+    with pytest.raises(ValueError, match="SENSOR_GAP_MINUTES"):
+        load_settings()
 
 
 def test_mysql_schema_keeps_double_and_microsecond_precision():

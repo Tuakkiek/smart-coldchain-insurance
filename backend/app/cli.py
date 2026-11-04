@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import re
-from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.engine import URL, make_url
@@ -13,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import load_settings
 from app.core.database import Base, make_engine, make_session_factory
-from app.models import Shipment, ShipmentEvent
+from app.models import Shipment
 from app.schemas.api import ShipmentCreate, TelemetryCreate
 from app.services.shipments import add_telemetry, create_shipment
 
@@ -64,25 +62,11 @@ def seed_demo(session_factory) -> None:
                     TelemetryCreate(device_id="SIM-DEMO-02", temperature_c=3.0, humidity_pct=65.0),
                 )
             elif index == 2:
-                sample = add_telemetry(
+                add_telemetry(
                     session,
                     shipment.id,
                     TelemetryCreate(device_id="SIM-DEMO-03", temperature_c=9.2, humidity_pct=72.5),
                 )
-                session.add(
-                    ShipmentEvent(
-                        id=str(uuid4()),
-                        shipment_id=shipment.id,
-                        type="TEMPERATURE_BREACH_STARTED",
-                        occurred_at=datetime.now(timezone.utc),
-                        details={
-                            "temperature_c": sample.temperature_c,
-                            "temp_min_c": shipment.temp_min_c,
-                            "temp_max_c": shipment.temp_max_c,
-                        },
-                    )
-                )
-                session.commit()
             print(f"Created: {shipment.code} ({shipment.id})")
 
 
