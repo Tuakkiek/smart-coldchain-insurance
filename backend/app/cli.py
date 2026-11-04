@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import re
-from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.engine import URL, make_url
@@ -13,9 +11,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import load_settings
 from app.core.database import Base, make_engine, make_session_factory
-from app.models import Shipment, ShipmentEvent
+from app.models import Shipment
 from app.schemas.api import ShipmentCreate, TelemetryCreate
 from app.services.shipments import add_telemetry, create_shipment
+from app.services.blockchain_outbox import configured_coordinator
 
 
 DEMO_SHIPMENTS = [
@@ -64,25 +63,11 @@ def seed_demo(session_factory) -> None:
                     TelemetryCreate(device_id="SIM-DEMO-02", temperature_c=3.0, humidity_pct=65.0),
                 )
             elif index == 2:
-                sample = add_telemetry(
+                add_telemetry(
                     session,
                     shipment.id,
                     TelemetryCreate(device_id="SIM-DEMO-03", temperature_c=9.2, humidity_pct=72.5),
                 )
-                session.add(
-                    ShipmentEvent(
-                        id=str(uuid4()),
-                        shipment_id=shipment.id,
-                        type="TEMPERATURE_BREACH_STARTED",
-                        occurred_at=datetime.now(timezone.utc),
-                        details={
-                            "temperature_c": sample.temperature_c,
-                            "temp_min_c": shipment.temp_min_c,
-                            "temp_max_c": shipment.temp_max_c,
-                        },
-                    )
-                )
-                session.commit()
             print(f"Created: {shipment.code} ({shipment.id})")
 
 
@@ -115,7 +100,8 @@ def create_database(database_url: str | URL) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("create-db", "init-db", "seed-demo"))
+    parser.add_argument("command", choices=("create-db", "init-db", "seed-demo", "retry-blockchain"))
+    parser.add_argument("--shipment-id", help="retry one shipment; default retries all pending/failed reports")
     args = parser.parse_args()
     settings = load_settings()
     try:
@@ -128,6 +114,25 @@ def main() -> None:
             print("Database tables ready.")
             if args.command == "seed-demo":
                 seed_demo(make_session_factory(engine))
+            if args.command == "retry-blockchain":
+                coordinator = configured_coordinator(settings)
+                if coordinator is None:
+                    parser.exit(2, "Set BLOCKCHAIN_ENABLED=true before retrying reports.\n")
+                with make_session_factory(engine)() as session:
+                    shipment_ids = [args.shipment_id] if args.shipment_id else list(session.scalars(
+                        select(Shipment.id).where(
+                            Shipment.insurance_status == "triggered",
+                            Shipment.confirmation_status.in_(("pending", "failed")),
+                        )
+                    ))
+                    session.commit()
+                    for shipment_id in shipment_ids:
+                        coordinator.dispatch(session, shipment_id)
+                        current = session.get(Shipment, shipment_id)
+                        if current is None:
+                            print(f"Not found: {shipment_id}")
+                        else:
+                            print(f"{shipment_id}: {current.confirmation_status}, tx={current.transaction_hash}")
         finally:
             engine.dispose()
     except ValueError as exc:

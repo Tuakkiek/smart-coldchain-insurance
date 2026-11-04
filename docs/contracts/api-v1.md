@@ -65,7 +65,7 @@ Tài liệu này là bản chốt **phía Backend** cho Phase 0. Member 2 dùng 
 }
 ```
 
-`status`: `created` (chưa có mẫu), `in_transit` (đã có mẫu), `sensor_data_gap` (quá ngưỡng mất tín hiệu cấu hình), `insurance_triggered` (đã đủ điều kiện vi phạm). Một mẫu ngoài ngưỡng chưa đủ thời lượng vẫn giữ `in_transit` và được phản ánh qua event.
+`status`: `created` (chưa có mẫu), `in_transit` (đã có mẫu), `sensor_data_gap` (mẫu gần nhất quá ngưỡng mất tín hiệu), `insurance_triggered` (đã đủ điều kiện vi phạm). Khi hết tín hiệu, `sensor_data_gap` được tính lúc đọc API; `insurance.status` vẫn ghi nhớ `triggered` nếu đã kích hoạt. Một mẫu ngoài ngưỡng chưa đủ thời lượng vẫn giữ `in_transit` và được phản ánh qua event.
 
 `insurance.status`: `active` hoặc `triggered` (Backend xác định đủ điều kiện). `payout_status`: `not_requested`, `pending`, `paid`, `failed`. `paid` chỉ được đặt sau khi có xác nhận thành công từ chain; khi tắt Blockchain, sự kiện có thể `triggered` nhưng `payout_status` vẫn là `not_requested`.
 
@@ -79,7 +79,7 @@ Tài liệu này là bản chốt **phía Backend** cho Phase 0. Member 2 dùng 
 }
 ```
 
-`confirmation_status`: `pending`, `success`, `failed`. `transaction_hash` có thể `null` khi mới xếp hàng chờ RPC; `network` lấy từ cấu hình Backend. Không suy diễn trạng thái `paid` từ việc chỉ có hash.
+`confirmation_status`: `pending`, `success`, `failed`. `transaction_hash` có thể `null` khi mới xếp hàng chờ RPC; khi có hash, giao dịch đã được ký và lưu trước lúc phát. `network` lấy từ cấu hình Backend. Chỉ đặt `confirmation_status: "success"` và `payout_status: "paid"` khi có receipt thành công **và** policy trên chain mang đúng `evidenceHash`/`detectedAt` của event. Hash đơn lẻ không chứng minh đã chi trả.
 
 `GET /api/v1/shipments` → `200 OK`:
 
@@ -205,12 +205,16 @@ Ví dụ các field thay đổi trong ShipmentDetail sau mẫu trên:
 | `type` | `details` |
 |---|---|
 | `TEMPERATURE_BREACH_STARTED` | `temperature_c`, `temp_min_c`, `temp_max_c` (số). |
-| `INSURANCE_TRIGGERED` | `breach_started_at` (ISO 8601 UTC), `duration_minutes` (số phút đã quan sát). |
+| `INSURANCE_TRIGGERED` | `breach_started_at` (ISO 8601 UTC), `duration_minutes` (số phút đã quan sát), `consecutive_samples` (số mẫu liên tục ngoài ngưỡng). |
 | `SENSOR_DATA_GAP` | `last_received_at` (ISO 8601 UTC), `gap_minutes` (số phút không có mẫu). |
 
-`items` sắp xếp theo `occurred_at` tăng dần, rồi theo ID.
+Khi `BLOCKCHAIN_ENABLED=true`, event `INSURANCE_TRIGGERED.details` còn có `blockchain_status` (`BLOCKCHAIN_PENDING`, `BLOCKCHAIN_SUCCESS`, `BLOCKCHAIN_FAILED`), `attempt_count`, `sent_at` (UTC, khi RPC chấp nhận giao dịch) và `last_error` (mã lỗi ngắn nếu chưa hoàn tất). Backend không trả raw signed transaction trong API. Nếu RPC tạm lỗi, event và telemetry vẫn được lưu; `payout_status`/`confirmation_status` giữ `pending` để retry. Giao dịch revert có `failed` và có thể retry sau khi sửa policy/chain. Khi tắt Blockchain, các field Blockchain không xuất hiện và payout giữ `not_requested`.
 
-Mỗi mẫu được so với ngưỡng của chính lô hàng. Mặc định cần ở ngoài khoảng nhiệt độ **liên tục 15 phút** (hoặc `violation_duration_minutes` của lô hàng) theo thời gian `received_at` mới tạo `INSURANCE_TRIGGERED`, tối đa một lần cho mỗi khoảng vi phạm. Mẫu trở về trong ngưỡng trước hạn sẽ reset khoảng. Nếu quá lâu không có dữ liệu, hệ thống ghi `SENSOR_DATA_GAP` và không tự khẳng định vi phạm liên tục. Ngưỡng gap là cấu hình Backend, được công bố khi triển khai Phase 4.
+`items` sắp xếp theo `occurred_at` tăng dần. Khi cùng thời điểm, thứ tự là `SENSOR_DATA_GAP` → `TEMPERATURE_BREACH_STARTED` → `INSURANCE_TRIGGERED`, rồi theo ID.
+
+Mỗi mẫu được so với ngưỡng **bao gồm hai đầu mút** `[temp_min_c, temp_max_c]` của chính lô hàng. Mặc định cần ở ngoài ngưỡng liên tục **15 phút** (hoặc `violation_duration_minutes` của lô hàng), tính bằng `received_at` do Backend tạo; `recorded_at` của thiết bị không tham gia tính. Mẫu đầu tiên ngoài ngưỡng tạo `TEMPERATURE_BREACH_STARTED`. Mẫu về ngưỡng reset chuỗi đo; lần vi phạm sau tạo event bắt đầu mới. Khi đủ thời lượng, Backend tạo `INSURANCE_TRIGGERED` và đặt `insurance.status: "triggered"`, `status: "insurance_triggered"`. Một lô hàng chỉ kích hoạt bảo hiểm một lần; `payout_status` vẫn là `not_requested` cho tới Phase 5.
+
+`SENSOR_GAP_MINUTES` mặc định **5 phút** (số nguyên dương). Hai mẫu cách nhau **hơn** ngưỡng này không chứng minh được vi phạm liên tục: mẫu mới tạo `SENSOR_DATA_GAP`, rồi bắt đầu chuỗi mới nếu vẫn ngoài ngưỡng. Khi đang chờ mẫu mới, `GET` shipment trả `status: "sensor_data_gap"` nếu mẫu gần nhất đã quá hạn; event gap được ghi khi mẫu kế tiếp đến. Không tự suy diễn nhiệt độ hoặc kích hoạt bảo hiểm trong khoảng mất dữ liệu.
 
 ## Health và demo
 
@@ -219,10 +223,10 @@ Mỗi mẫu được so với ngưỡng của chính lô hàng. Mặc định c�
 `POST /api/v1/demo/shipments/{id}/scenario` chỉ tồn tại trong môi trường development, nhận `{"scenario":"normal"}` hoặc `{"scenario":"temperature_breach"}`. Trả `200 OK`:
 
 ```json
-{"shipment_id":"8b4fb8a2-2996-4da2-90b9-35019517f56f","scenario":"temperature_breach","generated_samples":2,"shipment_status":"insurance_triggered"}
+{"shipment_id":"8b4fb8a2-2996-4da2-90b9-35019517f56f","scenario":"temperature_breach","generated_samples":4,"shipment_status":"insurance_triggered"}
 ```
 
-Demo gọi cùng service đánh giá như telemetry thật và có thể dùng virtual clock để rút ngắn trình diễn 15 phút. Production trả `404` cho endpoint này.
+Demo gọi cùng service đánh giá như telemetry thật. `normal` tạo một mẫu trong ngưỡng; `temperature_breach` tạo các mẫu ngoài ngưỡng cách nhau tối đa `SENSOR_GAP_MINUTES`, dùng đồng hồ ảo để đạt đủ thời lượng chính sách mà không chờ thực tế. Với mặc định 15/5 phút, kịch bản tạo bốn mẫu. Nên dùng lô hàng demo riêng: đồng hồ ảo có thể tạo `received_at` trong tương lai, nhưng không trước `created_at` của lô hàng. Một kịch bản vượt 100 mẫu bị từ chối `422`. Production trả `404` và không liệt kê endpoint này trong OpenAPI.
 
 ## Lỗi chung
 
@@ -247,6 +251,6 @@ Backend gửi cho adapter khi tạo `INSURANCE_TRIGGERED`:
 | `detected_at` | `occurred_at` của `INSURANCE_TRIGGERED` do Backend tạo, chuyển sang Unix timestamp **giây UTC** cho `detectedAt`. |
 | `policy_key` | Một policy cho mỗi `shipmentKey`; khóa này dùng chống gửi/chi trả trùng. |
 
-Backend giữ telemetry và event đầy đủ off-chain. Địa chỉ oracle, chain ID, ABI, contract address, cách đăng ký policy, token demo và số token chi trả phải do Member 2 cung cấp trong `blockchain/INTEGRATION.md` trước Phase 5. `insured_amount_vnd` không được tự động coi là lượng token. Nếu RPC lỗi, Backend vẫn lưu telemetry/event và giữ trạng thái chờ để retry có kiểm soát.
+Backend giữ telemetry và event đầy đủ off-chain. Adapter đọc ABI từ Hardhat artifact, xác minh chain ID, contract và địa chỉ oracle trước khi ký `reportViolation`. Chỉ một event đủ điều kiện cho mỗi shipment; transaction đã ký và hash được lưu trước khi phát để retry cùng một giao dịch nếu RPC lỗi. Adapter đọc policy/receipt để tránh chi trả trùng. `insured_amount_vnd` không được tự động coi là lượng token; policy và số token do luồng của Member 2 tạo.
 
 **Điểm cần hai thành viên xác nhận để đóng Phase 0:** Member 2 xác nhận quy tắc `shipmentKey`, `evidenceHash`, timestamp và policy ở bảng trên, rồi ghi lại trong `blockchain/INTEGRATION.md`. Member 3 xác nhận các field response/trạng thái cần cho Dashboard. Sau đó các thay đổi API phải được báo cả nhóm trước khi sửa code.

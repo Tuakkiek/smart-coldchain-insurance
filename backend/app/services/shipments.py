@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from itertools import chain
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Shipment, ShipmentEvent, Telemetry
 from app.schemas.api import ShipmentCreate, TelemetryCreate
 from app.services.route_simulator import location_for_sample
+from app.services.clock import Clock, SYSTEM_CLOCK
+from app.services.temperature_policy import evaluate, utc
+from app.services.blockchain_outbox import BlockchainCoordinator, RAW_TRANSACTION_KEY
 
 
 class ShipmentNotFound(Exception):
@@ -88,12 +92,28 @@ def list_events(session: Session, shipment_id: str) -> list[ShipmentEvent]:
         session.scalars(
             select(ShipmentEvent)
             .where(ShipmentEvent.shipment_id == shipment_id)
-            .order_by(ShipmentEvent.occurred_at, ShipmentEvent.id)
+            .order_by(
+                ShipmentEvent.occurred_at,
+                case(
+                    (ShipmentEvent.type == "SENSOR_DATA_GAP", 0),
+                    (ShipmentEvent.type == "TEMPERATURE_BREACH_STARTED", 1),
+                    (ShipmentEvent.type == "INSURANCE_TRIGGERED", 2),
+                    else_=3,
+                ),
+                ShipmentEvent.id,
+            )
         )
     )
 
 
-def add_telemetry(session: Session, shipment_id: str, payload: TelemetryCreate) -> Telemetry:
+def add_telemetry(
+    session: Session,
+    shipment_id: str,
+    payload: TelemetryCreate,
+    clock: Clock = SYSTEM_CLOCK,
+    gap_minutes: int = 5,
+    blockchain: BlockchainCoordinator | None = None,
+) -> Telemetry:
     # Serialize samples for the same shipment on MySQL so each gets a distinct
     # progress step even when two device requests arrive at once.
     shipment = session.scalars(
@@ -104,6 +124,20 @@ def add_telemetry(session: Session, shipment_id: str, payload: TelemetryCreate) 
     sample_count = session.scalar(
         select(func.count(Telemetry.id)).where(Telemetry.shipment_id == shipment_id)
     ) or 0
+    prior_samples = session.scalars(
+        select(Telemetry)
+        .where(Telemetry.shipment_id == shipment_id)
+        .order_by(Telemetry.received_at.desc(), Telemetry.id.desc())
+    ).yield_per(100)
+    try:
+        latest = next(prior_samples, None)
+        received_at = utc(clock.now())
+        if latest and received_at <= utc(latest.received_at):
+            received_at = utc(latest.received_at) + timedelta(microseconds=1)
+        history = chain((latest,), prior_samples) if latest else ()
+        decision = evaluate(shipment, history, payload.temperature_c, received_at, gap_minutes)
+    finally:
+        prior_samples.close()
     latitude, longitude, progress_pct = location_for_sample(shipment, sample_count + 1)
     sample = Telemetry(
         id=str(uuid4()),
@@ -112,15 +146,27 @@ def add_telemetry(session: Session, shipment_id: str, payload: TelemetryCreate) 
         temperature_c=payload.temperature_c,
         humidity_pct=payload.humidity_pct,
         recorded_at=payload.recorded_at,
-        received_at=datetime.now(timezone.utc),
+        received_at=received_at,
         latitude=latitude,
         longitude=longitude,
         progress_pct=progress_pct,
         location_source="backend_simulated",
     )
     session.add(sample)
-    shipment.status = "in_transit"
+    for event_type, details in decision.events:
+        event = ShipmentEvent(
+            id=str(uuid4()), shipment_id=shipment_id, type=event_type,
+            occurred_at=received_at, details=details,
+        )
+        session.add(event)
+        if event_type == "INSURANCE_TRIGGERED" and blockchain is not None:
+            blockchain.queue(shipment, event)
+    if decision.triggered:
+        shipment.insurance_status = "triggered"
+    shipment.status = "insurance_triggered" if shipment.insurance_status == "triggered" else "in_transit"
     session.commit()
+    if decision.triggered and blockchain is not None:
+        blockchain.dispatch(session, shipment_id)
     return sample
 
 
@@ -146,7 +192,9 @@ def telemetry_dict(sample: Telemetry) -> dict:
     }
 
 
-def shipment_dict(session: Session, shipment: Shipment) -> dict:
+def shipment_dict(
+    session: Session, shipment: Shipment, clock: Clock = SYSTEM_CLOCK, gap_minutes: int = 5,
+) -> dict:
     latest = session.scalars(
         select(Telemetry)
         .where(Telemetry.shipment_id == shipment.id)
@@ -164,11 +212,14 @@ def shipment_dict(session: Session, shipment: Shipment) -> dict:
             "transaction_hash": shipment.transaction_hash,
             "confirmation_status": shipment.confirmation_status,
         }
+    status = shipment.status
+    if latest and utc(clock.now()) - utc(latest.received_at) > timedelta(minutes=gap_minutes):
+        status = "sensor_data_gap"
     return {
         "id": shipment.id,
         "code": shipment.code,
         "cargo_type": shipment.cargo_type,
-        "status": shipment.status,
+        "status": status,
         "origin": {
             "name": shipment.origin_name,
             "latitude": shipment.origin_latitude,
@@ -200,5 +251,5 @@ def event_dict(event: ShipmentEvent) -> dict:
         "shipment_id": event.shipment_id,
         "type": event.type,
         "occurred_at": ensure_utc(event.occurred_at),
-        "details": event.details,
+        "details": {key: value for key, value in event.details.items() if key != RAW_TRANSACTION_KEY},
     }

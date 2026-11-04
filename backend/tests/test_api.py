@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ from app.cli import seed_demo
 from app.core.config import Settings
 from app.core.database import Base
 from app.main import create_app
+from app.services.clock import VirtualClock
 
 
 SHIPMENT = {
@@ -93,7 +95,8 @@ def test_multiple_telemetry_samples_and_simulated_location(api):
     assert detail["status"] == "in_transit"
     assert detail["latest_telemetry"]["id"] == history[-1]["id"]
     assert detail["location"] == history[-1]["location"]
-    assert client.get(f"/api/v1/shipments/{shipment_id}/events").json() == {"items": []}
+    events = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
+    assert [event["type"] for event in events] == ["TEMPERATURE_BREACH_STARTED"]
 
 
 def test_route_reaches_destination_and_stays_there(api):
@@ -117,6 +120,117 @@ def test_route_reaches_destination_and_stays_there(api):
     assert len(history) == 21
     assert detail["location"] == history[-1]["location"]
     assert history[-1]["location"] == history[-2]["location"]
+
+
+def test_continuous_breach_triggers_once_at_policy_duration(api):
+    client, app = api
+    start = datetime(2026, 11, 4, 0, 0, tzinfo=timezone.utc)
+    clock = VirtualClock(start)
+    app.state.clock = clock
+    shipment_id = create_shipment(client)["id"]
+    route = f"/api/v1/shipments/{shipment_id}/telemetry"
+
+    for minute, temperature in [(0, 2.0), (1, 9.2), (6, 9.2), (11, 9.2), (15, 9.2)]:
+        clock.current = start + timedelta(minutes=minute)
+        response = client.post(route, json={
+            "device_id": "ESP32-01", "temperature_c": temperature, "humidity_pct": 70.0,
+            "recorded_at": "2025-01-01T00:00:00Z",
+        })
+        assert response.status_code == 201, response.text
+    assert client.get(f"/api/v1/shipments/{shipment_id}").json()["insurance"]["status"] == "active"
+
+    clock.current = start + timedelta(minutes=16)
+    assert client.post(route, json={"device_id": "ESP32-01", "temperature_c": 9.2, "humidity_pct": 70.0}).status_code == 201
+    detail = client.get(f"/api/v1/shipments/{shipment_id}").json()
+    assert detail["status"] == "insurance_triggered"
+    assert detail["insurance"]["status"] == "triggered"
+    assert detail["insurance"]["payout_status"] == "not_requested"
+    events = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
+    assert [item["type"] for item in events] == ["TEMPERATURE_BREACH_STARTED", "INSURANCE_TRIGGERED"]
+    assert events[1]["details"] == {
+        "breach_started_at": "2026-11-04T00:01:00Z", "duration_minutes": 15.0,
+        "consecutive_samples": 5,
+    }
+
+    clock.current = start + timedelta(minutes=17)
+    client.post(route, json={"device_id": "ESP32-01", "temperature_c": 5.0, "humidity_pct": 70.0})
+    clock.current = start + timedelta(minutes=18)
+    client.post(route, json={"device_id": "ESP32-01", "temperature_c": 9.2, "humidity_pct": 70.0})
+    events = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
+    assert sum(event["type"] == "INSURANCE_TRIGGERED" for event in events) == 1
+    clock.current = start + timedelta(minutes=24)
+    disconnected = client.get(f"/api/v1/shipments/{shipment_id}").json()
+    assert disconnected["status"] == "sensor_data_gap"
+    assert disconnected["insurance"]["status"] == "triggered"
+
+
+def test_recovery_resets_breach_and_sensor_gap_breaks_streak(api):
+    client, app = api
+    start = datetime(2026, 11, 4, 0, 0, tzinfo=timezone.utc)
+    clock = VirtualClock(start)
+    app.state.clock = clock
+    shipment_id = create_shipment(client)["id"]
+    route = f"/api/v1/shipments/{shipment_id}/telemetry"
+
+    for minute, temperature in [(0, 9.2), (1, 5.0), (2, 9.2), (8, 9.2)]:
+        clock.current = start + timedelta(minutes=minute)
+        response = client.post(route, json={
+            "device_id": "ESP32-01", "temperature_c": temperature, "humidity_pct": 70.0,
+        })
+        assert response.status_code == 201, response.text
+
+    clock.current = start + timedelta(minutes=14)
+    detail = client.get(f"/api/v1/shipments/{shipment_id}").json()
+    assert detail["status"] == "sensor_data_gap"
+    assert detail["insurance"]["status"] == "active"
+    events = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
+    assert [event["type"] for event in events] == [
+        "TEMPERATURE_BREACH_STARTED", "TEMPERATURE_BREACH_STARTED",
+        "SENSOR_DATA_GAP", "TEMPERATURE_BREACH_STARTED",
+    ]
+    assert events[2]["details"]["gap_minutes"] == 6.0
+    assert not any(event["type"] == "INSURANCE_TRIGGERED" for event in events)
+
+
+def test_demo_uses_same_policy_and_is_disabled_in_production(api, tmp_path):
+    client, _app = api
+    shipment_id = create_shipment(client)["id"]
+    route = f"/api/v1/demo/shipments/{shipment_id}/scenario"
+    response = client.post(route, json={"scenario": "temperature_breach"})
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "shipment_id": shipment_id, "scenario": "temperature_breach",
+        "generated_samples": 4, "shipment_status": "insurance_triggered",
+    }
+    history = client.get(f"/api/v1/shipments/{shipment_id}/telemetry").json()["items"]
+    created_at = client.get(f"/api/v1/shipments/{shipment_id}").json()["created_at"]
+    assert datetime.fromisoformat(history[0]["received_at"].replace("Z", "+00:00")) >= datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    assert client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"][-1]["type"] == "INSURANCE_TRIGGERED"
+    assert route.replace(shipment_id, "{shipment_id}") in client.get("/openapi.json").json()["paths"]
+
+    normal = client.post("/api/v1/shipments", json=SHIPMENT | {"code": "SHIP-NORMAL"}).json()
+    normal_route = f"/api/v1/demo/shipments/{normal['id']}/scenario"
+    assert client.post(normal_route, json={"scenario": "normal"}).json()["generated_samples"] == 1
+    assert client.get(f"/api/v1/shipments/{normal['id']}/events").json() == {"items": []}
+    assert client.post(normal_route, json={"scenario": "invalid"}).status_code == 422
+
+    long_policy = client.post("/api/v1/shipments", json=SHIPMENT | {
+        "code": "SHIP-LONG", "violation_duration_minutes": 501,
+    }).json()
+    too_long = client.post(
+        f"/api/v1/demo/shipments/{long_policy['id']}/scenario",
+        json={"scenario": "temperature_breach"},
+    )
+    assert too_long.status_code == 422
+    assert client.get(f"/api/v1/shipments/{long_policy['id']}/telemetry").json() == {"items": []}
+
+    production = create_app(Settings(
+        database_url=f"sqlite:///{(tmp_path / 'production.db').as_posix()}", app_env="production",
+    ))
+    with TestClient(production) as prod_client:
+        assert prod_client.post(route, json={"scenario": "normal"}).status_code == 404
+        assert route.replace(shipment_id, "{shipment_id}") not in prod_client.get("/openapi.json").json()["paths"]
+    production.state.engine.dispose()
 
 
 @pytest.mark.parametrize(

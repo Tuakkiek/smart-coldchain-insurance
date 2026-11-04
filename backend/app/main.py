@@ -14,6 +14,9 @@ from app.api.routes import router
 from app.core.config import Settings, load_settings
 from app.core.database import make_engine, make_session_factory
 from app.services.shipments import DuplicateShipmentCode, ShipmentNotFound
+from app.services.clock import SYSTEM_CLOCK
+from app.services.demo import DemoScenarioError
+from app.services.blockchain_outbox import configured_coordinator
 
 
 logger = logging.getLogger(__name__)
@@ -33,6 +36,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = make_engine(settings.database_url)
     app.state.session_factory = make_session_factory(app.state.engine)
+    app.state.clock = SYSTEM_CLOCK
+    app.state.blockchain = configured_coordinator(settings)
 
     if settings.cors_origins:
         app.add_middleware(
@@ -66,6 +71,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def duplicate_code(_request: Request, _exc: DuplicateShipmentCode):
         return error_response(409, "DUPLICATE_SHIPMENT_CODE", "Mã lô hàng đã tồn tại")
 
+    @app.exception_handler(DemoScenarioError)
+    async def demo_scenario_error(_request: Request, exc: DemoScenarioError):
+        return error_response(422, "VALIDATION_ERROR", str(exc))
+
     @app.exception_handler(StarletteHTTPException)
     async def http_error(_request: Request, exc: StarletteHTTPException):
         return error_response(exc.status_code, "HTTP_ERROR", str(exc.detail))
@@ -76,6 +85,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return error_response(500, "INTERNAL_ERROR", "Lỗi nội bộ")
 
     app.include_router(router)
+    if settings.app_env == "development":
+        from app.api.routes import demo_router
+
+        app.include_router(demo_router)
     return app
 
 

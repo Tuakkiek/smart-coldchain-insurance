@@ -153,5 +153,16 @@ class EventListOut(BaseModel):
     items: list[EventOut]
 
 
+class DemoScenarioIn(StrictBody):
+    scenario: Literal["normal", "temperature_breach"]
+
+
+class DemoScenarioOut(BaseModel):
+    shipment_id: str
+    scenario: Literal["normal", "temperature_breach"]
+    generated_samples: int
+    shipment_status: Literal["created", "in_transit", "sensor_data_gap", "insurance_triggered"]
+
+
 class HealthOut(BaseModel):
     status: Literal["ok"] = "ok"
