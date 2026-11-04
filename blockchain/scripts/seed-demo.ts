@@ -60,11 +60,13 @@ async function main() {
 
   // Đọc lại policy để xác nhận
   const policy = await insurance.getPolicy(shipmentKey);
+  const statusLabels = ["NotExist", "Active", "PaidOut", "Refunded"];
   console.log("\n3. Policy info:");
+  console.log(`   Insurer:      ${policy.insurer}`);
   console.log(`   Beneficiary:  ${policy.beneficiary}`);
   console.log(`   Payout:       ${ethers.formatEther(policy.payoutAmount)} MINS`);
   console.log(`   Expiry:       ${new Date(Number(policy.expiry) * 1000).toISOString()}`);
-  console.log(`   Status:       ${["NotExist", "Active", "PaidOut"][Number(policy.status)]}`);
+  console.log(`   Status:       ${statusLabels[Number(policy.status)] || "Unknown"}`);
 
   console.log("\n=== Seed demo hoàn tất ===");
 }
@@ -73,4 +75,3 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-
