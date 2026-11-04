@@ -11,10 +11,14 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
  *      Owner có thể mint token tùy ý — không dùng trong production.
  */
 contract MockInsuranceToken is ERC20 {
+    // ─── Custom Errors ───────────────────────────────────────────────
+    error MockToken__CallerNotOwner();
+    error MockToken__ZeroAddress();
+
     address public owner;
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "MockToken: caller is not owner");
+        if (msg.sender != owner) revert MockToken__CallerNotOwner();
         _;
     }
 
@@ -32,7 +36,7 @@ contract MockInsuranceToken is ERC20 {
      * @param amount Số lượng token (đơn vị nhỏ nhất).
      */
     function mint(address to, uint256 amount) external onlyOwner {
+        if (to == address(0)) revert MockToken__ZeroAddress();
         _mint(to, amount);
     }
 }
-

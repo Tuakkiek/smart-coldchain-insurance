@@ -418,20 +418,20 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 **Việc cần làm**
 
-- [ ] Giữ và hoàn thiện `ColdChainInsurance.sol` theo chức năng gốc: policy, beneficiary, payout amount, expiry, trạng thái và event.
-- [ ] Tạo/điều chỉnh `MockInsuranceToken.sol` nếu chọn ERC-20 demo; sử dụng thư viện tiêu chuẩn và khởi tạo funding trong seed script.
-- [ ] Implement `createPolicy(...)`; ngăn duplicate shipment, policy invalid/zero beneficiary/zero amount và xử lý quỹ demo nhất quán.
-- [ ] Implement `reportViolation(...)` chỉ cho authorized Oracle; kiểm tra policy status, expiry/reporting window, đủ quỹ và chống double payout.
-- [ ] Kiểm soát `setOracle(...)` hoặc AccessControl role rotation chỉ owner/admin; emit `OracleUpdated`/role events.
-- [ ] Áp dụng checks-effects-interactions, SafeERC20, guard phù hợp; tránh reentrancy hoặc state không nhất quán khi transfer lỗi.
-- [ ] Emit `PolicyCreated`, `InsurancePaid` gồm `shipmentKey`, `evidenceHash`, `detectedAt`, beneficiary và amount theo interface đã duyệt.
-- [ ] Định nghĩa hành vi khi evidence pending: **Backend không gửi transaction**, contract không tự chấp nhận sự thiếu dữ liệu như vi phạm.
+- [x] Giữ và hoàn thiện `ColdChainInsurance.sol` theo chức năng gốc: policy, beneficiary, payout amount, expiry, trạng thái và event.
+- [x] Tạo/điều chỉnh `MockInsuranceToken.sol` nếu chọn ERC-20 demo; sử dụng thư viện tiêu chuẩn và khởi tạo funding trong seed script.
+- [x] Implement `createPolicy(...)`; ngăn duplicate shipment, policy invalid/zero beneficiary/zero amount và xử lý quỹ demo nhất quán.
+- [x] Implement `reportViolation(...)` chỉ cho authorized Oracle; kiểm tra policy status, expiry/reporting window, đủ quỹ và chống double payout.
+- [x] Kiểm soát `setOracle(...)` hoặc AccessControl role rotation chỉ owner/admin; emit `OracleUpdated`/role events.
+- [x] Áp dụng checks-effects-interactions, SafeERC20, guard phù hợp; tránh reentrancy hoặc state không nhất quán khi transfer lỗi.
+- [x] Emit `PolicyCreated`, `InsurancePaid` gồm `shipmentKey`, `evidenceHash`, `detectedAt`, beneficiary và amount theo interface đã duyệt.
+- [x] Định nghĩa hành vi khi evidence pending: **Backend không gửi transaction**, contract không tự chấp nhận sự thiếu dữ liệu như vi phạm.
 
 **Definition of Done**
 
-- [ ] Tạo policy được fund; authorized Oracle report hợp lệ → chuyển đúng token demo và emit event.
-- [ ] Unauthorized/expired/unfunded/duplicate đều revert đúng; không có double payout khi gửi lại.
-- [ ] Payout amount và beneficiary trong on-chain state/event khớp token transfer thực tế.
+- [x] Tạo policy được fund; authorized Oracle report hợp lệ → chuyển đúng token demo và emit event.
+- [x] Unauthorized/expired/unfunded/duplicate đều revert đúng; không có double payout khi gửi lại.
+- [x] Payout amount và beneficiary trong on-chain state/event khớp token transfer thực tế.
 
 ### Phase 4 — Hardhat Security, Unit Tests & Failure Scenarios
 
