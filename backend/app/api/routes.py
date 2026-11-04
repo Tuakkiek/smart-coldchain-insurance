@@ -59,6 +59,7 @@ def get_shipment(shipment_id: UUID4, request: Request, session: DbSession):
 def add_telemetry(shipment_id: UUID4, payload: TelemetryCreate, request: Request, session: DbSession):
     sample = shipments.add_telemetry(
         session, str(shipment_id), payload, request.app.state.clock, request.app.state.settings.sensor_gap_minutes,
+        request.app.state.blockchain,
     )
     return shipments.telemetry_dict(sample)
 
@@ -89,4 +90,5 @@ def demo_scenario(shipment_id: UUID4, payload: DemoScenarioIn, request: Request,
 
     return run_scenario(
         session, str(shipment_id), payload, request.app.state.clock, request.app.state.settings.sensor_gap_minutes,
+        request.app.state.blockchain,
     )

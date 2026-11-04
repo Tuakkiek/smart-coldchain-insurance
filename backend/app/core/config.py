@@ -11,6 +11,7 @@ from sqlalchemy.engine import URL
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_ABI_PATH = BACKEND_DIR.parent / "blockchain/artifacts/contracts/ColdChainInsurance.sol/ColdChainInsurance.json"
 
 
 @dataclass(frozen=True)
@@ -20,10 +21,32 @@ class Settings:
     log_level: str = "INFO"
     cors_origins: tuple[str, ...] = ()
     sensor_gap_minutes: int = 5
+    blockchain_enabled: bool = False
+    blockchain_network: str = "localhost"
+    blockchain_rpc_url: str = "http://127.0.0.1:8545"
+    blockchain_chain_id: int = 31337
+    blockchain_contract_address: str = ""
+    blockchain_oracle_private_key: str = ""
+    blockchain_abi_path: Path = DEFAULT_ABI_PATH
+    blockchain_receipt_timeout_seconds: int = 15
 
 
 def load_settings() -> Settings:
     load_dotenv(BACKEND_DIR / ".env")
+    enabled_text = os.getenv("BLOCKCHAIN_ENABLED", "false").lower()
+    if enabled_text not in {"true", "false"}:
+        raise ValueError("BLOCKCHAIN_ENABLED must be true or false")
+    blockchain_enabled = enabled_text == "true"
+    contract_address = os.getenv("BLOCKCHAIN_CONTRACT_ADDRESS", "")
+    oracle_private_key = os.getenv("BLOCKCHAIN_ORACLE_PRIVATE_KEY", "")
+    if blockchain_enabled and (not contract_address or not oracle_private_key):
+        raise ValueError("Blockchain contract address and oracle private key are required when enabled")
+    abi_path = Path(os.getenv("BLOCKCHAIN_ABI_PATH", str(DEFAULT_ABI_PATH)))
+    if not abi_path.is_absolute():
+        abi_path = BACKEND_DIR.parent / abi_path
+    receipt_timeout = int(os.getenv("BLOCKCHAIN_RECEIPT_TIMEOUT_SECONDS", "15"))
+    if receipt_timeout <= 0:
+        raise ValueError("BLOCKCHAIN_RECEIPT_TIMEOUT_SECONDS must be positive")
     sensor_gap_minutes = int(os.getenv("SENSOR_GAP_MINUTES", "5"))
     if sensor_gap_minutes <= 0:
         raise ValueError("SENSOR_GAP_MINUTES must be positive")
@@ -48,4 +71,12 @@ def load_settings() -> Settings:
             if origin.strip()
         ),
         sensor_gap_minutes=sensor_gap_minutes,
+        blockchain_enabled=blockchain_enabled,
+        blockchain_network=os.getenv("BLOCKCHAIN_NETWORK", "localhost"),
+        blockchain_rpc_url=os.getenv("BLOCKCHAIN_RPC_URL", "http://127.0.0.1:8545"),
+        blockchain_chain_id=int(os.getenv("BLOCKCHAIN_CHAIN_ID", "31337")),
+        blockchain_contract_address=contract_address,
+        blockchain_oracle_private_key=oracle_private_key,
+        blockchain_abi_path=abi_path,
+        blockchain_receipt_timeout_seconds=receipt_timeout,
     )

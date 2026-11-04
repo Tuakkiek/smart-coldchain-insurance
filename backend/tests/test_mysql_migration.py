@@ -24,6 +24,14 @@ def test_runtime_settings_use_mysql_and_keep_special_password(monkeypatch):
     assert settings.database_url.password == "p@ss/w:rd"
     assert settings.database_url.query["charset"] == "utf8mb4"
     assert settings.sensor_gap_minutes == 7
+    assert settings.blockchain_enabled is False
+
+    monkeypatch.setenv("BLOCKCHAIN_ENABLED", "true")
+    monkeypatch.setenv("BLOCKCHAIN_CONTRACT_ADDRESS", "")
+    monkeypatch.setenv("BLOCKCHAIN_ORACLE_PRIVATE_KEY", "")
+    with pytest.raises(ValueError, match="contract address and oracle private key"):
+        load_settings()
+    monkeypatch.setenv("BLOCKCHAIN_ENABLED", "false")
 
     monkeypatch.setenv("SENSOR_GAP_MINUTES", "0")
     with pytest.raises(ValueError, match="SENSOR_GAP_MINUTES"):

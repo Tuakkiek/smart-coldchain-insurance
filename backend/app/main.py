@@ -16,6 +16,7 @@ from app.core.database import make_engine, make_session_factory
 from app.services.shipments import DuplicateShipmentCode, ShipmentNotFound
 from app.services.clock import SYSTEM_CLOCK
 from app.services.demo import DemoScenarioError
+from app.services.blockchain_outbox import configured_coordinator
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = make_engine(settings.database_url)
     app.state.session_factory = make_session_factory(app.state.engine)
     app.state.clock = SYSTEM_CLOCK
+    app.state.blockchain = configured_coordinator(settings)
 
     if settings.cors_origins:
         app.add_middleware(

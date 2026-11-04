@@ -77,7 +77,39 @@ Ví dụ gửi telemetry bằng bộ giả lập từ thư mục gốc repo:
 py -3 device/simulator/send_telemetry.py --shipment-id <UUID_LO_HANG> --mode sequence --normal-temp 5 --breach-temp 9.2 --normal-count 2 --breach-count 3
 ```
 
-Endpoint hiện có: `GET /api/v1/health`, `POST/GET /api/v1/shipments`, `GET /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, và endpoint demo trong development. Tọa độ vẫn là mô phỏng ở Backend; tích hợp Blockchain thuộc Phase 5.
+Endpoint hiện có: `GET /api/v1/health`, `POST/GET /api/v1/shipments`, `GET /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, và endpoint demo trong development. Tọa độ vẫn là mô phỏng ở Backend.
+
+## Tích hợp Blockchain (Phase 5)
+
+Mặc định `BLOCKCHAIN_ENABLED=false`; Backend tiếp tục lưu sự kiện bảo hiểm off-chain. Khi bật, Backend dùng `blockchain/INTEGRATION.md`: `shipmentKey = keccak256(UTF8(shipment_id))`, `evidenceHash = keccak256(UTF8(event_id))`, `detectedAt` là Unix timestamp giây UTC. Adapter đọc ABI đã compile, kiểm tra chain ID, contract và oracle signer, rồi gọi `reportViolation` cho event `INSURANCE_TRIGGERED`.
+
+Thiết lập local Hardhat từ thư mục `blockchain/` (mỗi lần khởi động lại node phải deploy và seed lại):
+
+```bash
+npm ci
+npm run compile
+npm run node            # terminal 1, để chạy
+npm run deploy          # terminal 2
+npm run seed            # terminal 2, tạo policy cho UUID mẫu trong INTEGRATION.md
+```
+
+Đặt `BLOCKCHAIN_ENABLED=true`, `BLOCKCHAIN_CONTRACT_ADDRESS` từ `blockchain/deployments/localhost.json` và `BLOCKCHAIN_ORACLE_PRIVATE_KEY` của **account #1** trong `backend/.env` (file được Git bỏ qua). `BLOCKCHAIN_RPC_URL`, `BLOCKCHAIN_CHAIN_ID`, `BLOCKCHAIN_NETWORK` và `BLOCKCHAIN_ABI_PATH` có ví dụ trong `.env.example`. Chỉ dùng key local/testnet. Policy phải được tạo **trước** cho đúng `shipment_id` của Backend; script `npm run seed` của Member 2 hiện dùng một UUID cố định, không tạo policy cho các shipment UUID ngẫu nhiên từ API. Khi không có policy, sự kiện vẫn ở `BLOCKCHAIN_PENDING` với mã lỗi `POLICY_NOT_ACTIVE`.
+
+Backend lưu telemetry và event cùng một transaction trước khi gọi RPC. Hash và raw transaction đã ký được lưu trong event để retry chính giao dịch đó; raw transaction không hiện qua API. `GET /api/v1/shipments/{id}` trả `blockchain.transaction_hash` và `confirmation_status`; `GET .../events` trả `blockchain_status`, `sent_at`, `attempt_count` và `last_error`. Chỉ receipt thành công cùng policy có đúng evidence mới đặt payout thành `paid`. Nếu RPC lỗi hoặc chưa có policy, chạy:
+
+```bash
+./.venv/Scripts/python.exe -m app.cli retry-blockchain --shipment-id <UUID_LO_HANG>
+# hoặc bỏ --shipment-id để retry tất cả pending/failed
+```
+
+Kiểm thử end-to-end với node local **mới deploy và seed** (Git Bash, từ `backend/`):
+
+```bash
+export BLOCKCHAIN_TEST_ORACLE_KEY='PASTE_HARDHAT_ACCOUNT_1_PRIVATE_KEY'
+RUN_BLOCKCHAIN_TESTS=1 ./.venv/Scripts/python.exe -m pytest tests/test_blockchain_local.py -q
+```
+
+Test này dùng SQLite tạm và policy UUID mẫu trong `seed-demo.ts`; nó gửi một giao dịch chi trả thật trên Hardhat local. Chạy lại cần reset node, deploy và seed lại.
 
 ## Kiểm thử
 

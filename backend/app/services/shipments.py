@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from itertools import chain
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from app.schemas.api import ShipmentCreate, TelemetryCreate
 from app.services.route_simulator import location_for_sample
 from app.services.clock import Clock, SYSTEM_CLOCK
 from app.services.temperature_policy import evaluate, utc
+from app.services.blockchain_outbox import BlockchainCoordinator, RAW_TRANSACTION_KEY
 
 
 class ShipmentNotFound(Exception):
@@ -91,7 +92,16 @@ def list_events(session: Session, shipment_id: str) -> list[ShipmentEvent]:
         session.scalars(
             select(ShipmentEvent)
             .where(ShipmentEvent.shipment_id == shipment_id)
-            .order_by(ShipmentEvent.occurred_at, ShipmentEvent.id)
+            .order_by(
+                ShipmentEvent.occurred_at,
+                case(
+                    (ShipmentEvent.type == "SENSOR_DATA_GAP", 0),
+                    (ShipmentEvent.type == "TEMPERATURE_BREACH_STARTED", 1),
+                    (ShipmentEvent.type == "INSURANCE_TRIGGERED", 2),
+                    else_=3,
+                ),
+                ShipmentEvent.id,
+            )
         )
     )
 
@@ -102,6 +112,7 @@ def add_telemetry(
     payload: TelemetryCreate,
     clock: Clock = SYSTEM_CLOCK,
     gap_minutes: int = 5,
+    blockchain: BlockchainCoordinator | None = None,
 ) -> Telemetry:
     # Serialize samples for the same shipment on MySQL so each gets a distinct
     # progress step even when two device requests arrive at once.
@@ -143,14 +154,19 @@ def add_telemetry(
     )
     session.add(sample)
     for event_type, details in decision.events:
-        session.add(ShipmentEvent(
+        event = ShipmentEvent(
             id=str(uuid4()), shipment_id=shipment_id, type=event_type,
             occurred_at=received_at, details=details,
-        ))
+        )
+        session.add(event)
+        if event_type == "INSURANCE_TRIGGERED" and blockchain is not None:
+            blockchain.queue(shipment, event)
     if decision.triggered:
         shipment.insurance_status = "triggered"
     shipment.status = "insurance_triggered" if shipment.insurance_status == "triggered" else "in_transit"
     session.commit()
+    if decision.triggered and blockchain is not None:
+        blockchain.dispatch(session, shipment_id)
     return sample
 
 
@@ -235,5 +251,5 @@ def event_dict(event: ShipmentEvent) -> dict:
         "shipment_id": event.shipment_id,
         "type": event.type,
         "occurred_at": ensure_utc(event.occurred_at),
-        "details": event.details,
+        "details": {key: value for key, value in event.details.items() if key != RAW_TRANSACTION_KEY},
     }

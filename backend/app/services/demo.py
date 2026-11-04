@@ -13,6 +13,7 @@ from app.schemas.api import DemoScenarioIn, TelemetryCreate
 from app.services.clock import Clock, VirtualClock
 from app.services.shipments import add_telemetry, get_shipment, shipment_dict
 from app.services.temperature_policy import utc
+from app.services.blockchain_outbox import BlockchainCoordinator
 
 
 class DemoScenarioError(Exception):
@@ -21,13 +22,14 @@ class DemoScenarioError(Exception):
 
 def run_scenario(
     session: Session, shipment_id: str, payload: DemoScenarioIn, clock: Clock, gap_minutes: int,
+    blockchain: BlockchainCoordinator | None = None,
 ) -> dict:
     shipment = get_shipment(session, shipment_id)
     if payload.scenario == "normal":
         add_telemetry(
             session, shipment_id,
             TelemetryCreate(device_id="SIM-DEMO", temperature_c=shipment.temp_min_c, humidity_pct=70.0),
-            clock=clock, gap_minutes=gap_minutes,
+            clock=clock, gap_minutes=gap_minutes, blockchain=blockchain,
         )
         generated = 1
     else:
@@ -53,7 +55,7 @@ def run_scenario(
             add_telemetry(
                 session, shipment_id,
                 TelemetryCreate(device_id="SIM-DEMO", temperature_c=breach_temp, humidity_pct=70.0),
-                clock=virtual, gap_minutes=gap_minutes,
+                clock=virtual, gap_minutes=gap_minutes, blockchain=blockchain,
             )
         generated = steps + 1
     return {

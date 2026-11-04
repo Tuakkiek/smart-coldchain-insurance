@@ -79,7 +79,7 @@ Tài liệu này là bản chốt **phía Backend** cho Phase 0. Member 2 dùng 
 }
 ```
 
-`confirmation_status`: `pending`, `success`, `failed`. `transaction_hash` có thể `null` khi mới xếp hàng chờ RPC; `network` lấy từ cấu hình Backend. Không suy diễn trạng thái `paid` từ việc chỉ có hash.
+`confirmation_status`: `pending`, `success`, `failed`. `transaction_hash` có thể `null` khi mới xếp hàng chờ RPC; khi có hash, giao dịch đã được ký và lưu trước lúc phát. `network` lấy từ cấu hình Backend. Chỉ đặt `confirmation_status: "success"` và `payout_status: "paid"` khi có receipt thành công **và** policy trên chain mang đúng `evidenceHash`/`detectedAt` của event. Hash đơn lẻ không chứng minh đã chi trả.
 
 `GET /api/v1/shipments` → `200 OK`:
 
@@ -208,7 +208,9 @@ Ví dụ các field thay đổi trong ShipmentDetail sau mẫu trên:
 | `INSURANCE_TRIGGERED` | `breach_started_at` (ISO 8601 UTC), `duration_minutes` (số phút đã quan sát), `consecutive_samples` (số mẫu liên tục ngoài ngưỡng). |
 | `SENSOR_DATA_GAP` | `last_received_at` (ISO 8601 UTC), `gap_minutes` (số phút không có mẫu). |
 
-`items` sắp xếp theo `occurred_at` tăng dần, rồi theo ID.
+Khi `BLOCKCHAIN_ENABLED=true`, event `INSURANCE_TRIGGERED.details` còn có `blockchain_status` (`BLOCKCHAIN_PENDING`, `BLOCKCHAIN_SUCCESS`, `BLOCKCHAIN_FAILED`), `attempt_count`, `sent_at` (UTC, khi RPC chấp nhận giao dịch) và `last_error` (mã lỗi ngắn nếu chưa hoàn tất). Backend không trả raw signed transaction trong API. Nếu RPC tạm lỗi, event và telemetry vẫn được lưu; `payout_status`/`confirmation_status` giữ `pending` để retry. Giao dịch revert có `failed` và có thể retry sau khi sửa policy/chain. Khi tắt Blockchain, các field Blockchain không xuất hiện và payout giữ `not_requested`.
+
+`items` sắp xếp theo `occurred_at` tăng dần. Khi cùng thời điểm, thứ tự là `SENSOR_DATA_GAP` → `TEMPERATURE_BREACH_STARTED` → `INSURANCE_TRIGGERED`, rồi theo ID.
 
 Mỗi mẫu được so với ngưỡng **bao gồm hai đầu mút** `[temp_min_c, temp_max_c]` của chính lô hàng. Mặc định cần ở ngoài ngưỡng liên tục **15 phút** (hoặc `violation_duration_minutes` của lô hàng), tính bằng `received_at` do Backend tạo; `recorded_at` của thiết bị không tham gia tính. Mẫu đầu tiên ngoài ngưỡng tạo `TEMPERATURE_BREACH_STARTED`. Mẫu về ngưỡng reset chuỗi đo; lần vi phạm sau tạo event bắt đầu mới. Khi đủ thời lượng, Backend tạo `INSURANCE_TRIGGERED` và đặt `insurance.status: "triggered"`, `status: "insurance_triggered"`. Một lô hàng chỉ kích hoạt bảo hiểm một lần; `payout_status` vẫn là `not_requested` cho tới Phase 5.
 
@@ -249,6 +251,6 @@ Backend gửi cho adapter khi tạo `INSURANCE_TRIGGERED`:
 | `detected_at` | `occurred_at` của `INSURANCE_TRIGGERED` do Backend tạo, chuyển sang Unix timestamp **giây UTC** cho `detectedAt`. |
 | `policy_key` | Một policy cho mỗi `shipmentKey`; khóa này dùng chống gửi/chi trả trùng. |
 
-Backend giữ telemetry và event đầy đủ off-chain. Địa chỉ oracle, chain ID, ABI, contract address, cách đăng ký policy, token demo và số token chi trả phải do Member 2 cung cấp trong `blockchain/INTEGRATION.md` trước Phase 5. `insured_amount_vnd` không được tự động coi là lượng token. Nếu RPC lỗi, Backend vẫn lưu telemetry/event và giữ trạng thái chờ để retry có kiểm soát.
+Backend giữ telemetry và event đầy đủ off-chain. Adapter đọc ABI từ Hardhat artifact, xác minh chain ID, contract và địa chỉ oracle trước khi ký `reportViolation`. Chỉ một event đủ điều kiện cho mỗi shipment; transaction đã ký và hash được lưu trước khi phát để retry cùng một giao dịch nếu RPC lỗi. Adapter đọc policy/receipt để tránh chi trả trùng. `insured_amount_vnd` không được tự động coi là lượng token; policy và số token do luồng của Member 2 tạo.
 
 **Điểm cần hai thành viên xác nhận để đóng Phase 0:** Member 2 xác nhận quy tắc `shipmentKey`, `evidenceHash`, timestamp và policy ở bảng trên, rồi ghi lại trong `blockchain/INTEGRATION.md`. Member 3 xác nhận các field response/trạng thái cần cho Dashboard. Sau đó các thay đổi API phải được báo cả nhóm trước khi sửa code.
