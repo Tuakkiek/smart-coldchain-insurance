@@ -1,16 +1,16 @@
 # Hợp đồng REST API v1 — Smart Cold Chain Insurance
 
-Tài liệu này là bản chốt **phía Backend** cho Phase 0. Member 2 dùng mục "Bàn giao Blockchain" để viết adapter/contract; Member 3 dùng các response bên dưới cho Dashboard. Mọi thay đổi tên field hoặc trạng thái sau khi cả nhóm xác nhận cần được cập nhật ở đây trước khi sửa code.
+Tài liệu này mô tả **API hiện đang chạy** và bản mở rộng Signed Telemetry v1 đang ở Phase 0. Phần mở rộng cần Member 2/3 rà soát trước khi xem là contract liên nhóm. Mọi thay đổi tên field hoặc trạng thái sau khi cả nhóm xác nhận cần được cập nhật ở đây trước khi sửa code.
 
 ## Quy ước chung
 
-- Stack: FastAPI + Python; SQLite khi phát triển, model có thể chuyển sang PostgreSQL. Frontend chỉ gọi REST API của Backend. ESP32 chỉ gửi dữ liệu cảm biến.
+- Stack: FastAPI + Python; MySQL là database chính, SQLite chỉ dùng trong unit test độc lập. Frontend chỉ gọi REST API của Backend. ESP32 chỉ gửi dữ liệu cảm biến.
 - Base path: `/api/v1`. JSON dùng `snake_case`, UTF-8, `Content-Type: application/json`.
 - `shipment_id` và mọi `id` trong response là **UUID v4 dạng chuỗi chữ thường chuẩn** (ví dụ `8b4fb8a2-2996-4da2-90b9-35019517f56f`). Backend tạo ID; client không truyền ID khi tạo lô hàng. Path `{id}` và `{shipment_id}` là cùng ID này. `code` là mã nghiệp vụ do người tạo nhập, duy nhất trong hệ thống, không dùng làm khóa Blockchain.
 - Mọi timestamp trong REST API là ISO 8601 UTC, dạng `YYYY-MM-DDTHH:mm:ssZ` (có thể có phần giây thập phân). Input timestamp phải có múi giờ; Backend chuẩn hóa về UTC. `received_at`/`occurred_at` do Backend tạo. `recorded_at` là thời gian tùy chọn từ thiết bị, chỉ để đối chiếu, không dùng tính thời gian vi phạm.
 - Tọa độ trong response là **mô phỏng ở Backend**, nội suy đường thẳng từ `origin` đến `destination` theo số mẫu telemetry đã nhận: mẫu đầu tiên ở 5%, mẫu thứ 20 ở 100%, các mẫu sau giữ vị trí đích. Đây không phải GPS hoặc đường giao thông thực. Mọi vị trí telemetry có `location_source: "backend_simulated"`. Khi chưa có telemetry, `status` là `created`, `latest_telemetry` và `location` là `null`.
 - `insured_amount_vnd` là số tiền mô tả chính sách demo bằng VND, **không phải** số token được chuyển trên chain. Việc cấu hình token demo do Member 2 thống nhất riêng.
-- Các endpoint chưa được triển khai trong Phase 0. Tài liệu này là hợp đồng để triển khai ở các Phase sau.
+- Các endpoint shipment/telemetry/event bên dưới đã triển khai theo payload cũ. Endpoint telemetry hiện **chưa xác minh chữ ký**, nên không được gọi là `DATA_VERIFIED` hoặc làm bằng chứng integrity. Bản mở rộng ở cuối tài liệu chưa được triển khai trên API.
 
 ## Tạo lô hàng
 
@@ -254,3 +254,17 @@ Backend gửi cho adapter khi tạo `INSURANCE_TRIGGERED`:
 Backend giữ telemetry và event đầy đủ off-chain. Adapter đọc ABI từ Hardhat artifact, xác minh chain ID, contract và địa chỉ oracle trước khi ký `reportViolation`. Chỉ một event đủ điều kiện cho mỗi shipment; transaction đã ký và hash được lưu trước khi phát để retry cùng một giao dịch nếu RPC lỗi. Adapter đọc policy/receipt để tránh chi trả trùng. `insured_amount_vnd` không được tự động coi là lượng token; policy và số token do luồng của Member 2 tạo.
 
 **Điểm cần hai thành viên xác nhận để đóng Phase 0:** Member 2 xác nhận quy tắc `shipmentKey`, `evidenceHash`, timestamp và policy ở bảng trên, rồi ghi lại trong `blockchain/INTEGRATION.md`. Member 3 xác nhận các field response/trạng thái cần cho Dashboard. Sau đó các thay đổi API phải được báo cả nhóm trước khi sửa code.
+
+## Bản mở rộng dự kiến: Signed Telemetry & Integrity (Phase 0 draft)
+
+**Chưa có trong OpenAPI hoặc endpoint đang chạy.** Mục này là giao diện bàn giao sớm theo `ROADMAP_NTK_IOT_BACKEND.md`; khi triển khai Phase 2–5, cần cập nhật OpenAPI và kiểm thử response thực tế trước khi Frontend sử dụng.
+
+`POST /api/v1/shipments/{shipment_id}/telemetry` sẽ yêu cầu `payload_version=1`, `shipment_id`, `device_id`, `key_id`, `sequence_number`, `temperature_c`, `humidity_pct`, `temperature_milli_c`, `humidity_milli_pct`, `recorded_at`, `firmware_version`, `signature`. Hai số hiển thị phải bằng chính xác integer đã scale ÷1000, tối đa ba chữ số thập phân. `shipment_id` body phải khớp path. Chữ ký ECDSA P-256/SHA-256 trên projection cố định trong [data-integrity.md](../architecture/data-integrity.md), truyền DER/Base64. Backend gán `received_at`, không chấp nhận client gửi tọa độ hoặc `received_at`.
+
+API quản trị dự kiến: `POST /api/v1/devices`, `POST /api/v1/devices/{device_id}/keys`, `POST /api/v1/devices/{device_id}/assignments`, `GET /api/v1/devices/{device_id}`. Các thao tác đăng ký/rotate/revoke phải có admin auth; thiết bị không tự đăng ký key khi gửi telemetry. Response public sẽ tách `signature_status` (`VALID`, `INVALID`, `UNKNOWN_KEY`), `completeness_status` (`COMPLETE`, `DATA_INCOMPLETE`, `OFFLINE`, `UNKNOWN`), `data_status` (`DATA_VERIFIED`, `DATA_INCOMPLETE`, `INVALID`) và `last_seen_at`/missing sequence. Các payload bị từ chối chỉ vào audit, không vào accepted telemetry.
+
+Idempotency dự kiến: cùng `(device_id, sequence_number)` và cùng canonical signed content trả mẫu cũ với `duplicate=true`; cùng sequence nhưng content khác trả `409` và audit. Gap không được tính qua chuỗi vi phạm 15 phút. `recorded_at` chỉ là metadata; thời lượng vi phạm dựa trên `received_at` của Backend.
+
+API integrity dự kiến: `GET /api/v1/shipments/{shipment_id}/integrity`, `GET /api/v1/shipments/{shipment_id}/batches`, `GET /api/v1/batches/{batch_id}`, `POST /api/v1/batches/{batch_id}/verify`. Batch response cần `batch_id`, cặp shipment/device, first/last sequence, record count, root hex, `hash_version`, `verification_status` (`NOT_CHECKED`, `MATCHED`, `DATA_INTEGRITY_FAILED`) và `anchor_status` (`NOT_READY`, `BLOCKCHAIN_PENDING`, `DATA_ANCHORED`, `BLOCKCHAIN_FAILED`). Anchor transaction và insurance payout transaction là hai đối tượng riêng. `DATA_ANCHORED` chỉ sau receipt thành công, đủ confirmations và đọc lại root trên chain khớp.
+
+Insurance mở rộng dùng `payout_status` riêng: `NOT_ELIGIBLE`, `EVIDENCE_PENDING`, `PENDING`, `CONFIRMED`, `FAILED`. `CONFIRMED` chỉ có khi receipt, event và on-chain state xác nhận payout. Tên trạng thái này **chưa thay thế** các giá trị chữ thường trong response hiện tại. Policy `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true` và ngưỡng gap cần nhóm xác nhận trước khi nối Oracle với luồng mới. Contract hiện tại chỉ có insurance; `batch_key`, ABI và address của Data Integrity Contract còn chờ Member 2.

@@ -1,5 +1,20 @@
 # Backend — MySQL
 
+## Phase 0 — Signed Telemetry/Merkle v1 foundation
+
+`app/services/telemetry_protocol.py` implements the canonical signed projection,
+P-256 signature verification and MERKLE-v1 root calculation. Public golden vectors
+are in `tests/fixtures/protocol_vectors_v1.json`; run
+`./.venv/Scripts/python.exe -m pytest tests/test_telemetry_protocol.py -q` from
+`backend/` to check them. See `docs/architecture/data-integrity.md` for the byte
+rules and pending Member 2 handoff.
+
+The current `POST .../telemetry` endpoint still accepts the legacy unsigned
+payload and does **not** call this module yet. Its data is not verified or
+anchored evidence; the existing insurance flow must not be presented as the
+new signed-data payout flow. Device registration, migrations and Data Integrity
+Contract integration are subsequent phases.
+
 FastAPI + SQLAlchemy, dùng **MySQL** cho dữ liệu ứng dụng. REST contract: [api-v1.md](../docs/contracts/api-v1.md). Python 3.10+ và MySQL 8.0+.
 
 ## Cấu hình (Git Bash trên Windows)

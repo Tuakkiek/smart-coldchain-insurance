@@ -1,0 +1,100 @@
+{
+  "protocol": "SIGNED-TELEMETRY-v1/MERKLE-v1",
+  "public_key_spki_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEOUGp4iWUnRgQCrddvOlP9DoWyY\nY89OenCcHqeSKqYSM4nMPed8D3pXFLfpo9GVgPfgtlawptmHpR6wcRHjEw==\n-----END PUBLIC KEY-----\n",
+  "valid_request": {
+    "payload_version": 1,
+    "shipment_id": "8b4fb8a2-2996-4da2-90b9-35019517f56f",
+    "device_id": "ESP32-001",
+    "key_id": "key-v1",
+    "sequence_number": 1524,
+    "temperature_c": 12.5,
+    "humidity_pct": 80.0,
+    "temperature_milli_c": 12500,
+    "humidity_milli_pct": 80000,
+    "recorded_at": "2026-11-04T10:30:00Z",
+    "firmware_version": "1.0.0",
+    "signature": "MEUCIQD1p+3SIvQuxRVdVloiEBHlbQiU/C06l8kWXcbziNGwnwIgYEFDR7CRfMGXQWcFnZog2UrgQ7gWnaNiX7UwQS4OCRE="
+  },
+  "invalid_signature_request": {
+    "payload_version": 1,
+    "shipment_id": "8b4fb8a2-2996-4da2-90b9-35019517f56f",
+    "device_id": "ESP32-001",
+    "key_id": "key-v1",
+    "sequence_number": 1524,
+    "temperature_c": 13.5,
+    "humidity_pct": 80.0,
+    "temperature_milli_c": 13500,
+    "humidity_milli_pct": 80000,
+    "recorded_at": "2026-11-04T10:30:00Z",
+    "firmware_version": "1.0.0",
+    "signature": "MEUCIQD1p+3SIvQuxRVdVloiEBHlbQiU/C06l8kWXcbziNGwnwIgYEFDR7CRfMGXQWcFnZog2UrgQ7gWnaNiX7UwQS4OCRE="
+  },
+  "canonical_signed_utf8": "{\"device_id\":\"ESP32-001\",\"firmware_version\":\"1.0.0\",\"humidity_milli_pct\":80000,\"key_id\":\"key-v1\",\"payload_version\":1,\"recorded_at\":\"2026-11-04T10:30:00Z\",\"sequence_number\":1524,\"shipment_id\":\"8b4fb8a2-2996-4da2-90b9-35019517f56f\",\"temperature_milli_c\":12500}",
+  "canonical_signed_hex": "7b226465766963655f6964223a2245535033322d303031222c226669726d776172655f76657273696f6e223a22312e302e30222c2268756d69646974795f6d696c6c695f706374223a38303030302c226b65795f6964223a226b65792d7631222c227061796c6f61645f76657273696f6e223a312c227265636f726465645f6174223a22323032362d31312d30345431303a33303a30305a222c2273657175656e63655f6e756d626572223a313532342c22736869706d656e745f6964223a2238623466623861322d323939362d346461322d393062392d333530313935313766353666222c2274656d70657261747572655f6d696c6c695f63223a31323530307d",
+  "canonical_signed_sha256": "530872ad9e90527a2586bc7a2bb31940eab46fac539b19b5b27c0c8e8d332c87",
+  "canonical_record_utf8": "{\"device_id\":\"ESP32-001\",\"firmware_version\":\"1.0.0\",\"humidity_milli_pct\":80000,\"key_id\":\"key-v1\",\"payload_version\":1,\"received_at\":\"2026-11-04T10:30:01.000000Z\",\"recorded_at\":\"2026-11-04T10:30:00Z\",\"sequence_number\":1524,\"shipment_id\":\"8b4fb8a2-2996-4da2-90b9-35019517f56f\",\"signature\":\"MEUCIQD1p+3SIvQuxRVdVloiEBHlbQiU/C06l8kWXcbziNGwnwIgYEFDR7CRfMGXQWcFnZog2UrgQ7gWnaNiX7UwQS4OCRE=\",\"temperature_milli_c\":12500}",
+  "canonical_record_hex": "7b226465766963655f6964223a2245535033322d303031222c226669726d776172655f76657273696f6e223a22312e302e30222c2268756d69646974795f6d696c6c695f706374223a38303030302c226b65795f6964223a226b65792d7631222c227061796c6f61645f76657273696f6e223a312c2272656365697665645f6174223a22323032362d31312d30345431303a33303a30312e3030303030305a222c227265636f726465645f6174223a22323032362d31312d30345431303a33303a30305a222c2273657175656e63655f6e756d626572223a313532342c22736869706d656e745f6964223a2238623466623861322d323939362d346461322d393062392d333530313935313766353666222c227369676e6174757265223a224d45554349514431702b33534976517578525664566c6f694542486c625169552f4330366c386b575863627a694e47776e7749675945464452374352664d4758515763466e5a6f6732557267513767576e614e69583755775153344f4352453d222c2274656d70657261747572655f6d696c6c695f63223a31323530307d",
+  "records": [
+    {
+      "request": {
+        "payload_version": 1,
+        "shipment_id": "8b4fb8a2-2996-4da2-90b9-35019517f56f",
+        "device_id": "ESP32-001",
+        "key_id": "key-v1",
+        "sequence_number": 1524,
+        "temperature_c": 12.5,
+        "humidity_pct": 80.0,
+        "temperature_milli_c": 12500,
+        "humidity_milli_pct": 80000,
+        "recorded_at": "2026-11-04T10:30:00Z",
+        "firmware_version": "1.0.0",
+        "signature": "MEUCIQD1p+3SIvQuxRVdVloiEBHlbQiU/C06l8kWXcbziNGwnwIgYEFDR7CRfMGXQWcFnZog2UrgQ7gWnaNiX7UwQS4OCRE="
+      },
+      "received_at": "2026-11-04T10:30:01.000000Z"
+    },
+    {
+      "request": {
+        "payload_version": 1,
+        "shipment_id": "8b4fb8a2-2996-4da2-90b9-35019517f56f",
+        "device_id": "ESP32-001",
+        "key_id": "key-v1",
+        "sequence_number": 1525,
+        "temperature_c": 12.4,
+        "humidity_pct": 80.0,
+        "temperature_milli_c": 12400,
+        "humidity_milli_pct": 80000,
+        "recorded_at": "2026-11-04T10:30:00Z",
+        "firmware_version": "1.0.0",
+        "signature": "MEUCIDjaPfGGVhZduOKBnLIghR+CYGZsm3pCydAyDbC2TGwJAiEA5qnvGZw852FtRPxtHlyY6bnapgS+n1LnO1BZ8pNVYWo="
+      },
+      "received_at": "2026-11-04T10:30:31.000000Z"
+    },
+    {
+      "request": {
+        "payload_version": 1,
+        "shipment_id": "8b4fb8a2-2996-4da2-90b9-35019517f56f",
+        "device_id": "ESP32-001",
+        "key_id": "key-v1",
+        "sequence_number": 1526,
+        "temperature_c": 12.3,
+        "humidity_pct": 80.0,
+        "temperature_milli_c": 12300,
+        "humidity_milli_pct": 80000,
+        "recorded_at": "2026-11-04T10:30:00Z",
+        "firmware_version": "1.0.0",
+        "signature": "MEUCIQDPfVZtdud5ORtDOvAKTC7ycXUzS+xHGRSKuAp5vPp0zQIgUVgDQ0XYyQ1R9k6ABnNImBx9HeXJU25w8qXyFQtcvlI="
+      },
+      "received_at": "2026-11-04T10:31:01.000000Z"
+    }
+  ],
+  "leaf_hashes": [
+    "0xefe12c3fd4eb1c0de95a7552f9624b11f39c1e378a87c7cc030c3231ec3e8018",
+    "0x86cd19407913bd6b5ac164c641644c28673d2d3008453cb16edad5b005844e6a",
+    "0x9d544fb5f4733ebe35725aa1ef382046ab2a96aab0516ce589b401f10c79548f"
+  ],
+  "roots": {
+    "1": "0xefe12c3fd4eb1c0de95a7552f9624b11f39c1e378a87c7cc030c3231ec3e8018",
+    "2": "0x1927c10ec0bec2060aa190816b57041368403457623277823c99503668e644dd",
+    "3": "0x5706c737b9d61c51fee11fca1da56f8a6f9986c220afa0b1e875908857a1ae37"
+  }
+}
