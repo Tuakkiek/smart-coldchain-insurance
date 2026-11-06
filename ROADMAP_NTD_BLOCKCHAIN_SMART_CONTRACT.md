@@ -439,21 +439,21 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 **Việc cần làm**
 
-- [ ] Test role admin/anchorer/oracle: account trái quyền không anchor/payout/rotate được, revocation có hiệu lực.
-- [ ] Test unknown batch, zero root, duplicate `batchKey`, mismatch root, immutable root, cùng root/khác ID.
-- [ ] Test policies: tạo thành công, duplicate, insufficient funding, expired/reporting delay, transfer failure, double report/payout.
-- [ ] Test trạng thái trước/sau transaction revert: contract state/balance không ở trạng thái "đã chi trả" nếu chuyển token fail.
-- [ ] Test event args, `bytes32` encoding, hashing fixture và chain ID/deployment configuration.
-- [ ] Test malicious or nonstandard token trong môi trường kiểm thử (nếu token/flow thực tế có external calls), check reentrancy.
-- [ ] Test một vi phạm liên tục 15 phút **qua Backend mock/fixture** tạo đúng một eligible event; Contract không tự cộng sample hoặc tự chứng thực 15 phút.
-- [ ] Test RPC unavailable / receipt pending / reverted ở adapter mock integration theo phân công: NTD cung cấp tình huống và error matrix, NTK triển khai retry/persistence.
-- [ ] Chạy coverage nếu được hỗ trợ; ưu tiên critical branches hơn con số coverage hình thức. Fix mọi test fail trước merge.
+- [x] Test role admin/anchorer/oracle: account trái quyền không anchor/payout/rotate được, revocation có hiệu lực.
+- [x] Test unknown batch, zero root, duplicate `batchKey`, mismatch root, immutable root, cùng root/khác ID.
+- [x] Test policies: tạo thành công, duplicate, insufficient funding, expired/reporting delay, transfer failure, double report/payout.
+- [x] Test trạng thái trước/sau transaction revert: contract state/balance không ở trạng thái "đã chi trả" nếu chuyển token fail.
+- [x] Test event args, `bytes32` encoding, hashing fixture và chain ID/deployment configuration.
+- [x] Test malicious or nonstandard token trong môi trường kiểm thử (nếu token/flow thực tế có external calls), check reentrancy.
+- [x] Test một vi phạm liên tục 15 phút **qua Backend mock/fixture** tạo đúng một eligible event; Contract không tự cộng sample hoặc tự chứng thực 15 phút.
+- [x] Test RPC unavailable / receipt pending / reverted ở adapter mock integration theo phân công: NTD cung cấp tình huống và error matrix, NTK triển khai retry/persistence.
+- [x] Chạy coverage nếu được hỗ trợ; ưu tiên critical branches hơn con số coverage hình thức. Fix mọi test fail trước merge.
 
 **Definition of Done**
 
-- [ ] Test suite pass sạch; các case anchoring duplicate, unauthorized Oracle và double payout có test riêng.
-- [ ] Có bảng đối chiếu test cases với requirement, ghi rõ những case cần Backend/E2E mới kiểm chứng được.
-- [ ] Không còn secret/production token trong repo hoặc test fixtures.
+- [x] Test suite pass sạch; các case anchoring duplicate, unauthorized Oracle và double payout có test riêng.
+- [x] Có bảng đối chiếu test cases với requirement, ghi rõ những case cần Backend/E2E mới kiểm chứng được.
+- [x] Không còn secret/production token trong repo hoặc test fixtures.
 
 ### Phase 5 — Local/Testnet Deployment, ABI & Artifact Handoff
 
