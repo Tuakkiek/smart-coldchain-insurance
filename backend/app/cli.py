@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import argparse
 import re
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
 
 from sqlalchemy import select
 from sqlalchemy.engine import URL, make_url
@@ -11,7 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import load_settings
 from app.core.database import Base, make_engine, make_session_factory
-from app.models import Shipment
+from app.models import Shipment, ShipmentEvent, Telemetry
 from app.schemas.api import ShipmentCreate, TelemetryCreate
 from app.services.shipments import add_telemetry, create_shipment
 from app.services.blockchain_outbox import configured_coordinator
@@ -98,9 +102,20 @@ def create_database(database_url: str | URL) -> None:
     print(f"MySQL database ready: {url.database}")
 
 
+def upgrade_schema(engine) -> None:
+    """Bootstrap the existing three tables, then apply versioned additions."""
+    Base.metadata.create_all(engine, tables=[Shipment.__table__, Telemetry.__table__, ShipmentEvent.__table__])
+    backend_dir = Path(__file__).resolve().parents[1]
+    configuration = Config(str(backend_dir / "alembic.ini"))
+    configuration.set_main_option("script_location", str(backend_dir / "alembic"))
+    with engine.begin() as connection:
+        configuration.attributes["connection"] = connection
+        command.upgrade(configuration, "head")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("create-db", "init-db", "seed-demo", "retry-blockchain"))
+    parser.add_argument("command", choices=("create-db", "init-db", "upgrade-db", "seed-demo", "retry-blockchain"))
     parser.add_argument("--shipment-id", help="retry one shipment; default retries all pending/failed reports")
     args = parser.parse_args()
     settings = load_settings()
@@ -110,8 +125,9 @@ def main() -> None:
             return
         engine = make_engine(settings.database_url)
         try:
-            Base.metadata.create_all(engine)
-            print("Database tables ready.")
+            if args.command != "retry-blockchain":
+                upgrade_schema(engine)
+                print("Database schema ready.")
             if args.command == "seed-demo":
                 seed_demo(make_session_factory(engine))
             if args.command == "retry-blockchain":

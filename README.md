@@ -84,13 +84,8 @@ Cấu trúc dưới đây là **đích triển khai**, không phải cây thư m
 ```text
 smart-coldchain-insurance/
 ├── device/
-│   ├── esp32/
-│   │   ├── cold_chain_device.ino
-│   │   ├── config.example.h
-│   │   └── README.md
-│   ├── simulator/
-│   │   └── send_telemetry.py
-│   └── README.md
+│   ├── cold_chain_device.ino
+│   └── diagram.json
 ├── backend/
 │   ├── app/
 │   │   ├── main.py
@@ -340,9 +335,9 @@ Port phát triển mặc định của Vite thường là `5173`, nhưng phải 
 
 ### 8.5. ESP32 hoặc Simulator
 
-- Với ESP32: nạp firmware `device/esp32/cold_chain_device.ino` khi mã nguồn đã hoàn thiện, cấu hình Wi-Fi/API URL và provisioning key theo `device/esp32/README.md`.
+- Với ESP32 thật hoặc Wokwi: dùng sketch duy nhất `device/cold_chain_device.ino`, nối DHT22 DATA/SDA vào GPIO27, rồi sửa Wi-Fi trong phần cấu hình đầu file.
 - Đăng ký **public key** và phép gán thiết bị–shipment qua quy trình quản trị được xác thực.
-- Khi dùng simulator: chạy theo `device/README.md` và phải phát ra payload **có chữ ký hợp lệ** nếu muốn test nhánh tiếp nhận thật; fixture chữ ký sai dùng cho negative test riêng.
+- Sơ đồ Wokwi tương ứng nằm ở `device/diagram.json`; backend production yêu cầu payload **có chữ ký hợp lệ**.
 - Dùng HTTPS/TLS hợp lệ khi gửi đến API public; không tắt certificate verification để khắc phục lỗi cấu hình.
 
 ## 9. Environment variables

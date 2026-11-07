@@ -34,6 +34,7 @@ def evaluate(
     temperature_c: float,
     received_at: datetime,
     gap_minutes: int,
+    sequence_gap: tuple[int, int] | None = None,
 ) -> PolicyDecision:
     """A gap breaks a streak; recorded_at from the device is deliberately ignored."""
     received_at = utc(received_at)
@@ -41,12 +42,14 @@ def evaluate(
     samples = iter(prior_samples_desc)
     previous = next(samples, None)
     events: list[tuple[str, dict]] = []
-    gap = previous is not None and received_at - utc(previous.received_at) > gap_limit
+    gap = sequence_gap is not None or (previous is not None and received_at - utc(previous.received_at) > gap_limit)
     if gap:
-        events.append(("SENSOR_DATA_GAP", {
-            "last_received_at": utc_iso(previous.received_at),
-            "gap_minutes": (received_at - utc(previous.received_at)).total_seconds() / 60,
-        }))
+        details = {"last_received_at": utc_iso(previous.received_at) if previous else None,
+                   "gap_minutes": (received_at - utc(previous.received_at)).total_seconds() / 60 if previous else None}
+        if sequence_gap is not None:
+            details.update({"reason": "sequence_gap", "missing_from": sequence_gap[0],
+                            "missing_to": sequence_gap[1]})
+        events.append(("SENSOR_DATA_GAP", details))
 
     if not out_of_range(shipment, temperature_c):
         return PolicyDecision(tuple(events), False, 0)

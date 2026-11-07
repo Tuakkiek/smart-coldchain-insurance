@@ -84,7 +84,7 @@ def canonical_signed_bytes(value: Mapping[str, Any]) -> bytes:
 
 
 def _signature_bytes(value: Any) -> bytes:
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str) or not value or len(value) > 128:
         raise ValueError("signature must be nonempty DER/Base64")
     try:
         raw = base64.b64decode(value, validate=True)

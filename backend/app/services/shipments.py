@@ -10,7 +10,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Shipment, ShipmentEvent, Telemetry
+from app.models import Shipment, ShipmentEvent, SignedTelemetryReceipt, Telemetry
 from app.schemas.api import ShipmentCreate, TelemetryCreate
 from app.services.route_simulator import location_for_sample
 from app.services.clock import Clock, SYSTEM_CLOCK
@@ -113,6 +113,10 @@ def add_telemetry(
     clock: Clock = SYSTEM_CLOCK,
     gap_minutes: int = 5,
     blockchain: BlockchainCoordinator | None = None,
+    *,
+    commit: bool = True,
+    verified_only: bool = False,
+    sequence_gap: tuple[int, int] | None = None,
 ) -> Telemetry:
     # Serialize samples for the same shipment on MySQL so each gets a distinct
     # progress step even when two device requests arrive at once.
@@ -124,18 +128,23 @@ def add_telemetry(
     sample_count = session.scalar(
         select(func.count(Telemetry.id)).where(Telemetry.shipment_id == shipment_id)
     ) or 0
+    latest_received = session.scalar(
+        select(Telemetry.received_at).where(Telemetry.shipment_id == shipment_id)
+        .order_by(Telemetry.received_at.desc(), Telemetry.id.desc()).limit(1)
+    )
+    history_query = select(Telemetry).where(Telemetry.shipment_id == shipment_id)
+    if verified_only:
+        history_query = history_query.join(SignedTelemetryReceipt, SignedTelemetryReceipt.telemetry_id == Telemetry.id)
     prior_samples = session.scalars(
-        select(Telemetry)
-        .where(Telemetry.shipment_id == shipment_id)
-        .order_by(Telemetry.received_at.desc(), Telemetry.id.desc())
+        history_query.order_by(Telemetry.received_at.desc(), Telemetry.id.desc())
     ).yield_per(100)
     try:
         latest = next(prior_samples, None)
         received_at = utc(clock.now())
-        if latest and received_at <= utc(latest.received_at):
-            received_at = utc(latest.received_at) + timedelta(microseconds=1)
+        if latest_received and received_at <= utc(latest_received):
+            received_at = utc(latest_received) + timedelta(microseconds=1)
         history = chain((latest,), prior_samples) if latest else ()
-        decision = evaluate(shipment, history, payload.temperature_c, received_at, gap_minutes)
+        decision = evaluate(shipment, history, payload.temperature_c, received_at, gap_minutes, sequence_gap)
     finally:
         prior_samples.close()
     latitude, longitude, progress_pct = location_for_sample(shipment, sample_count + 1)
@@ -164,8 +173,11 @@ def add_telemetry(
     if decision.triggered:
         shipment.insurance_status = "triggered"
     shipment.status = "insurance_triggered" if shipment.insurance_status == "triggered" else "in_transit"
-    session.commit()
-    if decision.triggered and blockchain is not None:
+    if commit:
+        session.commit()
+    else:
+        session.flush()
+    if commit and decision.triggered and blockchain is not None:
         blockchain.dispatch(session, shipment_id)
     return sample
 
@@ -179,8 +191,8 @@ def location_dict(sample: Telemetry) -> dict:
     }
 
 
-def telemetry_dict(sample: Telemetry) -> dict:
-    return {
+def telemetry_dict(sample: Telemetry, receipt: SignedTelemetryReceipt | None = None) -> dict:
+    value = {
         "id": sample.id,
         "shipment_id": sample.shipment_id,
         "device_id": sample.device_id,
@@ -190,6 +202,13 @@ def telemetry_dict(sample: Telemetry) -> dict:
         "received_at": ensure_utc(sample.received_at),
         "location": location_dict(sample),
     }
+    if receipt is not None:
+        gap = ({"from": receipt.missing_from, "to": receipt.missing_to}
+               if receipt.missing_from is not None else None)
+        value.update({"signature_status": "VALID", "sequence_number": receipt.sequence_number,
+                      "completeness_status": "DATA_INCOMPLETE" if gap else "COMPLETE",
+                      "missing_sequences": gap})
+    return value
 
 
 def shipment_dict(
@@ -201,7 +220,7 @@ def shipment_dict(
         .order_by(Telemetry.received_at.desc(), Telemetry.id.desc())
         .limit(1)
     ).first()
-    latest_dict = telemetry_dict(latest) if latest else None
+    latest_dict = telemetry_dict(latest, session.get(SignedTelemetryReceipt, latest.id)) if latest else None
     if latest_dict is not None:
         latest_dict.pop("shipment_id")
         latest_dict.pop("location")

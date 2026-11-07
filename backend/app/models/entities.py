@@ -1,11 +1,11 @@
-"""Storage models; SQLAlchemy types work with SQLite and PostgreSQL."""
+"""Storage models for MySQL production and isolated SQLite tests."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, Double, ForeignKey, Index, Integer, JSON, String
+from sqlalchemy import BigInteger, DateTime, Double, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -70,3 +70,68 @@ class ShipmentEvent(Base):
     type: Mapped[str] = mapped_column(String(40), nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)
     details: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+
+class Device(Base):
+    __tablename__ = "devices"
+
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    last_sequence_number: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    last_seen_at: Mapped[datetime | None] = mapped_column(UTC_DATETIME)
+    rate_window_started_at: Mapped[datetime | None] = mapped_column(UTC_DATETIME)
+    rate_window_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)
+
+
+class DeviceKey(Base):
+    __tablename__ = "device_keys"
+    __table_args__ = (ForeignKeyConstraint(["device_id"], ["devices.id"]),)
+
+    device_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    key_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    public_key_pem: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)
+
+
+class DeviceAssignment(Base):
+    __tablename__ = "device_assignments"
+
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), primary_key=True)
+    shipment_id: Mapped[str] = mapped_column(ForeignKey("shipments.id"), primary_key=True)
+    active: Mapped[bool] = mapped_column(nullable=False, default=True)
+
+
+class SignedTelemetryReceipt(Base):
+    __tablename__ = "signed_telemetry_receipts"
+    __table_args__ = (
+        UniqueConstraint("device_id", "sequence_number", name="uq_signed_device_sequence"),
+        Index("ix_signed_receipts_shipment", "shipment_id", "sequence_number"),
+    )
+
+    telemetry_id: Mapped[str] = mapped_column(ForeignKey("telemetry.id"), primary_key=True)
+    shipment_id: Mapped[str] = mapped_column(ForeignKey("shipments.id"), nullable=False)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), nullable=False)
+    key_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    sequence_number: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    payload_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    firmware_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    temperature_milli_c: Mapped[int] = mapped_column(Integer, nullable=False)
+    humidity_milli_pct: Mapped[int] = mapped_column(Integer, nullable=False)
+    signature: Mapped[str] = mapped_column(String(128), nullable=False)
+    canonical_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    missing_from: Mapped[int | None] = mapped_column(BigInteger)
+    missing_to: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class IngestionAudit(Base):
+    __tablename__ = "ingestion_audit"
+    __table_args__ = (Index("ix_ingestion_audit_received", "received_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    shipment_id: Mapped[str | None] = mapped_column(String(36))
+    device_id: Mapped[str | None] = mapped_column(String(100))
+    sequence_number: Mapped[int | None] = mapped_column(BigInteger)
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)
