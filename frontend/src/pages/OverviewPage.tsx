@@ -10,7 +10,8 @@ import { ErrorState } from '../components/feedback/ErrorState';
 import { EmptyState } from '../components/feedback/EmptyState';
 import { getShipments } from '../api/shipments';
 import { getAllEvents } from '../api/events';
-import { ShipmentOut, EventOut } from '../types/api';
+import { getDevices } from '../api/devices';
+import { ShipmentOut, EventOut, DeviceItemOut } from '../types/api';
 import {
   Package,
   Truck,
@@ -19,12 +20,17 @@ import {
   ArrowRight,
   Info,
   Thermometer,
+  Cpu,
+  Wifi,
+  WifiOff,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const OverviewPage: React.FC = () => {
   const navigate = useNavigate();
   const [shipments, setShipments] = useState<ShipmentOut[]>([]);
   const [recentEvents, setRecentEvents] = useState<EventOut[]>([]);
+  const [devices, setDevices] = useState<DeviceItemOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,12 +38,14 @@ export const OverviewPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [shipmentsRes, eventsRes] = await Promise.all([
+      const [shipmentsRes, eventsRes, devicesRes] = await Promise.all([
         getShipments(),
         getAllEvents().catch(() => ({ items: [] })),
+        getDevices().catch(() => ({ items: [], total: 0 })),
       ]);
       setShipments(shipmentsRes.items);
       setRecentEvents(eventsRes.items.slice(0, 5));
+      setDevices(devicesRes.items);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Lỗi không xác định khi tải dữ liệu');
     } finally {
@@ -248,77 +256,163 @@ export const OverviewPage: React.FC = () => {
         </Card>
 
         {/* Recent Alerts */}
-        <Card
-          title="Cảnh báo gần nhất"
-          description="Sự kiện vi phạm & bảo hiểm tự động"
-          action={
-            <Button
-              variant="tertiary"
-              size="sm"
-              onClick={() => navigate('/events')}
-              icon={<ArrowRight size={14} />}
-            >
-              Xem chi tiết
-            </Button>
-          }
-        >
-          {recentEvents.length === 0 ? (
-            <div
-              style={{
-                padding: 'var(--space-6) var(--space-4)',
-                textAlign: 'center',
-                color: 'var(--color-text-tertiary)',
-                fontSize: 'var(--text-sm)',
-              }}
-            >
-              Không có sự kiện vi phạm nào được ghi nhận.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              {recentEvents.map((evt) => (
-                <div
-                  key={evt.id}
-                  style={{
-                    padding: 'var(--space-3)',
-                    borderRadius: 'var(--radius-md)',
-                    borderLeft: `3px solid ${
-                      evt.type === 'INSURANCE_TRIGGERED'
-                        ? 'var(--color-danger)'
-                        : 'var(--color-warning)'
-                    }`,
-                    backgroundColor: 'var(--color-surface-secondary)',
-                  }}
-                >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+          <Card
+            title="Cảnh báo gần nhất"
+            description="Sự kiện vi phạm & bảo hiểm tự động"
+            action={
+              <Button
+                variant="tertiary"
+                size="sm"
+                onClick={() => navigate('/events')}
+                icon={<ArrowRight size={14} />}
+              >
+                Xem chi tiết
+              </Button>
+            }
+          >
+            {recentEvents.length === 0 ? (
+              <div
+                style={{
+                  padding: 'var(--space-6) var(--space-4)',
+                  textAlign: 'center',
+                  color: 'var(--color-text-tertiary)',
+                  fontSize: 'var(--text-sm)',
+                }}
+              >
+                Không có sự kiện vi phạm nào được ghi nhận.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                {recentEvents.map((evt) => (
                   <div
+                    key={evt.id}
                     style={{
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 600,
-                      color:
+                      padding: 'var(--space-3)',
+                      borderRadius: 'var(--radius-md)',
+                      borderLeft: `3px solid ${
                         evt.type === 'INSURANCE_TRIGGERED'
                           ? 'var(--color-danger)'
-                          : 'var(--color-warning)',
+                          : 'var(--color-warning)'
+                      }`,
+                      backgroundColor: 'var(--color-surface-secondary)',
                     }}
                   >
-                    {evt.type === 'INSURANCE_TRIGGERED'
-                      ? 'KÍCH HOẠT BẢO HIỂM'
-                      : evt.type === 'TEMPERATURE_BREACH_STARTED'
-                      ? 'PHÁT HIỆN VI PHẠM NHIỆT ĐỘ'
-                      : 'MẤT TÍN HIỆU CẢM BIẾN'}
+                    <div
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        fontWeight: 600,
+                        color:
+                          evt.type === 'INSURANCE_TRIGGERED'
+                            ? 'var(--color-danger)'
+                            : 'var(--color-warning)',
+                      }}
+                    >
+                      {evt.type === 'INSURANCE_TRIGGERED'
+                        ? 'KÍCH HOẠT BẢO HIỂM'
+                        : evt.type === 'TEMPERATURE_BREACH_STARTED'
+                        ? 'PHÁT HIỆN VI PHẠM NHIỆT ĐỘ'
+                        : 'MẤT TÍN HIỆU CẢM BIẾN'}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        color: 'var(--color-text-tertiary)',
+                        marginTop: '2px',
+                      }}
+                    >
+                      {new Date(evt.occurred_at).toLocaleString('vi-VN')}
+                    </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: '11px',
-                      color: 'var(--color-text-tertiary)',
-                      marginTop: '2px',
-                    }}
-                  >
-                    {new Date(evt.occurred_at).toLocaleString('vi-VN')}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Device Integrity Quick Status Card */}
+          <Card
+            title="Tính toàn vẹn Thiết bị ESP32"
+            description="Xác thực chữ ký & chuỗi dữ liệu"
+            action={
+              <Button
+                variant="tertiary"
+                size="sm"
+                onClick={() => navigate('/devices')}
+                icon={<ArrowRight size={14} />}
+              >
+                Quản lý
+              </Button>
+            }
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: 'var(--text-xs)',
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Wifi size={14} style={{ color: 'var(--color-success)' }} /> Thiết bị trực tuyến:
+                </span>
+                <strong style={{ color: 'var(--color-success)' }}>
+                  {devices.filter((d) => d.health.online_status === 'ONLINE').length} / {devices.length}
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: 'var(--text-xs)',
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <ShieldCheck size={14} style={{ color: 'var(--color-success)' }} /> Chữ ký hợp lệ (VALID):
+                </span>
+                <strong>
+                  {devices.filter((d) => d.signature_status === 'VALID').length} / {devices.length}
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: 'var(--text-xs)',
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <AlertTriangle size={14} style={{ color: 'var(--color-warning)' }} /> Cảnh báo mất sequence:
+                </span>
+                <strong
+                  style={{
+                    color:
+                      devices.filter(
+                        (d) =>
+                          d.completeness_status === 'DATA_INCOMPLETE' ||
+                          d.health.missing_sequence_count > 0
+                      ).length > 0
+                        ? 'var(--color-warning)'
+                        : 'var(--color-text-secondary)',
+                  }}
+                >
+                  {
+                    devices.filter(
+                      (d) =>
+                        d.completeness_status === 'DATA_INCOMPLETE' ||
+                        d.health.missing_sequence_count > 0
+                    ).length
+                  }{' '}
+                  thiết bị
+                </strong>
+              </div>
             </div>
-          )}
-        </Card>
+          </Card>
+        </div>
       </div>
     </div>
   );

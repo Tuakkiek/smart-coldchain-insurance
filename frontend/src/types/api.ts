@@ -13,6 +13,53 @@ export interface Place {
 
 export type LocationSource = 'backend_simulated';
 
+export type SignatureStatus = 'VALID' | 'INVALID' | 'UNKNOWN_KEY';
+export type DataStatus = 'DATA_VERIFIED' | 'DATA_INCOMPLETE' | 'INVALID';
+export type CompletenessStatus = 'COMPLETE' | 'DATA_INCOMPLETE' | 'OFFLINE' | 'UNKNOWN';
+export type DeviceOnlineStatus = 'ONLINE' | 'OFFLINE' | 'DEGRADED' | 'UNKNOWN';
+
+export interface MissingSequenceRange {
+  start_sequence: number;
+  end_sequence: number;
+  count: number;
+  detected_at: string;
+}
+
+export interface DeviceHealthOut {
+  device_id: string;
+  last_sequence_number: number | null;
+  missing_sequence_count: number;
+  last_heartbeat_at: string | null;
+  last_seen_at: string | null;
+  online_status: DeviceOnlineStatus;
+  firmware_version: string | null;
+}
+
+export interface DeviceItemOut {
+  id: string;
+  device_id: string;
+  key_id: string;
+  public_key_pem?: string;
+  firmware_version: string;
+  assigned_shipment_id: string | null;
+  assigned_shipment_code: string | null;
+  signature_status: SignatureStatus;
+  completeness_status: CompletenessStatus;
+  health: DeviceHealthOut;
+  registered_at: string;
+}
+
+export interface DevicesOut {
+  items: DeviceItemOut[];
+  total: number;
+}
+
+export interface DeviceMissingSequencesOut {
+  device_id: string;
+  total_missing: number;
+  ranges: MissingSequenceRange[];
+}
+
 export interface LocationOut {
   latitude: number;
   longitude: number;
@@ -23,10 +70,13 @@ export interface LocationOut {
 export interface LatestTelemetryOut {
   id: string;
   device_id: string;
+  sequence_number?: number;
   temperature_c: number;
   humidity_pct: number;
   recorded_at: string | null;
   received_at: string;
+  signature_status?: SignatureStatus;
+  data_status?: DataStatus;
 }
 
 export interface TelemetryOut extends LatestTelemetryOut {
@@ -75,6 +125,7 @@ export interface ShipmentOut {
   temp_max_c: number;
   violation_duration_minutes: number;
   latest_telemetry: LatestTelemetryOut | null;
+  device_integrity?: DeviceHealthOut | null;
   location: LocationOut | null;
   insurance: InsuranceOut;
   blockchain: BlockchainOut | null;
