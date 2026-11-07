@@ -7,6 +7,8 @@ import {
   FlaskConical,
   Shield,
   Layers,
+  Cpu,
+  Database,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -20,6 +22,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const navItems = [
     { label: 'Tổng quan', path: '/', icon: <LayoutDashboard size={18} /> },
     { label: 'Lô hàng', path: '/shipments', icon: <Truck size={18} /> },
+    { label: 'Thiết bị ESP32', path: '/devices', icon: <Cpu size={18} /> },
+    { label: 'Toàn vẹn Dữ liệu (Merkle)', path: '/integrity', icon: <Database size={18} /> },
     { label: 'Sự kiện & Vi phạm', path: '/events', icon: <BellRing size={18} /> },
   ];
 

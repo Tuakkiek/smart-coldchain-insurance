@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
@@ -13,6 +14,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *         - Chống gửi trùng (duplicate payout).
  *         - Hỗ trợ hoàn token ký quỹ cho insurer khi chuyến hàng kết thúc an toàn và policy hết hạn.
  *         - Kiểm tra khả năng thanh toán (solvency check) đảm bảo hợp đồng đủ tiền trước khi chi trả.
+ *         - Sử dụng SafeERC20 đảm bảo an toàn cho giao dịch chuyển token.
  * @dev Contract MVP — chỉ dùng trên local chain hoặc testnet.
  *      Backend đóng vai trò oracle gửi giao dịch có bằng chứng tham chiếu.
  *      Quy tắc:
@@ -21,6 +23,8 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *        - detectedAt = Unix timestamp giây UTC
  */
 contract ColdChainInsurance is ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     // ─── Custom Errors ───────────────────────────────────────────────
     error ColdChain__CallerNotOwner();
     error ColdChain__CallerNotOracle();
@@ -32,7 +36,6 @@ contract ColdChainInsurance is ReentrancyGuard {
     error ColdChain__PolicyNotActive(bytes32 shipmentKey, PolicyStatus currentStatus);
     error ColdChain__PolicyExpired(uint256 expiry, uint256 currentTimestamp);
     error ColdChain__PolicyNotExpired(uint256 expiry, uint256 currentTimestamp);
-    error ColdChain__TokenTransferFailed();
     error ColdChain__ContractInsufficientBalance(uint256 available, uint256 required);
 
     // ─── State Variables ─────────────────────────────────────────────
@@ -144,7 +147,7 @@ contract ColdChainInsurance is ReentrancyGuard {
         emit OracleUpdated(prev, _newOracle);
     }
 
-    // ─── Core Functions ──────────────────────────────────────────────
+    // ─── Core Functions ──────────────────────────────────────
 
     /**
      * @notice Đăng ký một policy bảo hiểm mới cho shipment.
@@ -169,9 +172,8 @@ contract ColdChainInsurance is ReentrancyGuard {
             revert ColdChain__InvalidExpiry(_expiry, block.timestamp);
         }
 
-        // Chuyển token từ insurer (msg.sender) vào contract để khóa vốn
-        bool transferred = payoutToken.transferFrom(msg.sender, address(this), _payoutAmount);
-        if (!transferred) revert ColdChain__TokenTransferFailed();
+        // Chuyển token từ insurer (msg.sender) vào contract để khóa vốn (SafeERC20)
+        payoutToken.safeTransferFrom(msg.sender, address(this), _payoutAmount);
 
         // Lưu policy
         policies[_shipmentKey] = Policy({
@@ -222,9 +224,8 @@ contract ColdChainInsurance is ReentrancyGuard {
         policy.evidenceHash = _evidenceHash;
         policy.detectedAt = _detectedAt;
 
-        // Chuyển token cho beneficiary
-        bool transferred = payoutToken.transfer(policy.beneficiary, policy.payoutAmount);
-        if (!transferred) revert ColdChain__TokenTransferFailed();
+        // Chuyển token cho beneficiary (SafeERC20)
+        payoutToken.safeTransfer(policy.beneficiary, policy.payoutAmount);
 
         emit InsurancePaid(
             _shipmentKey,
@@ -269,8 +270,7 @@ contract ColdChainInsurance is ReentrancyGuard {
         policy.status = PolicyStatus.Refunded;
 
         uint256 amount = policy.payoutAmount;
-        bool transferred = payoutToken.transfer(policy.insurer, amount);
-        if (!transferred) revert ColdChain__TokenTransferFailed();
+        payoutToken.safeTransfer(policy.insurer, amount);
 
         emit PolicyRefunded(_shipmentKey, policy.insurer, amount);
     }

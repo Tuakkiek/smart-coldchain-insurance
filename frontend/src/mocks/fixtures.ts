@@ -1,4 +1,13 @@
-import { ShipmentOut, TelemetryOut, EventOut } from '../types/api';
+import {
+  ShipmentOut,
+  TelemetryOut,
+  EventOut,
+  DeviceItemOut,
+  DeviceMissingSequencesOut,
+  IntegrityBatch,
+  IntegritySummaryOut,
+  BatchVerifyResultOut,
+} from '../types/api';
 
 /**
  * Fixture 1: Lô hàng bình thường (Normal)
@@ -83,10 +92,16 @@ export const mockShipmentBreached: ShipmentOut = {
   },
   insurance: {
     insured_amount_vnd: 150000000,
-    status: 'active',
-    payout_status: 'not_requested',
+    status: 'triggered',
+    payout_status: 'EVIDENCE_PENDING',
   },
-  blockchain: null,
+  blockchain: {
+    network: 'Ethereum Localnet / Hardhat',
+    transaction_hash: null,
+    anchor_transaction_hash: '0x3a4b5c6d7e8f90123456789abcdef0123456789abcdef0123456789abcdef01',
+    insurance_transaction_hash: null,
+    confirmation_status: 'pending',
+  },
   created_at: '2026-11-03T06:15:00Z',
 };
 
@@ -134,6 +149,8 @@ export const mockShipmentTriggered: ShipmentOut = {
   blockchain: {
     network: 'Ethereum Localnet / Hardhat',
     transaction_hash: '0x7e8b91a24d03ef1897c5f8910b2a349d76c5b91a238df489bc109f4567ac89ef',
+    anchor_transaction_hash: '0x9f83c18b76c5b91a238df489bc109f4567ac89ef0123456789abcdef01234567',
+    insurance_transaction_hash: '0x7e8b91a24d03ef1897c5f8910b2a349d76c5b91a238df489bc109f4567ac89ef',
     confirmation_status: 'success',
   },
   created_at: '2026-11-03T05:30:00Z',
@@ -358,4 +375,262 @@ export const mockEvents: Record<string, EventOut[]> = {
     },
   ],
 };
+
+/**
+ * Mock Devices for Device Integrity Management
+ */
+export const mockDevices: DeviceItemOut[] = [
+  {
+    id: 'dev-001',
+    device_id: 'ESP32-COLD-01',
+    key_id: 'KEY-ECDSA-P256-01',
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEbM2V9u4L8N7p\n... (P-256 SPKI Public Key)\n-----END PUBLIC KEY-----',
+    firmware_version: 'v1.2.0',
+    assigned_shipment_id: mockShipmentNormal.id,
+    assigned_shipment_code: mockShipmentNormal.code,
+    signature_status: 'VALID',
+    completeness_status: 'COMPLETE',
+    health: {
+      device_id: 'ESP32-COLD-01',
+      last_sequence_number: 1524,
+      missing_sequence_count: 0,
+      last_heartbeat_at: '2026-11-07T12:45:00Z',
+      last_seen_at: '2026-11-07T12:45:02Z',
+      online_status: 'ONLINE',
+      firmware_version: 'v1.2.0',
+    },
+    registered_at: '2026-10-15T08:00:00Z',
+  },
+  {
+    id: 'dev-002',
+    device_id: 'ESP32-COLD-02',
+    key_id: 'KEY-ECDSA-P256-02',
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE3rY9L1pX8M0k\n... (P-256 SPKI Public Key)\n-----END PUBLIC KEY-----',
+    firmware_version: 'v1.2.0',
+    assigned_shipment_id: mockShipmentBreached.id,
+    assigned_shipment_code: mockShipmentBreached.code,
+    signature_status: 'VALID',
+    completeness_status: 'DATA_INCOMPLETE',
+    health: {
+      device_id: 'ESP32-COLD-02',
+      last_sequence_number: 890,
+      missing_sequence_count: 12,
+      last_heartbeat_at: '2026-11-07T12:48:00Z',
+      last_seen_at: '2026-11-07T12:48:03Z',
+      online_status: 'ONLINE',
+      firmware_version: 'v1.2.0',
+    },
+    registered_at: '2026-10-18T09:30:00Z',
+  },
+  {
+    id: 'dev-003',
+    device_id: 'ESP32-COLD-03',
+    key_id: 'KEY-ECDSA-P256-03',
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEm8K2v0qP9w7L\n... (P-256 SPKI Public Key)\n-----END PUBLIC KEY-----',
+    firmware_version: 'v1.1.9',
+    assigned_shipment_id: mockShipmentTriggered.id,
+    assigned_shipment_code: mockShipmentTriggered.code,
+    signature_status: 'VALID',
+    completeness_status: 'OFFLINE',
+    health: {
+      device_id: 'ESP32-COLD-03',
+      last_sequence_number: 412,
+      missing_sequence_count: 0,
+      last_heartbeat_at: '2026-11-07T11:55:00Z',
+      last_seen_at: '2026-11-07T11:55:02Z',
+      online_status: 'OFFLINE',
+      firmware_version: 'v1.1.9',
+    },
+    registered_at: '2026-10-20T14:15:00Z',
+  },
+  {
+    id: 'dev-004',
+    device_id: 'ESP32-ROGUE-04',
+    key_id: 'KEY-UNKNOWN-PUBKEY-04',
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9xZ1L0aW5q4M\n... (Unregistered SPKI)\n-----END PUBLIC KEY-----',
+    firmware_version: 'v0.9.1-unverified',
+    assigned_shipment_id: null,
+    assigned_shipment_code: null,
+    signature_status: 'UNKNOWN_KEY',
+    completeness_status: 'UNKNOWN',
+    health: {
+      device_id: 'ESP32-ROGUE-04',
+      last_sequence_number: 15,
+      missing_sequence_count: 0,
+      last_heartbeat_at: '2026-11-07T12:10:00Z',
+      last_seen_at: '2026-11-07T12:10:05Z',
+      online_status: 'DEGRADED',
+      firmware_version: 'v0.9.1-unverified',
+    },
+    registered_at: '2026-11-01T10:00:00Z',
+  },
+  {
+    id: 'dev-005',
+    device_id: 'ESP32-TAMPER-05',
+    key_id: 'KEY-ECDSA-P256-05',
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEm3k4P7L1aZ8v\n... (P-256 SPKI Public Key)\n-----END PUBLIC KEY-----',
+    firmware_version: 'v1.2.0-custom',
+    assigned_shipment_id: mockShipmentBreached.id,
+    assigned_shipment_code: mockShipmentBreached.code,
+    signature_status: 'INVALID',
+    completeness_status: 'DATA_INCOMPLETE',
+    health: {
+      device_id: 'ESP32-TAMPER-05',
+      last_sequence_number: 304,
+      missing_sequence_count: 5,
+      last_heartbeat_at: '2026-11-07T12:49:00Z',
+      last_seen_at: '2026-11-07T12:49:02Z',
+      online_status: 'ONLINE',
+      firmware_version: 'v1.2.0-custom',
+    },
+    registered_at: '2026-10-25T11:00:00Z',
+  },
+];
+
+export const mockMissingSequences: Record<string, DeviceMissingSequencesOut> = {
+  'ESP32-COLD-01': {
+    device_id: 'ESP32-COLD-01',
+    total_missing: 0,
+    ranges: [],
+  },
+  'ESP32-COLD-02': {
+    device_id: 'ESP32-COLD-02',
+    total_missing: 12,
+    ranges: [
+      {
+        start_sequence: 845,
+        end_sequence: 850,
+        count: 6,
+        detected_at: '2026-11-07T12:30:00Z',
+      },
+      {
+        start_sequence: 870,
+        end_sequence: 875,
+        count: 6,
+        detected_at: '2026-11-07T12:42:00Z',
+      },
+    ],
+  },
+  'ESP32-COLD-03': {
+    device_id: 'ESP32-COLD-03',
+    total_missing: 0,
+    ranges: [],
+  },
+  'ESP32-ROGUE-04': {
+    device_id: 'ESP32-ROGUE-04',
+    total_missing: 0,
+    ranges: [],
+  },
+  'ESP32-TAMPER-05': {
+    device_id: 'ESP32-TAMPER-05',
+    total_missing: 5,
+    ranges: [
+      {
+        start_sequence: 295,
+        end_sequence: 299,
+        count: 5,
+        detected_at: '2026-11-07T12:40:00Z',
+      },
+    ],
+  },
+};
+
+/**
+ * Mock Merkle Batches for Data Integrity & Blockchain Anchoring
+ */
+export const mockBatches: IntegrityBatch[] = [
+  {
+    batch_id: 'BATCH-20261107-001',
+    shipment_id: mockShipmentNormal.id,
+    shipment_code: mockShipmentNormal.code,
+    device_id: 'ESP32-COLD-01',
+    batch_start_time: '2026-11-07T10:00:00Z',
+    batch_end_time: '2026-11-07T11:45:00Z',
+    record_count: 20,
+    first_sequence_number: 1505,
+    last_sequence_number: 1524,
+    hash_version: 'MERKLE-v1',
+    merkle_root: '0x4a7d1ed414474e4033ac29ccb86533643da83f3619b7f53fbe67d45e3ff382a2',
+    anchor_status: 'DATA_ANCHORED',
+    verification_status: 'MATCHED',
+    anchor_tx_hash: '0x9f83c18b76c5b91a238df489bc109f4567ac89ef0123456789abcdef01234567',
+    anchored_at: '2026-11-07T12:00:00Z',
+    last_verified_at: '2026-11-07T12:30:00Z',
+    tamper_detected: false,
+    failure_reason: null,
+  },
+  {
+    batch_id: 'BATCH-20261107-002',
+    shipment_id: mockShipmentBreached.id,
+    shipment_code: mockShipmentBreached.code,
+    device_id: 'ESP32-COLD-02',
+    batch_start_time: '2026-11-07T11:00:00Z',
+    batch_end_time: '2026-11-07T12:15:00Z',
+    record_count: 15,
+    first_sequence_number: 876,
+    last_sequence_number: 890,
+    hash_version: 'MERKLE-v1',
+    merkle_root: '0x7b23f81e9d1a3b5c7e90123456789abcdef0123456789abcdef0123456789abc',
+    anchor_status: 'BLOCKCHAIN_PENDING',
+    verification_status: 'NOT_CHECKED',
+    anchor_tx_hash: '0x3a4b5c6d7e8f90123456789abcdef0123456789abcdef0123456789abcdef01',
+    anchored_at: null,
+    last_verified_at: null,
+    tamper_detected: false,
+    failure_reason: null,
+  },
+  {
+    batch_id: 'BATCH-20261107-003',
+    shipment_id: mockShipmentTriggered.id,
+    shipment_code: mockShipmentTriggered.code,
+    device_id: 'ESP32-COLD-03',
+    batch_start_time: '2026-11-07T09:30:00Z',
+    batch_end_time: '2026-11-07T10:45:00Z',
+    record_count: 10,
+    first_sequence_number: 401,
+    last_sequence_number: 410,
+    hash_version: 'MERKLE-v1',
+    merkle_root: '0x1e3a5c7890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    anchor_status: 'DATA_ANCHORED',
+    verification_status: 'DATA_INTEGRITY_FAILED',
+    anchor_tx_hash: '0x8899aabbccddeeff00112233445566778899aabbccddeeff0011223344556677',
+    anchored_at: '2026-11-07T11:00:00Z',
+    last_verified_at: '2026-11-07T12:45:00Z',
+    tamper_detected: true,
+    failure_reason:
+      'Phát hiện bản ghi cảm biến trong MySQL bị can thiệp trái phép sau khi seal batch. Merkle root tính lại (0x99aa88...) KHÔNG KHỚP với root đã neo on-chain (0x1e3a5c...). Toàn bộ batch này bị đình chỉ làm chứng cứ bảo hiểm!',
+  },
+  {
+    batch_id: 'BATCH-20261107-004',
+    shipment_id: mockShipmentNormal.id,
+    shipment_code: mockShipmentNormal.code,
+    device_id: 'ESP32-COLD-01',
+    batch_start_time: '2026-11-07T12:00:00Z',
+    batch_end_time: '2026-11-07T12:45:00Z',
+    record_count: 5,
+    first_sequence_number: 1525,
+    last_sequence_number: 1529,
+    hash_version: 'MERKLE-v1',
+    merkle_root: '0x6c8e0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f',
+    anchor_status: 'NOT_READY',
+    verification_status: 'NOT_CHECKED',
+    anchor_tx_hash: null,
+    anchored_at: null,
+    last_verified_at: null,
+    tamper_detected: false,
+    failure_reason: null,
+  },
+];
+
+export const mockIntegritySummary: IntegritySummaryOut = {
+  total_records: 1250,
+  verified_records: 1238,
+  invalid_records: 12,
+  missing_records: 17,
+  total_batches: 4,
+  anchored_batches: 2,
+  failed_integrity_batches: 1,
+};
+
+
 

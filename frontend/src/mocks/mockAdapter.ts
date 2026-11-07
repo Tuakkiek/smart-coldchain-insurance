@@ -6,17 +6,138 @@ import {
   DemoScenarioOut,
   DemoScenarioPayload,
   HealthOut,
+  DevicesOut,
+  DeviceItemOut,
+  DeviceHealthOut,
+  DeviceMissingSequencesOut,
+  IntegrityBatch,
+  IntegrityBatchesOut,
+  IntegritySummaryOut,
+  BatchVerifyResultOut,
 } from '../types/api';
 import {
   mockShipments,
   mockTelemetryHistory,
   mockEvents,
+  mockDevices,
+  mockMissingSequences,
+  mockBatches,
+  mockIntegritySummary,
 } from './fixtures';
 
 class MockAdapter {
   private shipments: ShipmentOut[] = JSON.parse(JSON.stringify(mockShipments));
   private telemetry: Record<string, typeof mockTelemetryHistory[string]> = JSON.parse(JSON.stringify(mockTelemetryHistory));
   private events: Record<string, typeof mockEvents[string]> = JSON.parse(JSON.stringify(mockEvents));
+  private devices: DeviceItemOut[] = JSON.parse(JSON.stringify(mockDevices));
+  private missingSequences: Record<string, DeviceMissingSequencesOut> = JSON.parse(
+    JSON.stringify(mockMissingSequences)
+  );
+  private batches: IntegrityBatch[] = JSON.parse(JSON.stringify(mockBatches));
+  private integritySummary: IntegritySummaryOut = JSON.parse(
+    JSON.stringify(mockIntegritySummary)
+  );
+
+  async listBatches(shipmentId?: string): Promise<IntegrityBatchesOut> {
+    let items = [...this.batches];
+    if (shipmentId) {
+      items = items.filter((b) => b.shipment_id === shipmentId);
+    }
+    return {
+      items: JSON.parse(JSON.stringify(items)),
+      total: items.length,
+    };
+  }
+
+  async getBatch(batchId: string): Promise<IntegrityBatch> {
+    const item = this.batches.find((b) => b.batch_id === batchId);
+    if (!item) {
+      throw new Error(`Mock 404: Không tìm thấy batch ${batchId}`);
+    }
+    return JSON.parse(JSON.stringify(item));
+  }
+
+  async getIntegritySummary(_shipmentId?: string): Promise<IntegritySummaryOut> {
+    return JSON.parse(JSON.stringify(this.integritySummary));
+  }
+
+  async verifyBatch(batchId: string): Promise<BatchVerifyResultOut> {
+    const batch = this.batches.find((b) => b.batch_id === batchId);
+    if (!batch) {
+      throw new Error(`Mock 404: Không tìm thấy batch ${batchId} để xác minh`);
+    }
+
+    const verifiedAt = new Date().toISOString();
+
+    if (batch.tamper_detected || batch.batch_id === 'BATCH-20261107-003') {
+      batch.verification_status = 'DATA_INTEGRITY_FAILED';
+      batch.last_verified_at = verifiedAt;
+      batch.tamper_detected = true;
+
+      const recalculatedRoot =
+        '0x99aa887766554433221100ffeeddccbbaa99887766554433221100ffeeddccbb';
+
+      return {
+        batch_id: batch.batch_id,
+        verification_status: 'DATA_INTEGRITY_FAILED',
+        recalculated_root: recalculatedRoot,
+        expected_root: batch.merkle_root,
+        matched: false,
+        verified_at: verifiedAt,
+        message:
+          'LỖI TOÀN VẸN: Dữ liệu telemetry trong cơ sở dữ liệu đã bị sửa đổi trái phép sau khi seal. Merkle root tính lại không khớp với root đã neo on-chain!',
+        network: 'Ethereum Localnet / Hardhat',
+      };
+    } else {
+      batch.verification_status = 'MATCHED';
+      batch.last_verified_at = verifiedAt;
+      batch.tamper_detected = false;
+
+      return {
+        batch_id: batch.batch_id,
+        verification_status: 'MATCHED',
+        recalculated_root: batch.merkle_root,
+        expected_root: batch.merkle_root,
+        matched: true,
+        verified_at: verifiedAt,
+        message:
+          'Xác minh thành công: Merkle root tính lại từ telemetry khớp 100% với root đã neo on-chain.',
+        network: 'Ethereum Localnet / Hardhat',
+      };
+    }
+  }
+
+  async listDevices(): Promise<DevicesOut> {
+    return {
+      items: JSON.parse(JSON.stringify(this.devices)),
+      total: this.devices.length,
+    };
+  }
+
+  async getDevice(deviceId: string): Promise<DeviceItemOut> {
+    const item = this.devices.find((d) => d.device_id === deviceId || d.id === deviceId);
+    if (!item) {
+      throw new Error(`Mock 404: Thiết bị ${deviceId} không tìm thấy`);
+    }
+    return JSON.parse(JSON.stringify(item));
+  }
+
+  async getDeviceHealth(deviceId: string): Promise<DeviceHealthOut> {
+    const item = this.devices.find((d) => d.device_id === deviceId || d.id === deviceId);
+    if (!item) {
+      throw new Error(`Mock 404: Không có dữ liệu sức khỏe cho thiết bị ${deviceId}`);
+    }
+    return JSON.parse(JSON.stringify(item.health));
+  }
+
+  async getDeviceMissingSequences(deviceId: string): Promise<DeviceMissingSequencesOut> {
+    const missing = this.missingSequences[deviceId] || {
+      device_id: deviceId,
+      total_missing: 0,
+      ranges: [],
+    };
+    return JSON.parse(JSON.stringify(missing));
+  }
 
   async getHealth(): Promise<HealthOut> {
     return { status: 'ok' };
@@ -82,9 +203,15 @@ class MockAdapter {
         status: 'triggered',
         payout_status: 'paid',
       };
+      const anchorHash =
+        '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      const insuranceHash =
+        '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
       item.blockchain = {
         network: 'localhost',
-        transaction_hash: '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(''),
+        transaction_hash: insuranceHash,
+        anchor_transaction_hash: anchorHash,
+        insurance_transaction_hash: insuranceHash,
         confirmation_status: 'success',
       };
 

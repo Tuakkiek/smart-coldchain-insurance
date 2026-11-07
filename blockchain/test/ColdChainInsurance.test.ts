@@ -408,6 +408,87 @@ describe("ColdChainInsurance", function () {
     });
   });
 
+  // ─── Backend Gateway Compatibility Tests ─────────────────────────
+
+  describe("Backend Gateway Compatibility", function () {
+    it("Should return policy tuple layout matching backend adapter indices", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, owner, beneficiary, shipmentKey, payoutAmount, expiry, evidenceHash, detectedAt, oracle } = fixture;
+
+      await createPolicyHelper(fixture);
+      await insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt);
+
+      const policyTuple = await insurance.getPolicy(shipmentKey);
+
+      // Index 0: insurer
+      expect(policyTuple[0]).to.equal(owner.address);
+      // Index 1: beneficiary
+      expect(policyTuple[1]).to.equal(beneficiary.address);
+      // Index 2: payoutAmount
+      expect(policyTuple[2]).to.equal(payoutAmount);
+      // Index 3: expiry
+      expect(policyTuple[3]).to.equal(expiry);
+      // Index 4: status (2 = PaidOut) - used by backend adapter line 81
+      expect(policyTuple[4]).to.equal(2);
+      // Index 5: evidenceHash - used by backend adapter line 82
+      expect(policyTuple[5]).to.equal(evidenceHash);
+      // Index 6: detectedAt - used by backend adapter line 82
+      expect(policyTuple[6]).to.equal(detectedAt);
+    });
+
+    it("Should allow querying InsurancePaid log filtered by indexed shipmentKey", async function () {
+      const fixture = await loadFixture(deployFixture);
+      const { insurance, oracle, beneficiary, shipmentKey, payoutAmount, evidenceHash, detectedAt } = fixture;
+
+      await createPolicyHelper(fixture);
+      await insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt);
+
+      // Backend adapter line 85 uses contract.events.InsurancePaid().get_logs(argument_filters={"shipmentKey": shipment_key})
+      const filter = insurance.filters.InsurancePaid(shipmentKey);
+      const logs = await insurance.queryFilter(filter);
+
+      expect(logs.length).to.equal(1);
+      expect(logs[0].args.shipmentKey).to.equal(shipmentKey);
+      expect(logs[0].args.beneficiary).to.equal(beneficiary.address);
+      expect(logs[0].args.payoutAmount).to.equal(payoutAmount);
+      expect(logs[0].args.evidenceHash).to.equal(evidenceHash);
+      expect(logs[0].args.detectedAt).to.equal(detectedAt);
+    });
+  });
+
+  // ─── MockInsuranceToken Tests ────────────────────────────────────
+
+  describe("MockInsuranceToken", function () {
+    it("Should allow owner to mint tokens", async function () {
+      const { token, owner, beneficiary } = await loadFixture(deployFixture);
+      const mintAmount = ethers.parseEther("500");
+
+      const balanceBefore = await token.balanceOf(beneficiary.address);
+      await token.connect(owner).mint(beneficiary.address, mintAmount);
+      const balanceAfter = await token.balanceOf(beneficiary.address);
+
+      expect(balanceAfter - balanceBefore).to.equal(mintAmount);
+    });
+
+    it("Should reject non-owner mint with custom error", async function () {
+      const { token, stranger } = await loadFixture(deployFixture);
+      const mintAmount = ethers.parseEther("500");
+
+      await expect(
+        token.connect(stranger).mint(stranger.address, mintAmount)
+      ).to.be.revertedWithCustomError(token, "MockToken__CallerNotOwner");
+    });
+
+    it("Should reject mint to zero address with custom error", async function () {
+      const { token, owner } = await loadFixture(deployFixture);
+      const mintAmount = ethers.parseEther("500");
+
+      await expect(
+        token.connect(owner).mint(ethers.ZeroAddress, mintAmount)
+      ).to.be.revertedWithCustomError(token, "MockToken__ZeroAddress");
+    });
+  });
+
   // ─── setOracle Tests ─────────────────────────────────────────────
 
   describe("setOracle", function () {

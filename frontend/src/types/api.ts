@@ -13,6 +13,103 @@ export interface Place {
 
 export type LocationSource = 'backend_simulated';
 
+export type SignatureStatus = 'VALID' | 'INVALID' | 'UNKNOWN_KEY';
+export type DataStatus = 'DATA_VERIFIED' | 'DATA_INCOMPLETE' | 'INVALID';
+export type CompletenessStatus = 'COMPLETE' | 'DATA_INCOMPLETE' | 'OFFLINE' | 'UNKNOWN';
+export type DeviceOnlineStatus = 'ONLINE' | 'OFFLINE' | 'DEGRADED' | 'UNKNOWN';
+
+export interface MissingSequenceRange {
+  start_sequence: number;
+  end_sequence: number;
+  count: number;
+  detected_at: string;
+}
+
+export interface DeviceHealthOut {
+  device_id: string;
+  last_sequence_number: number | null;
+  missing_sequence_count: number;
+  last_heartbeat_at: string | null;
+  last_seen_at: string | null;
+  online_status: DeviceOnlineStatus;
+  firmware_version: string | null;
+}
+
+export interface DeviceItemOut {
+  id: string;
+  device_id: string;
+  key_id: string;
+  public_key_pem?: string;
+  firmware_version: string;
+  assigned_shipment_id: string | null;
+  assigned_shipment_code: string | null;
+  signature_status: SignatureStatus;
+  completeness_status: CompletenessStatus;
+  health: DeviceHealthOut;
+  registered_at: string;
+}
+
+export interface DevicesOut {
+  items: DeviceItemOut[];
+  total: number;
+}
+
+export interface DeviceMissingSequencesOut {
+  device_id: string;
+  total_missing: number;
+  ranges: MissingSequenceRange[];
+}
+
+export type AnchorStatus = 'NOT_READY' | 'BLOCKCHAIN_PENDING' | 'DATA_ANCHORED' | 'BLOCKCHAIN_FAILED';
+export type VerificationStatus = 'NOT_CHECKED' | 'MATCHED' | 'DATA_INTEGRITY_FAILED';
+
+export interface IntegrityBatch {
+  batch_id: string;
+  shipment_id: string;
+  shipment_code?: string;
+  device_id: string;
+  batch_start_time: string;
+  batch_end_time: string;
+  record_count: number;
+  first_sequence_number: number;
+  last_sequence_number: number;
+  hash_version: string;
+  merkle_root: string;
+  anchor_status: AnchorStatus;
+  verification_status: VerificationStatus;
+  anchor_tx_hash: string | null;
+  anchored_at: string | null;
+  last_verified_at: string | null;
+  tamper_detected?: boolean;
+  failure_reason?: string | null;
+}
+
+export interface IntegrityBatchesOut {
+  items: IntegrityBatch[];
+  total: number;
+}
+
+export interface IntegritySummaryOut {
+  total_records: number;
+  verified_records: number;
+  invalid_records: number;
+  missing_records: number;
+  total_batches: number;
+  anchored_batches: number;
+  failed_integrity_batches: number;
+}
+
+export interface BatchVerifyResultOut {
+  batch_id: string;
+  verification_status: VerificationStatus;
+  recalculated_root: string;
+  expected_root: string;
+  matched: boolean;
+  verified_at: string;
+  message: string;
+  network?: string;
+}
+
 export interface LocationOut {
   latitude: number;
   longitude: number;
@@ -23,10 +120,13 @@ export interface LocationOut {
 export interface LatestTelemetryOut {
   id: string;
   device_id: string;
+  sequence_number?: number;
   temperature_c: number;
   humidity_pct: number;
   recorded_at: string | null;
   received_at: string;
+  signature_status?: SignatureStatus;
+  data_status?: DataStatus;
 }
 
 export interface TelemetryOut extends LatestTelemetryOut {
@@ -46,7 +146,17 @@ export interface TelemetryCreatePayload {
 }
 
 export type InsuranceStatus = 'active' | 'triggered';
-export type PayoutStatus = 'not_requested' | 'pending' | 'paid' | 'failed';
+export type PayoutStatus =
+  | 'not_requested'
+  | 'pending'
+  | 'paid'
+  | 'failed'
+  | 'NOT_ELIGIBLE'
+  | 'EVIDENCE_PENDING'
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'FAILED'
+  | 'evidence_pending';
 
 export interface InsuranceOut {
   insured_amount_vnd: number;
@@ -54,11 +164,18 @@ export interface InsuranceOut {
   payout_status: PayoutStatus;
 }
 
-export type BlockchainConfirmationStatus = 'pending' | 'success' | 'failed';
+export type BlockchainConfirmationStatus =
+  | 'pending'
+  | 'success'
+  | 'failed'
+  | 'NOT_SUBMITTED'
+  | 'confirmed';
 
 export interface BlockchainOut {
   network: string;
-  transaction_hash: string | null;
+  transaction_hash?: string | null;
+  anchor_transaction_hash?: string | null;
+  insurance_transaction_hash?: string | null;
   confirmation_status: BlockchainConfirmationStatus;
 }
 
@@ -75,6 +192,7 @@ export interface ShipmentOut {
   temp_max_c: number;
   violation_duration_minutes: number;
   latest_telemetry: LatestTelemetryOut | null;
+  device_integrity?: DeviceHealthOut | null;
   location: LocationOut | null;
   insurance: InsuranceOut;
   blockchain: BlockchainOut | null;
