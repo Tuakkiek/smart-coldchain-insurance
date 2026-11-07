@@ -1,6 +1,6 @@
 import { ApiErrorResponse } from '../types/api';
 
-const DEFAULT_API_BASE = 'http://localhost:8000';
+const DEFAULT_API_BASE = 'https://smart-coldchain-insurance.onrender.com';
 
 export class ApiError extends Error {
   code: string;

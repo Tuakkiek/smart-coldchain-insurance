@@ -35,7 +35,7 @@ cp .env.example .env
 ```
 
 Các biến môi trường:
-- `VITE_API_BASE_URL`: Địa chỉ REST API Backend (mặc định: `http://localhost:8000`).
+- `VITE_API_BASE_URL`: Địa chỉ REST API Backend (mặc định: `https://smart-coldchain-insurance.onrender.com` hoặc `http://localhost:8000` khi chạy local).
 - `VITE_USE_MOCK`: Bật dữ liệu Mock độc lập (`true` hoặc `false`). Hữu ích khi Backend chưa chạy hoặc muốn demo nhanh 3 kịch bản chuẩn.
 - `VITE_ENABLE_DEMO`: Cho phép hiển thị tab Demo kịch bản (`true` hoặc `false`).
 
