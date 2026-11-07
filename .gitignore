@@ -2,8 +2,7 @@
 .env
 .env.*
 !.env.example
-device/esp32/config.h
-device/wokwi/config.h
+device/cold_chain_device.ino
 *.pem
 *.key
 

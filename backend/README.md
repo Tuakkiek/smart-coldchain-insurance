@@ -114,13 +114,7 @@ Mỗi mẫu được so với `[temp_min_c, temp_max_c]` của lô hàng. Mẫu 
 
 Ở `APP_ENV=development`, endpoint `POST /api/v1/demo/shipments/{id}/scenario` nhận `{"scenario":"normal"}` hoặc `{"scenario":"temperature_breach"}`. Kịch bản vi phạm dùng đồng hồ ảo, tạo bốn mẫu cho chính sách 15 phút/ngưỡng gap 5 phút và chạy qua cùng service với ESP32. Hãy dùng lô hàng demo riêng vì đồng hồ ảo có thể đưa `received_at` vào tương lai. Endpoint không được đăng ký trong production.
 
-Nếu ESP32 truy cập từ LAN, chạy Uvicorn với `--host 0.0.0.0`, dùng IP LAN của máy trong `device/esp32/config.h` và cho phép cổng 8000 trên firewall. Không đưa dịch vụ HTTP phát triển trực tiếp ra Internet.
-
-Ví dụ gửi telemetry bằng bộ giả lập từ thư mục gốc repo:
-
-```bash
-py -3 device/simulator/send_telemetry.py --shipment-id <UUID_LO_HANG> --mode sequence --normal-temp 5 --breach-temp 9.2 --normal-count 2 --breach-count 3
-```
+Nếu ESP32 truy cập từ LAN, sửa `WIFI_SSID`, `WIFI_PASSWORD` và `API_BASE_URL` trong `device/cold_chain_device.ino`. Khi dùng Backend local, chạy Uvicorn với `--host 0.0.0.0` và cho phép cổng 8000 trên firewall. Không đưa dịch vụ HTTP phát triển trực tiếp ra Internet.
 
 Endpoint hiện có: `GET /api/v1/health`, `POST/GET /api/v1/shipments`, `GET /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, và endpoint demo trong development. Tọa độ vẫn là mô phỏng ở Backend.
 

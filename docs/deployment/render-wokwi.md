@@ -1,6 +1,6 @@
 # Render + Wokwi: kiểm tra nhiệt độ đầu cuối
 
-`render.yaml` triển khai **backend** trên Render với `APP_ENV=production`. Ở chế độ này API chỉ nhận telemetry có chữ ký. Project `device/wokwi/` dùng ESP32 + DHT22, ký ECDSA P-256 và gửi HTTPS trực tiếp tới Render; không dùng payload HTTP không ký của firmware `device/esp32/` cũ.
+`render.yaml` triển khai **backend** trên Render với `APP_ENV=production`. Ở chế độ này API chỉ nhận telemetry có chữ ký. Sketch duy nhất `device/cold_chain_device.ino` dùng ESP32 + DHT22, ký ECDSA P-256 và gửi HTTPS trực tiếp tới Render.
 
 ## 1. Chuẩn bị MySQL
 
@@ -26,26 +26,14 @@ Với database đã có dữ liệu, sao lưu trước rồi chạy `python -m a
 
 Nếu MySQL giới hạn IP nguồn, cho phép kết nối từ Render theo cấu hình provider. Không có database kết nối được thì API lô hàng/telemetry sẽ lỗi dù health trả 200.
 
-## 3. Cấp danh tính cho Wokwi
+## 3. Chạy ESP32 thật hoặc Wokwi
 
-Project Wokwi chạy **trong VS Code** với PlatformIO và extension Wokwi. Cài hai extension đó. Từ thư mục gốc repo, dùng Python của backend để tạo cặp khóa P-256, tạo lô demo và đăng ký public key qua API:
+1. Trong `device/cold_chain_device.ino`, sửa `WIFI_SSID`, `WIFI_PASSWORD` và `API_BASE_URL`; giữ đúng `SHIPMENT_ID`, `DEVICE_ID`, `KEY_ID` và private key tương ứng với public key đã đăng ký.
+2. Nối DHT22: `VCC -> 3V3`, `DATA/SDA -> GPIO27`, `GND -> GND`. Sơ đồ Wokwi tương ứng là `device/diagram.json`.
+3. Cài thư viện **DHT sensor library for ESPx**, biên dịch và upload bằng Arduino IDE hoặc dán sketch vào Wokwi. Mở Serial Monitor 115200.
+4. Khi thành công, Serial Monitor báo `HTTP 201`, `signature_status: "VALID"`, `duplicate: false`. Kiểm tra `GET .../shipments/<UUID>` để xem `latest_telemetry`.
 
-```powershell
-.\backend\.venv\Scripts\python.exe device\wokwi\provision.py --base-url https://<service>.onrender.com
-```
-
-Chương trình hỏi `ADMIN_API_KEY` mà không hiện ký tự; **không** đưa key lên command line. Có thể dùng lô hàng đã có bằng `--shipment-id <UUID-v4>`; nếu bỏ qua, chương trình tạo lô demo riêng (ngưỡng 2–8°C). Nó tạo `device/wokwi/config.h`, `device-key.pem` và `device-key.pub.pem` tại máy bạn. Các file này được Git bỏ qua. Chỉ public key được gửi cho backend. Không chia sẻ project Wokwi đã build vì binary chứa private key demo.
-
-Nếu cần cấp thiết bị mới, cất hoặc xóa ba file local trên, chạy lại `provision.py`; mỗi lần dùng ID thiết bị và khóa mới. Thiết bị cũ có thể revoke qua API quản trị. Sequence được lưu trên NVS của ESP32 mô phỏng; nếu xóa trạng thái flash của Wokwi nhưng giữ cùng danh tính, hãy cấp thiết bị mới để tránh `SEQUENCE_REPLAY`.
-
-## 4. Chạy mô phỏng
-
-1. Trong VS Code mở **folder `device/wokwi`** làm workspace. PlatformIO: **Build** (`pio run` trong terminal nếu CLI có trong PATH).
-2. Chọn **Wokwi: Start Simulator**. `wokwi.toml` trỏ tới binary PlatformIO; build lại sau khi đổi `config.h`.
-3. Mở Serial Monitor 115200. ESP32 nối Wi-Fi ảo `Wokwi-GUEST`, lấy thời gian UTC, đọc DHT22 và gửi một mẫu mỗi 60 giây. Thành công có `HTTP 201`, `signature_status: "VALID"`, `duplicate: false`. Click cảm biến DHT22 trong sơ đồ để đổi nhiệt độ/độ ẩm; chờ chu kỳ kế tiếp.
-4. Mở URL mà `provision.py` in ra (`GET .../telemetry`) hoặc `GET .../shipments/<UUID>` để xem `latest_telemetry`. `GET .../devices` cho biết thiết bị `ONLINE` sau mẫu signed.
-
-Sketch Wokwi dùng `WiFiClientSecure.setInsecure()` để thử luồng ký dữ liệu trong simulator: HTTPS được mã hóa nhưng sketch không kiểm tra danh tính máy chủ TLS. **Không dùng sketch này làm firmware thiết bị thật**; cần cấu hình CA/trust phù hợp và bảo vệ private key trên thiết bị thật.
+Sketch hiện dùng `WiFiClientSecure.setInsecure()` để đơn giản hóa lần test đầu: HTTPS được mã hóa nhưng chưa kiểm tra danh tính máy chủ TLS. Trước khi dùng lâu dài trên ESP32 thật, thay bằng CA của Render hoặc cơ chế trust phù hợp và đổi test key.
 
 ## Lỗi thường gặp
 
