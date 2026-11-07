@@ -410,6 +410,18 @@ export const OverviewPage: React.FC = () => {
                   thiết bị
                 </strong>
               </div>
+
+              <div style={{ marginTop: 'var(--space-2)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => navigate('/integrity')}
+                  style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-xs)' }}
+                  icon={<ArrowRight size={14} />}
+                >
+                  Xem Merkle Batches & Neo Blockchain →
+                </Button>
+              </div>
             </div>
           </Card>
         </div>

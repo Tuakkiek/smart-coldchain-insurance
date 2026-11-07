@@ -60,6 +60,56 @@ export interface DeviceMissingSequencesOut {
   ranges: MissingSequenceRange[];
 }
 
+export type AnchorStatus = 'NOT_READY' | 'BLOCKCHAIN_PENDING' | 'DATA_ANCHORED' | 'BLOCKCHAIN_FAILED';
+export type VerificationStatus = 'NOT_CHECKED' | 'MATCHED' | 'DATA_INTEGRITY_FAILED';
+
+export interface IntegrityBatch {
+  batch_id: string;
+  shipment_id: string;
+  shipment_code?: string;
+  device_id: string;
+  batch_start_time: string;
+  batch_end_time: string;
+  record_count: number;
+  first_sequence_number: number;
+  last_sequence_number: number;
+  hash_version: string;
+  merkle_root: string;
+  anchor_status: AnchorStatus;
+  verification_status: VerificationStatus;
+  anchor_tx_hash: string | null;
+  anchored_at: string | null;
+  last_verified_at: string | null;
+  tamper_detected?: boolean;
+  failure_reason?: string | null;
+}
+
+export interface IntegrityBatchesOut {
+  items: IntegrityBatch[];
+  total: number;
+}
+
+export interface IntegritySummaryOut {
+  total_records: number;
+  verified_records: number;
+  invalid_records: number;
+  missing_records: number;
+  total_batches: number;
+  anchored_batches: number;
+  failed_integrity_batches: number;
+}
+
+export interface BatchVerifyResultOut {
+  batch_id: string;
+  verification_status: VerificationStatus;
+  recalculated_root: string;
+  expected_root: string;
+  matched: boolean;
+  verified_at: string;
+  message: string;
+  network?: string;
+}
+
 export interface LocationOut {
   latitude: number;
   longitude: number;

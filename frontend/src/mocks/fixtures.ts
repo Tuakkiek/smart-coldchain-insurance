@@ -4,6 +4,9 @@ import {
   EventOut,
   DeviceItemOut,
   DeviceMissingSequencesOut,
+  IntegrityBatch,
+  IntegritySummaryOut,
+  BatchVerifyResultOut,
 } from '../types/api';
 
 /**
@@ -523,5 +526,103 @@ export const mockMissingSequences: Record<string, DeviceMissingSequencesOut> = {
     ],
   },
 };
+
+/**
+ * Mock Merkle Batches for Data Integrity & Blockchain Anchoring
+ */
+export const mockBatches: IntegrityBatch[] = [
+  {
+    batch_id: 'BATCH-20261107-001',
+    shipment_id: mockShipmentNormal.id,
+    shipment_code: mockShipmentNormal.code,
+    device_id: 'ESP32-COLD-01',
+    batch_start_time: '2026-11-07T10:00:00Z',
+    batch_end_time: '2026-11-07T11:45:00Z',
+    record_count: 20,
+    first_sequence_number: 1505,
+    last_sequence_number: 1524,
+    hash_version: 'MERKLE-v1',
+    merkle_root: '0x4a7d1ed414474e4033ac29ccb86533643da83f3619b7f53fbe67d45e3ff382a2',
+    anchor_status: 'DATA_ANCHORED',
+    verification_status: 'MATCHED',
+    anchor_tx_hash: '0x9f83c18b76c5b91a238df489bc109f4567ac89ef0123456789abcdef01234567',
+    anchored_at: '2026-11-07T12:00:00Z',
+    last_verified_at: '2026-11-07T12:30:00Z',
+    tamper_detected: false,
+    failure_reason: null,
+  },
+  {
+    batch_id: 'BATCH-20261107-002',
+    shipment_id: mockShipmentBreached.id,
+    shipment_code: mockShipmentBreached.code,
+    device_id: 'ESP32-COLD-02',
+    batch_start_time: '2026-11-07T11:00:00Z',
+    batch_end_time: '2026-11-07T12:15:00Z',
+    record_count: 15,
+    first_sequence_number: 876,
+    last_sequence_number: 890,
+    hash_version: 'MERKLE-v1',
+    merkle_root: '0x7b23f81e9d1a3b5c7e90123456789abcdef0123456789abcdef0123456789abc',
+    anchor_status: 'BLOCKCHAIN_PENDING',
+    verification_status: 'NOT_CHECKED',
+    anchor_tx_hash: '0x3a4b5c6d7e8f90123456789abcdef0123456789abcdef0123456789abcdef01',
+    anchored_at: null,
+    last_verified_at: null,
+    tamper_detected: false,
+    failure_reason: null,
+  },
+  {
+    batch_id: 'BATCH-20261107-003',
+    shipment_id: mockShipmentTriggered.id,
+    shipment_code: mockShipmentTriggered.code,
+    device_id: 'ESP32-COLD-03',
+    batch_start_time: '2026-11-07T09:30:00Z',
+    batch_end_time: '2026-11-07T10:45:00Z',
+    record_count: 10,
+    first_sequence_number: 401,
+    last_sequence_number: 410,
+    hash_version: 'MERKLE-v1',
+    merkle_root: '0x1e3a5c7890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    anchor_status: 'DATA_ANCHORED',
+    verification_status: 'DATA_INTEGRITY_FAILED',
+    anchor_tx_hash: '0x8899aabbccddeeff00112233445566778899aabbccddeeff0011223344556677',
+    anchored_at: '2026-11-07T11:00:00Z',
+    last_verified_at: '2026-11-07T12:45:00Z',
+    tamper_detected: true,
+    failure_reason:
+      'Phát hiện bản ghi cảm biến trong MySQL bị can thiệp trái phép sau khi seal batch. Merkle root tính lại (0x99aa88...) KHÔNG KHỚP với root đã neo on-chain (0x1e3a5c...). Toàn bộ batch này bị đình chỉ làm chứng cứ bảo hiểm!',
+  },
+  {
+    batch_id: 'BATCH-20261107-004',
+    shipment_id: mockShipmentNormal.id,
+    shipment_code: mockShipmentNormal.code,
+    device_id: 'ESP32-COLD-01',
+    batch_start_time: '2026-11-07T12:00:00Z',
+    batch_end_time: '2026-11-07T12:45:00Z',
+    record_count: 5,
+    first_sequence_number: 1525,
+    last_sequence_number: 1529,
+    hash_version: 'MERKLE-v1',
+    merkle_root: '0x6c8e0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f',
+    anchor_status: 'NOT_READY',
+    verification_status: 'NOT_CHECKED',
+    anchor_tx_hash: null,
+    anchored_at: null,
+    last_verified_at: null,
+    tamper_detected: false,
+    failure_reason: null,
+  },
+];
+
+export const mockIntegritySummary: IntegritySummaryOut = {
+  total_records: 1250,
+  verified_records: 1238,
+  invalid_records: 12,
+  missing_records: 17,
+  total_batches: 4,
+  anchored_batches: 2,
+  failed_integrity_batches: 1,
+};
+
 
 
