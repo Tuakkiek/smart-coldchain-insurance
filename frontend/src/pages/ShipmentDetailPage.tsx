@@ -18,12 +18,19 @@ import { EventTimeline } from '../components/data-display/EventTimeline';
 import { getShipmentById, getShipmentTelemetry } from '../api/shipments';
 import { getDeviceHealth } from '../api/devices';
 import { getShipmentEvents } from '../api/events';
+import { getIntegrityBatches, verifyBatch } from '../api/integrity';
 import {
   ShipmentOut,
   TelemetryOut,
   EventOut,
   DeviceHealthOut,
+  IntegrityBatch,
+  BatchVerifyResultOut,
 } from '../types/api';
+import { MerkleBatchTable } from '../components/integrity/MerkleBatchTable';
+import { IntegrityViolationAlert } from '../components/integrity/IntegrityViolationAlert';
+import { BatchVerificationModal } from '../components/integrity/BatchVerificationModal';
+import { BatchDetailModal } from '../components/integrity/BatchDetailModal';
 import {
   ArrowLeft,
   MapPin,
@@ -46,11 +53,20 @@ export const ShipmentDetailPage: React.FC = () => {
   const [telemetry, setTelemetry] = useState<TelemetryOut[]>([]);
   const [events, setEvents] = useState<EventOut[]>([]);
   const [deviceHealth, setDeviceHealth] = useState<DeviceHealthOut | null>(null);
+  const [batches, setBatches] = useState<IntegrityBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+
+  // Batch Verification & Detail Modals
+  const [verifyingBatchId, setVerifyingBatchId] = useState<string | null>(null);
+  const [verificationResult, setVerificationResult] = useState<BatchVerifyResultOut | null>(null);
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+  const [isVerifyingLoading, setIsVerifyingLoading] = useState(false);
+  const [selectedBatch, setSelectedBatch] = useState<IntegrityBatch | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   const isMountedRef = useRef(true);
 
@@ -63,10 +79,11 @@ export const ShipmentDetailPage: React.FC = () => {
     }
     setError(null);
     try {
-      const [shipmentData, telemetryData, eventsData] = await Promise.all([
+      const [shipmentData, telemetryData, eventsData, batchesData] = await Promise.all([
         getShipmentById(id),
         getShipmentTelemetry(id).catch(() => ({ items: [] })),
         getShipmentEvents(id).catch(() => ({ items: [] })),
+        getIntegrityBatches({ shipment_id: id }).catch(() => ({ items: [], total: 0 })),
       ]);
 
       let devHealth: DeviceHealthOut | null = null;
@@ -81,6 +98,7 @@ export const ShipmentDetailPage: React.FC = () => {
         setTelemetry(telemetryData.items);
         setEvents(eventsData.items);
         setDeviceHealth(devHealth);
+        setBatches(batchesData.items);
       }
     } catch (err: unknown) {
       if (isMountedRef.current && !isBackground) {
@@ -90,6 +108,55 @@ export const ShipmentDetailPage: React.FC = () => {
       if (isMountedRef.current) {
         setLoading(false);
         setRefreshing(false);
+      }
+    }
+  };
+
+  const handleVerifyBatch = async (batchId: string) => {
+    const targetBatch = batches.find((b) => b.batch_id === batchId);
+    setVerifyingBatchId(batchId);
+    setIsVerifyingLoading(true);
+    setIsVerifyModalOpen(true);
+    setVerificationResult(null);
+
+    try {
+      const result = await verifyBatch(batchId);
+      if (isMountedRef.current) {
+        setVerificationResult(result);
+        setBatches((prev) =>
+          prev.map((b) =>
+            b.batch_id === batchId
+              ? {
+                  ...b,
+                  verification_status: result.verification_status,
+                  last_verified_at: result.verified_at,
+                  tamper_detected: !result.matched,
+                  failure_reason: !result.matched ? result.message : null,
+                }
+              : b
+          )
+        );
+      }
+    } catch (err: unknown) {
+      if (isMountedRef.current) {
+        const errorMsg =
+          err instanceof Error
+            ? err.message
+            : 'Lỗi kết nối khi gửi yêu cầu xác minh tới Backend';
+        setVerificationResult({
+          batch_id: batchId,
+          verification_status: 'DATA_INTEGRITY_FAILED',
+          recalculated_root: '0x0000000000000000000000000000000000000000000000000000000000000000',
+          expected_root: targetBatch?.merkle_root || '0x...',
+          matched: false,
+          verified_at: new Date().toISOString(),
+          message: `Không thể hoàn tất xác minh: ${errorMsg}`,
+        });
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setVerifyingBatchId(null);
+        setIsVerifyingLoading(false);
       }
     }
   };
@@ -490,6 +557,55 @@ export const ShipmentDetailPage: React.FC = () => {
         )}
       </Card>
 
+      {/* PROMINENT WARNING IF ANY BATCH HAS DATA_INTEGRITY_FAILED */}
+      {batches.some((b) => b.verification_status === 'DATA_INTEGRITY_FAILED' || b.tamper_detected) && (
+        <IntegrityViolationAlert
+          failedBatches={batches.filter(
+            (b) => b.verification_status === 'DATA_INTEGRITY_FAILED' || b.tamper_detected
+          )}
+          onVerifyBatch={handleVerifyBatch}
+          verifyingBatchId={verifyingBatchId}
+          onSelectBatch={(b) => {
+            setSelectedBatch(b);
+            setIsDetailModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* MERKLE BATCHES LIST FOR THIS SHIPMENT */}
+      <Card
+        title="Danh sách Merkle Batches của Lô hàng"
+        description="Các batch telemetry đã niêm phong, Merkle root dạng 0x + 64 hex characters và trạng thái đối chiếu chống giả mạo."
+        style={{ marginBottom: 'var(--space-6)' }}
+        action={
+          <Button
+            variant="tertiary"
+            size="sm"
+            onClick={() => navigate('/integrity')}
+            style={{ fontSize: 'var(--text-xs)' }}
+          >
+            Quản lý tất cả batches →
+          </Button>
+        }
+      >
+        {batches.length === 0 ? (
+          <div style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--text-sm)' }}>
+            Chưa có Merkle batch nào được seal cho lô hàng này.
+          </div>
+        ) : (
+          <MerkleBatchTable
+            batches={batches}
+            onVerifyBatch={handleVerifyBatch}
+            verifyingBatchId={verifyingBatchId}
+            onSelectBatch={(b) => {
+              setSelectedBatch(b);
+              setIsDetailModalOpen(true);
+            }}
+            showFilters={batches.length > 2}
+          />
+        )}
+      </Card>
+
       {/* Bottom 2 columns: Event Timeline & Telemetry Table */}
       <div
         style={{
@@ -574,6 +690,23 @@ export const ShipmentDetailPage: React.FC = () => {
           )}
         </Card>
       </div>
+
+      {/* Verification & Detail Modals */}
+      <BatchVerificationModal
+        isOpen={isVerifyModalOpen}
+        onClose={() => setIsVerifyModalOpen(false)}
+        result={verificationResult}
+        batch={batches.find((b) => b.batch_id === verifyingBatchId) || selectedBatch}
+        loading={isVerifyingLoading}
+      />
+
+      <BatchDetailModal
+        batch={selectedBatch}
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        onVerify={handleVerifyBatch}
+        isVerifying={verifyingBatchId === selectedBatch?.batch_id}
+      />
     </div>
   );
 };

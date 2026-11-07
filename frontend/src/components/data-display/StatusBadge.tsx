@@ -8,6 +8,8 @@ import {
   SignatureStatus,
   DeviceOnlineStatus,
   CompletenessStatus,
+  AnchorStatus,
+  VerificationStatus,
 } from '../../types/api';
 import {
   Clock,
@@ -22,6 +24,8 @@ import {
   KeyRound,
   HelpCircle,
   FileQuestion,
+  Database,
+  Lock,
 } from 'lucide-react';
 
 interface ShipmentStatusBadgeProps {
@@ -282,5 +286,109 @@ export const CompletenessBadge: React.FC<CompletenessBadgeProps> = ({ status, mi
       );
   }
 };
+
+interface AnchorStatusBadgeProps {
+  status: AnchorStatus;
+  anchoredAt?: string | null;
+}
+
+export const AnchorStatusBadge: React.FC<AnchorStatusBadgeProps> = ({ status, anchoredAt }) => {
+  switch (status) {
+    case 'DATA_ANCHORED':
+      return (
+        <Badge
+          variant="success"
+          icon={<Lock size={12} />}
+          title={
+            anchoredAt
+              ? `Root đã neo on-chain lúc: ${new Date(anchoredAt).toLocaleString('vi-VN')}`
+              : 'Merkle root đã được neo on-chain và đối chiếu receipt thành công.'
+          }
+        >
+          ĐÃ NEO ON-CHAIN (DATA_ANCHORED)
+        </Badge>
+      );
+    case 'BLOCKCHAIN_PENDING':
+      return (
+        <Badge
+          variant="warning"
+          icon={<Clock size={12} className="animate-spin" />}
+          title="Giao dịch neo Merkle root đã gửi lên RPC và đang chờ confirmation on-chain."
+        >
+          ĐANG NEO ON-CHAIN (PENDING)
+        </Badge>
+      );
+    case 'BLOCKCHAIN_FAILED':
+      return (
+        <Badge
+          variant="danger"
+          icon={<XCircle size={12} />}
+          title="Giao dịch neo Merkle root thất bại hoặc bị revert trên Blockchain."
+        >
+          NEO THẤT BẠI (BLOCKCHAIN_FAILED)
+        </Badge>
+      );
+    case 'NOT_READY':
+    default:
+      return (
+        <Badge
+          variant="neutral"
+          icon={<Clock size={12} />}
+          title="Batch đang thu thập dữ liệu hoặc chưa đóng niêm phong để neo on-chain."
+        >
+          CHƯA SẴN SÀNG (NOT_READY)
+        </Badge>
+      );
+  }
+};
+
+interface VerificationStatusBadgeProps {
+  status: VerificationStatus;
+  lastVerifiedAt?: string | null;
+}
+
+export const VerificationStatusBadge: React.FC<VerificationStatusBadgeProps> = ({
+  status,
+  lastVerifiedAt,
+}) => {
+  switch (status) {
+    case 'MATCHED':
+      return (
+        <Badge
+          variant="success"
+          icon={<CheckCircle2 size={12} />}
+          title={
+            lastVerifiedAt
+              ? `Toàn vẹn khớp 100%. Lần đối chiếu gần nhất: ${new Date(lastVerifiedAt).toLocaleString('vi-VN')}`
+              : 'Merkle root tính lại từ database hoàn toàn trùng khớp với root đã neo on-chain.'
+          }
+        >
+          TOÀN VẸN KHỚP (MATCHED)
+        </Badge>
+      );
+    case 'DATA_INTEGRITY_FAILED':
+      return (
+        <Badge
+          variant="danger"
+          icon={<ShieldAlert size={12} />}
+          title="CẢNH BÁO: Merkle root tính lại không khớp với root đã neo on-chain! Dữ liệu đã bị sửa đổi trái phép."
+        >
+          SAI LỆCH TOÀN VẸN (INTEGRITY_FAILED)
+        </Badge>
+      );
+    case 'NOT_CHECKED':
+    default:
+      return (
+        <Badge
+          variant="neutral"
+          icon={<HelpCircle size={12} />}
+          title="Batch chưa được yêu cầu đối chiếu lại tính toàn vẹn với Blockchain."
+        >
+          CHƯA ĐỐI CHIẾU (NOT_CHECKED)
+        </Badge>
+      );
+  }
+};
+
 
 
