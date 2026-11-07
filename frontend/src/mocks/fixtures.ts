@@ -1,4 +1,10 @@
-import { ShipmentOut, TelemetryOut, EventOut } from '../types/api';
+import {
+  ShipmentOut,
+  TelemetryOut,
+  EventOut,
+  DeviceItemOut,
+  DeviceMissingSequencesOut,
+} from '../types/api';
 
 /**
  * Fixture 1: Lô hàng bình thường (Normal)
@@ -358,4 +364,164 @@ export const mockEvents: Record<string, EventOut[]> = {
     },
   ],
 };
+
+/**
+ * Mock Devices for Device Integrity Management
+ */
+export const mockDevices: DeviceItemOut[] = [
+  {
+    id: 'dev-001',
+    device_id: 'ESP32-COLD-01',
+    key_id: 'KEY-ECDSA-P256-01',
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEbM2V9u4L8N7p\n... (P-256 SPKI Public Key)\n-----END PUBLIC KEY-----',
+    firmware_version: 'v1.2.0',
+    assigned_shipment_id: mockShipmentNormal.id,
+    assigned_shipment_code: mockShipmentNormal.code,
+    signature_status: 'VALID',
+    completeness_status: 'COMPLETE',
+    health: {
+      device_id: 'ESP32-COLD-01',
+      last_sequence_number: 1524,
+      missing_sequence_count: 0,
+      last_heartbeat_at: '2026-11-07T12:45:00Z',
+      last_seen_at: '2026-11-07T12:45:02Z',
+      online_status: 'ONLINE',
+      firmware_version: 'v1.2.0',
+    },
+    registered_at: '2026-10-15T08:00:00Z',
+  },
+  {
+    id: 'dev-002',
+    device_id: 'ESP32-COLD-02',
+    key_id: 'KEY-ECDSA-P256-02',
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE3rY9L1pX8M0k\n... (P-256 SPKI Public Key)\n-----END PUBLIC KEY-----',
+    firmware_version: 'v1.2.0',
+    assigned_shipment_id: mockShipmentBreached.id,
+    assigned_shipment_code: mockShipmentBreached.code,
+    signature_status: 'VALID',
+    completeness_status: 'DATA_INCOMPLETE',
+    health: {
+      device_id: 'ESP32-COLD-02',
+      last_sequence_number: 890,
+      missing_sequence_count: 12,
+      last_heartbeat_at: '2026-11-07T12:48:00Z',
+      last_seen_at: '2026-11-07T12:48:03Z',
+      online_status: 'ONLINE',
+      firmware_version: 'v1.2.0',
+    },
+    registered_at: '2026-10-18T09:30:00Z',
+  },
+  {
+    id: 'dev-003',
+    device_id: 'ESP32-COLD-03',
+    key_id: 'KEY-ECDSA-P256-03',
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEm8K2v0qP9w7L\n... (P-256 SPKI Public Key)\n-----END PUBLIC KEY-----',
+    firmware_version: 'v1.1.9',
+    assigned_shipment_id: mockShipmentTriggered.id,
+    assigned_shipment_code: mockShipmentTriggered.code,
+    signature_status: 'VALID',
+    completeness_status: 'OFFLINE',
+    health: {
+      device_id: 'ESP32-COLD-03',
+      last_sequence_number: 412,
+      missing_sequence_count: 0,
+      last_heartbeat_at: '2026-11-07T11:55:00Z',
+      last_seen_at: '2026-11-07T11:55:02Z',
+      online_status: 'OFFLINE',
+      firmware_version: 'v1.1.9',
+    },
+    registered_at: '2026-10-20T14:15:00Z',
+  },
+  {
+    id: 'dev-004',
+    device_id: 'ESP32-ROGUE-04',
+    key_id: 'KEY-UNKNOWN-PUBKEY-04',
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9xZ1L0aW5q4M\n... (Unregistered SPKI)\n-----END PUBLIC KEY-----',
+    firmware_version: 'v0.9.1-unverified',
+    assigned_shipment_id: null,
+    assigned_shipment_code: null,
+    signature_status: 'UNKNOWN_KEY',
+    completeness_status: 'UNKNOWN',
+    health: {
+      device_id: 'ESP32-ROGUE-04',
+      last_sequence_number: 15,
+      missing_sequence_count: 0,
+      last_heartbeat_at: '2026-11-07T12:10:00Z',
+      last_seen_at: '2026-11-07T12:10:05Z',
+      online_status: 'DEGRADED',
+      firmware_version: 'v0.9.1-unverified',
+    },
+    registered_at: '2026-11-01T10:00:00Z',
+  },
+  {
+    id: 'dev-005',
+    device_id: 'ESP32-TAMPER-05',
+    key_id: 'KEY-ECDSA-P256-05',
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEm3k4P7L1aZ8v\n... (P-256 SPKI Public Key)\n-----END PUBLIC KEY-----',
+    firmware_version: 'v1.2.0-custom',
+    assigned_shipment_id: mockShipmentBreached.id,
+    assigned_shipment_code: mockShipmentBreached.code,
+    signature_status: 'INVALID',
+    completeness_status: 'DATA_INCOMPLETE',
+    health: {
+      device_id: 'ESP32-TAMPER-05',
+      last_sequence_number: 304,
+      missing_sequence_count: 5,
+      last_heartbeat_at: '2026-11-07T12:49:00Z',
+      last_seen_at: '2026-11-07T12:49:02Z',
+      online_status: 'ONLINE',
+      firmware_version: 'v1.2.0-custom',
+    },
+    registered_at: '2026-10-25T11:00:00Z',
+  },
+];
+
+export const mockMissingSequences: Record<string, DeviceMissingSequencesOut> = {
+  'ESP32-COLD-01': {
+    device_id: 'ESP32-COLD-01',
+    total_missing: 0,
+    ranges: [],
+  },
+  'ESP32-COLD-02': {
+    device_id: 'ESP32-COLD-02',
+    total_missing: 12,
+    ranges: [
+      {
+        start_sequence: 845,
+        end_sequence: 850,
+        count: 6,
+        detected_at: '2026-11-07T12:30:00Z',
+      },
+      {
+        start_sequence: 870,
+        end_sequence: 875,
+        count: 6,
+        detected_at: '2026-11-07T12:42:00Z',
+      },
+    ],
+  },
+  'ESP32-COLD-03': {
+    device_id: 'ESP32-COLD-03',
+    total_missing: 0,
+    ranges: [],
+  },
+  'ESP32-ROGUE-04': {
+    device_id: 'ESP32-ROGUE-04',
+    total_missing: 0,
+    ranges: [],
+  },
+  'ESP32-TAMPER-05': {
+    device_id: 'ESP32-TAMPER-05',
+    total_missing: 5,
+    ranges: [
+      {
+        start_sequence: 295,
+        end_sequence: 299,
+        count: 5,
+        detected_at: '2026-11-07T12:40:00Z',
+      },
+    ],
+  },
+};
+
 

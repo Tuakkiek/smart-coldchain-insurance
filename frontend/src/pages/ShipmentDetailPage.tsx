@@ -7,6 +7,8 @@ import {
   ShipmentStatusBadge,
   InsuranceStatusBadge,
   BlockchainBadge,
+  SignatureStatusBadge,
+  DeviceOnlineBadge,
 } from '../components/data-display/StatusBadge';
 import { LoadingState } from '../components/feedback/LoadingState';
 import { ErrorState } from '../components/feedback/ErrorState';
@@ -14,8 +16,14 @@ import { SimulatedRouteMap } from '../components/data-display/SimulatedRouteMap'
 import { TelemetryChart } from '../components/data-display/TelemetryChart';
 import { EventTimeline } from '../components/data-display/EventTimeline';
 import { getShipmentById, getShipmentTelemetry } from '../api/shipments';
+import { getDeviceHealth } from '../api/devices';
 import { getShipmentEvents } from '../api/events';
-import { ShipmentOut, TelemetryOut, EventOut } from '../types/api';
+import {
+  ShipmentOut,
+  TelemetryOut,
+  EventOut,
+  DeviceHealthOut,
+} from '../types/api';
 import {
   ArrowLeft,
   MapPin,
@@ -27,6 +35,7 @@ import {
   Check,
   Activity,
   Layers,
+  Cpu,
 } from 'lucide-react';
 
 export const ShipmentDetailPage: React.FC = () => {
@@ -36,6 +45,7 @@ export const ShipmentDetailPage: React.FC = () => {
   const [shipment, setShipment] = useState<ShipmentOut | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryOut[]>([]);
   const [events, setEvents] = useState<EventOut[]>([]);
+  const [deviceHealth, setDeviceHealth] = useState<DeviceHealthOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,10 +68,19 @@ export const ShipmentDetailPage: React.FC = () => {
         getShipmentTelemetry(id).catch(() => ({ items: [] })),
         getShipmentEvents(id).catch(() => ({ items: [] })),
       ]);
+
+      let devHealth: DeviceHealthOut | null = null;
+      if (shipmentData.latest_telemetry?.device_id) {
+        devHealth = await getDeviceHealth(shipmentData.latest_telemetry.device_id).catch(
+          () => null
+        );
+      }
+
       if (isMountedRef.current) {
         setShipment(shipmentData);
         setTelemetry(telemetryData.items);
         setEvents(eventsData.items);
+        setDeviceHealth(devHealth);
       }
     } catch (err: unknown) {
       if (isMountedRef.current && !isBackground) {
@@ -283,6 +302,91 @@ export const ShipmentDetailPage: React.FC = () => {
                 payoutStatus={shipment.insurance.payout_status}
               />
             </div>
+          </div>
+        </Card>
+
+        {/* Device Integrity quick card */}
+        <Card title="Thiết bị & Chữ ký cảm biến">
+          <div style={{ marginTop: 'var(--space-2)' }}>
+            {shipment.latest_telemetry ? (
+              <>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 'var(--space-2)',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 'var(--text-sm)',
+                      fontWeight: 600,
+                      color: 'var(--color-text-primary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <Cpu size={16} /> {shipment.latest_telemetry.device_id}
+                  </div>
+                  <DeviceOnlineBadge
+                    status={deviceHealth?.online_status || 'ONLINE'}
+                    lastHeartbeat={deviceHealth?.last_heartbeat_at}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 'var(--space-2)' }}>
+                  <SignatureStatusBadge
+                    status={shipment.latest_telemetry.signature_status || 'VALID'}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--color-text-secondary)',
+                    marginTop: 'var(--space-2)',
+                    paddingTop: 'var(--space-2)',
+                    borderTop: '1px solid var(--color-border-subtle)',
+                  }}
+                >
+                  <span>
+                    Sequence: #{deviceHealth?.last_sequence_number ?? shipment.latest_telemetry.sequence_number ?? 'N/A'}
+                  </span>
+                  <span>
+                    Gói thiếu:{' '}
+                    <strong
+                      style={{
+                        color:
+                          (deviceHealth?.missing_sequence_count || 0) > 0
+                            ? 'var(--color-warning)'
+                            : 'var(--color-success)',
+                      }}
+                    >
+                      {deviceHealth?.missing_sequence_count ?? 0}
+                    </strong>
+                  </span>
+                </div>
+
+                <div style={{ marginTop: 'var(--space-3)' }}>
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    onClick={() => navigate('/devices')}
+                    style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-xs)' }}
+                  >
+                    Xem chi tiết xác thực thiết bị →
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
+                Chưa có thiết bị nào gửi telemetry cho lô hàng này.
+              </div>
+            )}
           </div>
         </Card>
       </div>

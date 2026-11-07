@@ -6,17 +6,59 @@ import {
   DemoScenarioOut,
   DemoScenarioPayload,
   HealthOut,
+  DevicesOut,
+  DeviceItemOut,
+  DeviceHealthOut,
+  DeviceMissingSequencesOut,
 } from '../types/api';
 import {
   mockShipments,
   mockTelemetryHistory,
   mockEvents,
+  mockDevices,
+  mockMissingSequences,
 } from './fixtures';
 
 class MockAdapter {
   private shipments: ShipmentOut[] = JSON.parse(JSON.stringify(mockShipments));
   private telemetry: Record<string, typeof mockTelemetryHistory[string]> = JSON.parse(JSON.stringify(mockTelemetryHistory));
   private events: Record<string, typeof mockEvents[string]> = JSON.parse(JSON.stringify(mockEvents));
+  private devices: DeviceItemOut[] = JSON.parse(JSON.stringify(mockDevices));
+  private missingSequences: Record<string, DeviceMissingSequencesOut> = JSON.parse(
+    JSON.stringify(mockMissingSequences)
+  );
+
+  async listDevices(): Promise<DevicesOut> {
+    return {
+      items: JSON.parse(JSON.stringify(this.devices)),
+      total: this.devices.length,
+    };
+  }
+
+  async getDevice(deviceId: string): Promise<DeviceItemOut> {
+    const item = this.devices.find((d) => d.device_id === deviceId || d.id === deviceId);
+    if (!item) {
+      throw new Error(`Mock 404: Thiết bị ${deviceId} không tìm thấy`);
+    }
+    return JSON.parse(JSON.stringify(item));
+  }
+
+  async getDeviceHealth(deviceId: string): Promise<DeviceHealthOut> {
+    const item = this.devices.find((d) => d.device_id === deviceId || d.id === deviceId);
+    if (!item) {
+      throw new Error(`Mock 404: Không có dữ liệu sức khỏe cho thiết bị ${deviceId}`);
+    }
+    return JSON.parse(JSON.stringify(item.health));
+  }
+
+  async getDeviceMissingSequences(deviceId: string): Promise<DeviceMissingSequencesOut> {
+    const missing = this.missingSequences[deviceId] || {
+      device_id: deviceId,
+      total_missing: 0,
+      ranges: [],
+    };
+    return JSON.parse(JSON.stringify(missing));
+  }
 
   async getHealth(): Promise<HealthOut> {
     return { status: 'ok' };
