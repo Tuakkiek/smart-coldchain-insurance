@@ -146,7 +146,17 @@ export interface TelemetryCreatePayload {
 }
 
 export type InsuranceStatus = 'active' | 'triggered';
-export type PayoutStatus = 'not_requested' | 'pending' | 'paid' | 'failed';
+export type PayoutStatus =
+  | 'not_requested'
+  | 'pending'
+  | 'paid'
+  | 'failed'
+  | 'NOT_ELIGIBLE'
+  | 'EVIDENCE_PENDING'
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'FAILED'
+  | 'evidence_pending';
 
 export interface InsuranceOut {
   insured_amount_vnd: number;
@@ -154,11 +164,18 @@ export interface InsuranceOut {
   payout_status: PayoutStatus;
 }
 
-export type BlockchainConfirmationStatus = 'pending' | 'success' | 'failed';
+export type BlockchainConfirmationStatus =
+  | 'pending'
+  | 'success'
+  | 'failed'
+  | 'NOT_SUBMITTED'
+  | 'confirmed';
 
 export interface BlockchainOut {
   network: string;
-  transaction_hash: string | null;
+  transaction_hash?: string | null;
+  anchor_transaction_hash?: string | null;
+  insurance_transaction_hash?: string | null;
   confirmation_status: BlockchainConfirmationStatus;
 }
 

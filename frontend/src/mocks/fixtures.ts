@@ -92,10 +92,16 @@ export const mockShipmentBreached: ShipmentOut = {
   },
   insurance: {
     insured_amount_vnd: 150000000,
-    status: 'active',
-    payout_status: 'not_requested',
+    status: 'triggered',
+    payout_status: 'EVIDENCE_PENDING',
   },
-  blockchain: null,
+  blockchain: {
+    network: 'Ethereum Localnet / Hardhat',
+    transaction_hash: null,
+    anchor_transaction_hash: '0x3a4b5c6d7e8f90123456789abcdef0123456789abcdef0123456789abcdef01',
+    insurance_transaction_hash: null,
+    confirmation_status: 'pending',
+  },
   created_at: '2026-11-03T06:15:00Z',
 };
 
@@ -143,6 +149,8 @@ export const mockShipmentTriggered: ShipmentOut = {
   blockchain: {
     network: 'Ethereum Localnet / Hardhat',
     transaction_hash: '0x7e8b91a24d03ef1897c5f8910b2a349d76c5b91a238df489bc109f4567ac89ef',
+    anchor_transaction_hash: '0x9f83c18b76c5b91a238df489bc109f4567ac89ef0123456789abcdef01234567',
+    insurance_transaction_hash: '0x7e8b91a24d03ef1897c5f8910b2a349d76c5b91a238df489bc109f4567ac89ef',
     confirmation_status: 'success',
   },
   created_at: '2026-11-03T05:30:00Z',
