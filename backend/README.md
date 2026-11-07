@@ -9,11 +9,41 @@ are in `tests/fixtures/protocol_vectors_v1.json`; run
 `backend/` to check them. See `docs/architecture/data-integrity.md` for the byte
 rules and pending Member 2 handoff.
 
-The current `POST .../telemetry` endpoint still accepts the legacy unsigned
-payload and does **not** call this module yet. Its data is not verified or
-anchored evidence; the existing insurance flow must not be presented as the
-new signed-data payout flow. Device registration, migrations and Data Integrity
-Contract integration are subsequent phases.
+Phase 2 now uses this module when `POST .../telemetry` receives the signed v1
+payload. The legacy unsigned payload remains available only with
+`APP_ENV=development`; production rejects it. Signed data is verified but is
+**not yet anchored evidence**. The signed path does not dispatch insurance
+payouts before the Data Integrity Contract and evidence gate exist.
+
+## Phase 2 — đăng ký thiết bị và nhận telemetry có chữ ký
+
+Đặt `ADMIN_API_KEY` là chuỗi ngẫu nhiên dài trong `backend/.env`. Trên MySQL
+hiện có, sao lưu dữ liệu rồi chạy `python -m app.cli upgrade-db` từ `backend/`.
+Lệnh áp dụng Alembic revision `20261105_01`, tạo thêm các bảng `devices`,
+`device_keys`, `device_assignments`, `signed_telemetry_receipts`,
+`ingestion_audit` mà không sửa các bảng cũ. Với DB mới,
+`python -m app.cli init-db` tạo bảng nền và chạy cùng revision. `seed-demo` cũng nâng schema trước
+khi seed. Chỉ chạy upgrade trên môi trường đã sao lưu; downgrade sẽ xóa các
+bảng thiết bị mới và dữ liệu của chúng.
+
+`POST /api/v1/devices` yêu cầu header `X-Admin-Key` và body:
+
+```json
+{"device_id":"ESP32-001","key_id":"key-v1","public_key_pem":"-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n","shipment_id":"<UUID-v4>"}
+```
+
+Admin có thể xem thiết bị, thêm/revoke key, revoke thiết bị và bật/tắt
+assignment qua `/api/v1/devices/*` trong `/docs`. Chỉ public key vào Backend;
+giữ private key ngoài Git. Mẫu signed v1 dùng đúng schema trong
+`docs/contracts/api-v1.md` và golden fixture. Retry cùng nội dung/sequence
+trả `200` với `duplicate=true`; sequence xung đột hoặc cũ trả `409` và ghi
+audit. Chữ ký sai, thiết bị/key chưa đăng ký hoặc không được assignment sẽ bị
+từ chối. `received_at` do Backend gán; gap cắt chuỗi vi phạm. `MAX_REQUEST_BODY_BYTES`
+mặc định 8192 và `SIGNED_RATE_LIMIT_PER_MINUTE` mặc định 120; giới hạn tốc độ
+được lưu theo thiết bị, còn rate limit IP nên bổ sung ở gateway khi public.
+`GET /api/v1/shipments/{shipment_id}/devices` cho Frontend đọc trạng thái
+`UNKNOWN/ONLINE/OFFLINE` từ thời điểm nhận mẫu signed cuối cùng; retry mẫu
+cũ không làm thiết bị "online" giả. Header `X-Request-ID` có ở mọi response.
 
 FastAPI + SQLAlchemy, dùng **MySQL** cho dữ liệu ứng dụng. REST contract: [api-v1.md](../docs/contracts/api-v1.md). Python 3.10+ và MySQL 8.0+.
 
@@ -58,7 +88,7 @@ Nếu không chuyển dữ liệu cũ mà bắt đầu database mới:
 ./.venv/Scripts/python.exe -m app.cli seed-demo
 ```
 
-`seed-demo` thêm 3 lô hàng mẫu và có thể chạy lại mà không tạo lô trùng. Không seed trước khi chuyển dữ liệu SQLite vào đích trống. Phase 2 chưa có migration schema tổng quát cho các lần đổi model sau này.
+`seed-demo` thêm 3 lô hàng mẫu và có thể chạy lại mà không tạo lô trùng. Không seed trước khi chuyển dữ liệu SQLite vào đích trống. Các thay đổi schema sau revision `20261105_01` phải có Alembic revision mới.
 
 ## Chạy API
 

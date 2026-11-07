@@ -1,13 +1,13 @@
 # Data integrity v1 — bản triển khai Phase 0
 
-Trạng thái: **TESTED ở mức thư viện Python và golden fixture**. Chưa nối với API nhận telemetry, MySQL batch, ESP32 thật hoặc contract anchoring. Đây là đặc tả byte-level để Member 2 và Member 3 rà soát; không coi là xác nhận liên nhóm.
+Trạng thái: **TESTED ở thư viện Python, golden fixture và API signed ingestion**. Chưa có MySQL batch, ESP32 thật hoặc contract anchoring. Đây là đặc tả byte-level để Member 2 và Member 3 rà soát; không coi là xác nhận liên nhóm.
 
 ## SIGNED-TELEMETRY-v1
 
 - Thuật toán: ECDSA P-256 với SHA-256. Chữ ký ASN.1 DER, truyền bằng Base64 chuẩn có padding; public key dạng SPKI PEM. Khóa riêng chỉ ở thiết bị hoặc môi trường sinh fixture dùng một lần.
 - Projection gồm chính xác: `device_id`, `firmware_version`, `humidity_milli_pct`, `key_id`, `payload_version`, `recorded_at`, `sequence_number`, `shipment_id`, `temperature_milli_c`. Bỏ `signature`, hai số thực để hiển thị và mọi trường do server sinh.
 - Khóa JSON theo thứ tự ASCII tăng dần, compact không khoảng trắng, UTF-8. Các string đều giới hạn ASCII. Số là integer JSON, không phải float hay bool. `payload_version=1`; `sequence_number` dương; nhiệt độ và độ ẩm được scale ×1000.
-- `recorded_at` dạng UTC `YYYY-MM-DDTHH:mm:ssZ`. Trước khi nhận vào database, API sẽ phải kiểm tra hai giá trị hiển thị khớp chính xác với integer đã scale, dùng Decimal, và xác minh thiết bị/key/assignment. Thư viện Phase 0 chỉ tạo projection và verify chữ ký; nó chưa thay thế bước validate API.
+- `recorded_at` dạng UTC `YYYY-MM-DDTHH:mm:ssZ`. API kiểm tra hai giá trị hiển thị khớp chính xác với integer đã scale bằng Decimal, rồi xác minh thiết bị/key/assignment trước khi lưu. Thư viện canonical vẫn tách khỏi bước validate API.
 
 Golden vector ở [protocol_vectors_v1.json](../../backend/tests/fixtures/protocol_vectors_v1.json) chứa request hợp lệ, request đã đổi đồng thời `temperature_c` và `temperature_milli_c` nhưng giữ chữ ký, canonical UTF-8/hex, SHA-256, public key và chữ ký. **Không có private key trong fixture.** Script [generate_protocol_vectors.py](../../backend/tests/fixtures/generate_protocol_vectors.py) tạo khóa thử chỉ trong bộ nhớ; chạy lại sẽ đổi chữ ký và mọi root, cần thông báo Member 2 trước khi thay fixture đã công bố.
 
@@ -27,6 +27,6 @@ parent = SHA256(0x01 || left_32_bytes || right_32_bytes)
 ## Quyết định và phụ thuộc còn mở
 
 - `shipment_key = keccak256(UTF8(shipment_id))` đã có trong [blockchain/INTEGRATION.md](../../blockchain/INTEGRATION.md) cho contract bảo hiểm. Contract hiện tại **chưa có Data Integrity Contract**, `anchorBatch`, `getBatch` hay quy tắc `batch_key`; Member 2 cần chốt các phần này trước khi viết adapter anchoring.
-- Vi phạm nhiệt độ hiện có đang dùng telemetry **chưa ký**. Trước khi nối flow payout mới, cần gate `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`, định nghĩa max gap và kết quả `EVIDENCE_PENDING` cùng Member 2/3. `recorded_at` không được dùng để bù 15 phút nhận dữ liệu ở Backend.
-- MySQL production cần migration phiên bản và bảng thiết bị, accepted telemetry, rejected audit, batch membership, outbox. `create_all()` hiện tại không phải cơ chế upgrade schema production.
+- Luồng bảo hiểm cũ có thể dùng telemetry **chưa ký** trong development; signed ingestion đã dùng cùng policy nhiệt độ nhưng không dispatch payout. Trước khi nối flow payout mới, cần gate `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`, định nghĩa max gap và kết quả `EVIDENCE_PENDING` cùng Member 2/3. `recorded_at` không được dùng để bù 15 phút nhận dữ liệu ở Backend.
+- Đã có Alembic revision `20261105_01` cho bảng thiết bị, key, assignment, signed receipt và rejected audit; các bản ghi signed vẫn dùng bảng telemetry hiện có kèm receipt riêng. Batch membership và outbox integrity cần migration tiếp theo. Không dùng `create_all()` để nâng cấp schema production.
 - Board ESP32, Arduino core, sensor, CORS origin production, MySQL provider và Render URL vẫn cần xác nhận trên môi trường thực tế.

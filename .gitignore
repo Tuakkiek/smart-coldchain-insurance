@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 device/esp32/config.h
+device/wokwi/config.h
 *.pem
 *.key
 
@@ -14,6 +15,8 @@ venv/
 *.db
 *.sqlite3
 .pytest_cache/
+.pio/
+backend/backups/
 
 # Node / build output
 node_modules/

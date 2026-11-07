@@ -1,6 +1,8 @@
 # Thiết bị và bộ giả lập telemetry
 
-Payload gửi lên Backend theo [hợp đồng API v1](../docs/contracts/api-v1.md): chỉ có `device_id`, `temperature_c`, `humidity_pct`. Thiết bị/bộ giả lập không gửi GPS, `received_at` hay `recorded_at`; Backend tự gắn thời gian nhận và vị trí mô phỏng.
+Để thử ESP32 + DHT22 trên Wokwi gửi signed telemetry tới Backend triển khai trên Render, xem [hướng dẫn Render + Wokwi](../docs/deployment/render-wokwi.md). Project mô phỏng nằm ở `device/wokwi/`.
+
+Firmware ESP32 và simulator Python ở phần dưới dùng payload Phase 1 theo [hợp đồng API v1](../docs/contracts/api-v1.md): `device_id`, `temperature_c`, `humidity_pct`. Chế độ này chỉ được Backend chấp nhận khi `APP_ENV=development`. Project Wokwi ở trên dùng signed telemetry v1 để chạy với `APP_ENV=production`. Cả hai đều không gửi GPS hay `received_at`; Backend tự gắn thời gian nhận và vị trí mô phỏng.
 
 ## ESP32 + DHT22
 

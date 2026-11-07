@@ -6,7 +6,8 @@
 > **Trạng thái:** Roadmap triển khai được đề xuất; **không** có nghĩa các tính năng đã được lập trình hoặc deploy.  
 > **Mục tiêu nâng cấp:** **IoT Data Integrity + Blockchain Data Anchoring + Smart Contract Insurance + Public FastAPI Backend on Render**.
 
-> **Cập nhật tiến độ 2026-11-05:** Phase 0 **IN_PROGRESS**. Đã kiểm tra repo/nhánh `feat/iot-backend`; đã triển khai và test thư viện `SIGNED-TELEMETRY-v1`/`MERKLE-v1`, golden vectors công khai và đặc tả byte-level tại `docs/architecture/data-integrity.md`. API telemetry đang chạy vẫn nhận payload **chưa ký**; chưa có migration thiết bị/batch, ESP32 cross-test, Data Integrity Contract, Render URL hoặc xác nhận contract từ Member 2/3. Không đánh dấu Phase 0 hoàn tất trước các xác nhận đó.
+> **Cập nhật tiến độ 2026-11-05:** Phase 0 **IN_PROGRESS**. Đã kiểm tra repo/nhánh `feat/iot-backend`; đã triển khai và test thư viện `SIGNED-TELEMETRY-v1`/`MERKLE-v1`, golden vectors công khai và đặc tả byte-level tại `docs/architecture/data-integrity.md`. Chưa có ESP32 cross-test, Data Integrity Contract, Render URL hoặc xác nhận contract từ Member 2/3. Không đánh dấu Phase 0 hoàn tất trước các xác nhận đó.
+> **Tiến độ Backend tiếp theo:** Phase 2 **IN_PROGRESS**. Đã có API admin đăng ký/revoke device key/assignment và tiếp nhận signed telemetry với duplicate/replay/gap audit; production từ chối payload chưa ký. Alembic revision `20261105_01` nâng schema trên DB nền hiện có; có body limit, rate limit theo thiết bị, request ID và device status suy ra từ `last_seen_at`. Chưa có signed heartbeat, giới hạn theo IP ở gateway, batch anchoring hoặc payout evidence gate; không dùng kết quả hiện tại để tuyên bố hoàn tất Phase 2.
 
 ---
 

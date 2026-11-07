@@ -21,6 +21,9 @@ class Settings:
     log_level: str = "INFO"
     cors_origins: tuple[str, ...] = ()
     sensor_gap_minutes: int = 5
+    admin_api_key: str = ""
+    max_request_body_bytes: int = 8192
+    signed_rate_limit_per_minute: int = 120
     blockchain_enabled: bool = False
     blockchain_network: str = "localhost"
     blockchain_rpc_url: str = "http://127.0.0.1:8545"
@@ -50,6 +53,12 @@ def load_settings() -> Settings:
     sensor_gap_minutes = int(os.getenv("SENSOR_GAP_MINUTES", "5"))
     if sensor_gap_minutes <= 0:
         raise ValueError("SENSOR_GAP_MINUTES must be positive")
+    max_request_body_bytes = int(os.getenv("MAX_REQUEST_BODY_BYTES", "8192"))
+    if max_request_body_bytes < 1024:
+        raise ValueError("MAX_REQUEST_BODY_BYTES must be at least 1024")
+    signed_rate_limit_per_minute = int(os.getenv("SIGNED_RATE_LIMIT_PER_MINUTE", "120"))
+    if signed_rate_limit_per_minute <= 0:
+        raise ValueError("SIGNED_RATE_LIMIT_PER_MINUTE must be positive")
     query = {"charset": "utf8mb4"}
     if ca_path := os.getenv("MYSQL_SSL_CA"):
         query["ssl_ca"] = ca_path
@@ -71,6 +80,9 @@ def load_settings() -> Settings:
             if origin.strip()
         ),
         sensor_gap_minutes=sensor_gap_minutes,
+        admin_api_key=os.getenv("ADMIN_API_KEY", ""),
+        max_request_body_bytes=max_request_body_bytes,
+        signed_rate_limit_per_minute=signed_rate_limit_per_minute,
         blockchain_enabled=blockchain_enabled,
         blockchain_network=os.getenv("BLOCKCHAIN_NETWORK", "localhost"),
         blockchain_rpc_url=os.getenv("BLOCKCHAIN_RPC_URL", "http://127.0.0.1:8545"),

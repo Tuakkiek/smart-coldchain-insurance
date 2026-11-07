@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -82,6 +83,69 @@ class TelemetryCreate(StrictBody):
         return value
 
 
+class SignedTelemetryCreate(StrictBody):
+    payload_version: Literal[1]
+    shipment_id: str
+    device_id: str
+    key_id: str
+    sequence_number: int = Field(ge=1, le=2**63 - 1, strict=True)
+    temperature_c: Decimal
+    humidity_pct: Decimal
+    temperature_milli_c: int = Field(ge=-100000, le=100000, strict=True)
+    humidity_milli_pct: int = Field(ge=0, le=100000, strict=True)
+    recorded_at: str
+    firmware_version: str
+    signature: str = Field(min_length=1, max_length=128)
+
+    @field_validator("temperature_c", "humidity_pct", mode="before")
+    @classmethod
+    def decimal_json_number(cls, value: object) -> Decimal:
+        if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+            raise ValueError("must be a JSON number")
+        raw = str(value)
+        if "e" in raw.lower():
+            raise ValueError("exponential notation is not allowed")
+        try:
+            number = Decimal(raw)
+        except InvalidOperation as exc:
+            raise ValueError("invalid decimal number") from exc
+        if not number.is_finite() or number.as_tuple().exponent < -3:
+            raise ValueError("must be finite with at most three decimal places")
+        return number
+
+    @model_validator(mode="after")
+    def valid_signed_payload(self) -> SignedTelemetryCreate:
+        from app.services.telemetry_protocol import canonical_signed_bytes
+
+        if self.temperature_c * 1000 != self.temperature_milli_c:
+            raise ValueError("temperature_c does not match temperature_milli_c")
+        if self.humidity_pct * 1000 != self.humidity_milli_pct:
+            raise ValueError("humidity_pct does not match humidity_milli_pct")
+        canonical_signed_bytes(self.model_dump())
+        return self
+
+
+class DeviceRegister(StrictBody):
+    device_id: str
+    key_id: str
+    public_key_pem: str = Field(min_length=1, max_length=512)
+    shipment_id: str
+
+
+class DeviceKeyRegister(StrictBody):
+    key_id: str
+    public_key_pem: str = Field(min_length=1, max_length=512)
+
+
+class DeviceStateUpdate(StrictBody):
+    status: Literal["active", "revoked"]
+
+
+class AssignmentUpdate(StrictBody):
+    shipment_id: str
+    active: bool
+
+
 class LocationOut(BaseModel):
     latitude: float
     longitude: float
@@ -96,6 +160,10 @@ class LatestTelemetryOut(BaseModel):
     humidity_pct: float
     recorded_at: datetime | None
     received_at: datetime
+    signature_status: Literal["VALID"] | None = None
+    completeness_status: Literal["COMPLETE", "DATA_INCOMPLETE"] | None = None
+    sequence_number: int | None = None
+    missing_sequences: dict[str, int] | None = None
 
 
 class InsuranceOut(BaseModel):
@@ -135,6 +203,25 @@ class ShipmentsOut(BaseModel):
 class TelemetryOut(LatestTelemetryOut):
     shipment_id: str
     location: LocationOut
+
+
+class SignedTelemetryOut(TelemetryOut):
+    signature_status: Literal["VALID"] = "VALID"
+    completeness_status: Literal["COMPLETE", "DATA_INCOMPLETE"]
+    sequence_number: int
+    duplicate: bool
+
+
+class DeviceHealthOut(BaseModel):
+    device_id: str
+    registration_status: Literal["active", "revoked"]
+    telemetry_status: Literal["UNKNOWN", "ONLINE", "OFFLINE"]
+    last_seen_at: datetime | None
+    last_sequence_number: int
+
+
+class DeviceHealthListOut(BaseModel):
+    items: list[DeviceHealthOut]
 
 
 class TelemetryListOut(BaseModel):
