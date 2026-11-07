@@ -203,9 +203,15 @@ class MockAdapter {
         status: 'triggered',
         payout_status: 'paid',
       };
+      const anchorHash =
+        '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      const insuranceHash =
+        '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
       item.blockchain = {
         network: 'localhost',
-        transaction_hash: '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(''),
+        transaction_hash: insuranceHash,
+        anchor_transaction_hash: anchorHash,
+        insurance_transaction_hash: insuranceHash,
         confirmation_status: 'success',
       };
 

@@ -76,6 +76,53 @@ export const InsuranceStatusBadge: React.FC<InsuranceStatusBadgeProps> = ({
   status,
   payoutStatus,
 }) => {
+  const normPayout = (payoutStatus || '').toUpperCase();
+
+  // If evidence is pending (breached > 15 mins, awaiting Merkle root anchoring)
+  if (normPayout === 'EVIDENCE_PENDING') {
+    return (
+      <Badge
+        variant="warning"
+        icon={<Clock size={12} />}
+        title="Đã vi phạm ngưỡng nhiệt độ liên tục > 15 phút nhưng đang chờ neo Merkle root của batch dữ liệu lên blockchain làm bằng chứng hợp lệ theo chính sách PAYOUT_REQUIRES_ANCHORED_EVIDENCE."
+      >
+        Chờ bằng chứng neo (EVIDENCE_PENDING)
+      </Badge>
+    );
+  }
+
+  if (normPayout === 'PAID' || normPayout === 'CONFIRMED') {
+    return (
+      <Badge variant="success" icon={<CheckCircle2 size={12} />}>
+        Đã chi trả bồi thường
+      </Badge>
+    );
+  }
+
+  if (normPayout === 'PENDING') {
+    return (
+      <Badge variant="warning" icon={<Clock size={12} />}>
+        Chờ chi trả on-chain
+      </Badge>
+    );
+  }
+
+  if (normPayout === 'FAILED') {
+    return (
+      <Badge variant="danger" icon={<XCircle size={12} />}>
+        Chi trả thất bại
+      </Badge>
+    );
+  }
+
+  if (normPayout === 'NOT_ELIGIBLE') {
+    return (
+      <Badge variant="neutral" icon={<ShieldCheck size={12} />}>
+        Không đủ điều kiện bồi thường
+      </Badge>
+    );
+  }
+
   if (status === 'active') {
     return (
       <Badge variant="success" icon={<ShieldCheck size={12} />}>
@@ -84,41 +131,22 @@ export const InsuranceStatusBadge: React.FC<InsuranceStatusBadgeProps> = ({
     );
   }
 
-  switch (payoutStatus) {
-    case 'paid':
-      return (
-        <Badge variant="success" icon={<CheckCircle2 size={12} />}>
-          Đã chi trả bồi thường
-        </Badge>
-      );
-    case 'pending':
-      return (
-        <Badge variant="warning" icon={<Clock size={12} />}>
-          Chờ chi trả on-chain
-        </Badge>
-      );
-    case 'failed':
-      return (
-        <Badge variant="danger" icon={<XCircle size={12} />}>
-          Chi trả thất bại
-        </Badge>
-      );
-    default:
-      return (
-        <Badge variant="danger" icon={<ShieldAlert size={12} />}>
-          Đã vi phạm bảo hiểm
-        </Badge>
-      );
-  }
+  return (
+    <Badge variant="danger" icon={<ShieldAlert size={12} />}>
+      Đã vi phạm bảo hiểm
+    </Badge>
+  );
 };
 
 interface BlockchainBadgeProps {
-  status: BlockchainConfirmationStatus;
+  status: BlockchainConfirmationStatus | string;
 }
 
 export const BlockchainBadge: React.FC<BlockchainBadgeProps> = ({ status }) => {
-  switch (status) {
+  const normStatus = (status || '').toLowerCase();
+  switch (normStatus) {
     case 'success':
+    case 'confirmed':
       return (
         <Badge variant="success" icon={<CheckCircle2 size={12} />}>
           Blockchain Confirmed
@@ -134,6 +162,12 @@ export const BlockchainBadge: React.FC<BlockchainBadgeProps> = ({ status }) => {
       return (
         <Badge variant="danger" icon={<XCircle size={12} />}>
           Giao dịch thất bại
+        </Badge>
+      );
+    case 'not_submitted':
+      return (
+        <Badge variant="neutral" icon={<Clock size={12} />}>
+          Chưa gửi giao dịch
         </Badge>
       );
     default:

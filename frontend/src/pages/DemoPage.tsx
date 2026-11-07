@@ -20,6 +20,8 @@ import {
   ArrowRight,
   ShieldCheck,
   ShieldAlert,
+  Coins,
+  Database,
 } from 'lucide-react';
 
 export const DemoPage: React.FC = () => {
@@ -285,8 +287,55 @@ export const DemoPage: React.FC = () => {
                   />
                 </div>
                 {selectedShipment.blockchain && (
-                  <div style={{ marginTop: 'var(--space-2)' }}>
-                    <BlockchainBadge status={selectedShipment.blockchain.confirmation_status} />
+                  <div
+                    style={{
+                      marginTop: 'var(--space-3)',
+                      padding: 'var(--space-3)',
+                      backgroundColor: 'var(--color-surface-secondary)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-border-subtle)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 'var(--space-2)',
+                    }}
+                  >
+                    <div className="flex-row items-center justify-between">
+                      <BlockchainBadge status={selectedShipment.blockchain.confirmation_status} />
+                      <div
+                        style={{
+                          fontSize: '10px',
+                          color: '#b45309',
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Coins size={10} />
+                        <span>Local/Testnet Token — không phải tiền thật</span>
+                      </div>
+                    </div>
+                    {selectedShipment.blockchain.anchor_transaction_hash && (
+                      <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                        <strong style={{ color: 'var(--color-accent)' }}>Anchor Tx:</strong>{' '}
+                        <span className="font-mono" style={{ fontSize: '10px' }}>
+                          {selectedShipment.blockchain.anchor_transaction_hash.slice(0, 18)}...
+                        </span>
+                      </div>
+                    )}
+                    {(selectedShipment.blockchain.insurance_transaction_hash ||
+                      selectedShipment.blockchain.transaction_hash) && (
+                      <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                        <strong style={{ color: 'var(--color-success)' }}>Insurance Tx:</strong>{' '}
+                        <span className="font-mono" style={{ fontSize: '10px' }}>
+                          {(
+                            selectedShipment.blockchain.insurance_transaction_hash ||
+                            selectedShipment.blockchain.transaction_hash
+                          )?.slice(0, 18)}
+                          ...
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

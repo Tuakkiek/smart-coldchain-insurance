@@ -261,7 +261,10 @@ export const ShipmentsPage: React.FC = () => {
                     <div className="tabular-nums" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginTop: '2px' }}>
                       {shipment.insurance.insured_amount_vnd.toLocaleString('vi-VN')} VND
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
+                    <div style={{ fontSize: '10px', color: '#b45309', marginTop: '1px', fontWeight: 500 }}>
+                      (Local/Testnet Token — không phải tiền thật)
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
                       Vi phạm liên tục {shipment.violation_duration_minutes} phút
                     </div>
                   </div>

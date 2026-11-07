@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
 import {
   ShipmentStatusBadge,
   InsuranceStatusBadge,
@@ -43,6 +44,12 @@ import {
   Activity,
   Layers,
   Cpu,
+  Coins,
+  AlertCircle,
+  Database,
+  CheckCircle2,
+  AlertTriangle,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const ShipmentDetailPage: React.FC = () => {
@@ -57,7 +64,7 @@ export const ShipmentDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Batch Verification & Detail Modals
@@ -179,10 +186,11 @@ export const ShipmentDetailPage: React.FC = () => {
     };
   }, [id, autoRefresh]);
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string, key = 'default') => {
+    if (!text) return;
     navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
   if (loading) {
@@ -203,6 +211,19 @@ export const ShipmentDetailPage: React.FC = () => {
   const isBreach =
     temp !== undefined &&
     (temp < shipment.temp_min_c || temp > shipment.temp_max_c);
+
+  const isEvidencePending =
+    shipment.insurance.payout_status?.toUpperCase() === 'EVIDENCE_PENDING';
+
+  const anchorTx =
+    shipment.blockchain?.anchor_transaction_hash ||
+    batches.find((b) => b.anchor_tx_hash)?.anchor_tx_hash ||
+    null;
+
+  const insuranceTx =
+    shipment.blockchain?.insurance_transaction_hash ||
+    shipment.blockchain?.transaction_hash ||
+    null;
 
   return (
     <div>
@@ -265,6 +286,63 @@ export const ShipmentDetailPage: React.FC = () => {
           </div>
         }
       />
+
+      {/* Prominent Alert Banner when payout_status is EVIDENCE_PENDING */}
+      {isEvidencePending && (
+        <div
+          style={{
+            padding: 'var(--space-4)',
+            marginBottom: 'var(--space-6)',
+            backgroundColor: 'rgba(217, 119, 6, 0.08)',
+            border: '1px solid rgba(217, 119, 6, 0.3)',
+            borderRadius: 'var(--radius-md)',
+            display: 'flex',
+            gap: 'var(--space-3)',
+            alignItems: 'flex-start',
+          }}
+        >
+          <Clock size={20} color="#d97706" style={{ marginTop: '2px', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <div
+              style={{
+                fontWeight: 600,
+                fontSize: 'var(--text-sm)',
+                color: '#b45309',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <span>Trạng thái Bồi thường: Đang chờ bằng chứng neo (EVIDENCE_PENDING)</span>
+              <span
+                style={{
+                  fontSize: '11px',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(217, 119, 6, 0.2)',
+                  fontWeight: 600,
+                }}
+              >
+                Chưa giải ngân
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: 'var(--text-xs)',
+                color: 'var(--color-text-secondary)',
+                marginTop: '4px',
+                lineHeight: '1.5',
+              }}
+            >
+              Hệ thống đã ghi nhận lô hàng vi phạm ngưỡng nhiệt độ liên tục vượt quá{' '}
+              <strong>{shipment.violation_duration_minutes} phút</strong>. Tuy nhiên, theo chính sách
+              hợp đồng thông minh (<code>PAYOUT_REQUIRES_ANCHORED_EVIDENCE</code>), lệnh bồi thường{' '}
+              <strong>chưa được phát hành ngay</strong> mà đang chờ batch Merkle root hoàn tất giao dịch
+              neo dữ liệu (<em>Data Anchoring</em>) lên mạng Blockchain để làm bằng chứng pháp lý bất biến.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Grid of Key Properties */}
       <div
@@ -354,21 +432,57 @@ export const ShipmentDetailPage: React.FC = () => {
             >
               {shipment.insurance.insured_amount_vnd.toLocaleString('vi-VN')} VND
             </div>
+
+            {/* Mandatory Token Label */}
+            <div
+              style={{
+                marginTop: 'var(--space-2)',
+                marginBottom: 'var(--space-2)',
+                padding: '4px 8px',
+                borderRadius: 'var(--radius-sm)',
+                backgroundColor: 'rgba(217, 119, 6, 0.1)',
+                border: '1px solid rgba(217, 119, 6, 0.3)',
+                color: '#b45309',
+                fontSize: '11px',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              <Coins size={12} />
+              <span>Local/Testnet Token — không phải tiền thật</span>
+            </div>
+
             <div
               style={{
                 fontSize: 'var(--text-xs)',
                 color: 'var(--color-text-secondary)',
-                marginTop: 'var(--space-2)',
+                marginTop: 'var(--space-1)',
               }}
             >
               Điều kiện vi phạm: Vượt ngưỡng liên tục <strong>{shipment.violation_duration_minutes} phút</strong>
             </div>
+
             <div style={{ marginTop: 'var(--space-3)' }}>
               <InsuranceStatusBadge
                 status={shipment.insurance.status}
                 payoutStatus={shipment.insurance.payout_status}
               />
             </div>
+
+            {isEvidencePending && (
+              <div
+                style={{
+                  fontSize: '11px',
+                  color: '#b45309',
+                  marginTop: 'var(--space-2)',
+                  fontStyle: 'italic',
+                }}
+              >
+                * Đang tạm hoãn chi trả: Chờ neo Merkle root của batch telemetry làm bằng chứng hợp lệ.
+              </div>
+            )}
           </div>
         </Card>
 
@@ -485,76 +599,275 @@ export const ShipmentDetailPage: React.FC = () => {
         />
       </Card>
 
-      {/* Blockchain Status section */}
+      {/* Blockchain Status section: Separating Data Anchoring & Insurance Payout */}
       <Card
         title="Trạng thái Smart Contract & Blockchain"
-        description="Bằng chứng bồi thường tự động được ghi nhận bất biến trên mạng Blockchain."
+        description="Kiến trúc tách biệt giữa hai luồng giao dịch: Neo dữ liệu (Data Anchoring) và Chi trả bồi thường (Insurance Payout)."
         style={{ marginBottom: 'var(--space-6)' }}
       >
-        {shipment.blockchain ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            <div className="flex-row items-center gap-3">
-              <BlockchainBadge status={shipment.blockchain.confirmation_status} />
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
-                Mạng: <strong>{shipment.blockchain.network}</strong>
-              </span>
-            </div>
-
-            {shipment.blockchain.transaction_hash && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)',
-                  padding: 'var(--space-3)',
-                  backgroundColor: 'var(--color-surface-secondary)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
-                    Mã giao dịch (Transaction Hash)
-                  </div>
-                  <div
-                    className="font-mono"
-                    style={{
-                      fontSize: 'var(--text-xs)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      color: 'var(--color-text-primary)',
-                      marginTop: '2px',
-                    }}
-                  >
-                    {shipment.blockchain.transaction_hash}
-                  </div>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => copyToClipboard(shipment.blockchain?.transaction_hash || '')}
-                  icon={copied ? <Check size={14} /> : <Copy size={14} />}
-                >
-                  {copied ? 'Đã chép' : 'Sao chép'}
-                </Button>
-              </div>
-            )}
-          </div>
-        ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {/* Top Network Info & Testnet Token Disclaimer */}
           <div
             style={{
-              padding: 'var(--space-4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 'var(--space-2)',
+              padding: 'var(--space-3) var(--space-4)',
               backgroundColor: 'var(--color-surface-secondary)',
               borderRadius: 'var(--radius-md)',
-              color: 'var(--color-text-secondary)',
-              fontSize: 'var(--text-sm)',
+              border: '1px solid var(--color-border-subtle)',
             }}
           >
-            Chưa có giao dịch Blockchain nào được tạo. Giao dịch bồi thường sẽ được tự động kích hoạt
-            bởi Backend qua Smart Contract khi thời lượng vi phạm vượt quá {shipment.violation_duration_minutes} phút.
+            <div className="flex-row items-center gap-3">
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+                Mạng Blockchain: <strong>{shipment.blockchain?.network || 'Ethereum Localnet / Hardhat'}</strong>
+              </span>
+              <BlockchainBadge status={shipment.blockchain?.confirmation_status || 'NOT_SUBMITTED'} />
+            </div>
+
+            {/* Mandatory Token Disclaimer */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '3px 8px',
+                borderRadius: 'var(--radius-sm)',
+                backgroundColor: 'rgba(217, 119, 6, 0.1)',
+                border: '1px solid rgba(217, 119, 6, 0.3)',
+                color: '#b45309',
+                fontSize: '11px',
+                fontWeight: 600,
+              }}
+            >
+              <Coins size={12} />
+              <span>Local/Testnet Token — không phải tiền thật</span>
+            </div>
           </div>
-        )}
+
+          {/* TWO SEPARATED TRANSACTION CARDS */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              gap: 'var(--space-4)',
+            }}
+          >
+            {/* 1. DATA ANCHORING TRANSACTION */}
+            <div
+              style={{
+                padding: 'var(--space-4)',
+                backgroundColor: 'var(--color-surface)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <div className="flex-row items-center justify-between">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Database size={16} color="var(--color-accent)" />
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    1. Giao dịch Neo Dữ liệu (Data Anchoring)
+                  </span>
+                </div>
+                {anchorTx ? (
+                  <Badge variant="success" icon={<CheckCircle2 size={12} />}>
+                    DATA_ANCHORED
+                  </Badge>
+                ) : (
+                  <Badge variant="neutral" icon={<Clock size={12} />}>
+                    Đang chờ / Chưa neo
+                  </Badge>
+                )}
+              </div>
+
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', lineHeight: '1.4' }}>
+                Mục đích: Neo Merkle root của các batch dữ liệu cảm biến (SHA-256 canonical) lên Smart Contract để chống chối bỏ và chống làm giả dữ liệu.
+              </div>
+
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginBottom: '4px' }}>
+                  anchor_transaction_hash:
+                </div>
+                {anchorTx ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)',
+                      padding: 'var(--space-2) var(--space-3)',
+                      backgroundColor: 'var(--color-surface-secondary)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-border-subtle)',
+                    }}
+                  >
+                    <span
+                      className="font-mono"
+                      style={{
+                        flex: 1,
+                        fontSize: '12px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        color: 'var(--color-text-primary)',
+                      }}
+                      title={anchorTx}
+                    >
+                      {anchorTx}
+                    </span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => copyToClipboard(anchorTx, 'anchor')}
+                      icon={copiedKey === 'anchor' ? <Check size={12} /> : <Copy size={12} />}
+                      style={{ height: '26px', fontSize: '11px' }}
+                    >
+                      {copiedKey === 'anchor' ? 'Đã chép' : 'Chép'}
+                    </Button>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      padding: 'var(--space-2) var(--space-3)',
+                      backgroundColor: 'var(--color-surface-secondary)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px dashed var(--color-border)',
+                      fontSize: 'var(--text-xs)',
+                      color: 'var(--color-text-tertiary)',
+                    }}
+                  >
+                    Chưa phát sinh giao dịch neo dữ liệu on-chain cho lô hàng này.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 2. INSURANCE PAYOUT TRANSACTION */}
+            <div
+              style={{
+                padding: 'var(--space-4)',
+                backgroundColor: 'var(--color-surface)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <div className="flex-row items-center justify-between">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <ShieldCheck size={16} color="var(--color-success)" />
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    2. Giao dịch Chi trả Bồi thường (Insurance Payout)
+                  </span>
+                </div>
+                {insuranceTx && shipment.insurance?.payout_status === 'paid' ? (
+                  <Badge variant="success" icon={<CheckCircle2 size={12} />}>
+                    CONFIRMED
+                  </Badge>
+                ) : insuranceTx ? (
+                  <Badge variant="warning" icon={<Clock size={12} />}>
+                    PENDING
+                  </Badge>
+                ) : isEvidencePending ? (
+                  <Badge variant="warning" icon={<Clock size={12} />}>
+                    EVIDENCE_PENDING
+                  </Badge>
+                ) : (
+                  <Badge variant="neutral">Chưa kích hoạt</Badge>
+                )}
+              </div>
+
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', lineHeight: '1.4' }}>
+                Mục đích: Tự động giải ngân demo token bồi thường từ quỹ Smart Contract khi vi phạm được xác nhận cùng bằng chứng Merkle root hợp lệ.
+              </div>
+
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginBottom: '4px' }}>
+                  insurance_transaction_hash:
+                </div>
+                {insuranceTx ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)',
+                      padding: 'var(--space-2) var(--space-3)',
+                      backgroundColor: 'var(--color-surface-secondary)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-border-subtle)',
+                    }}
+                  >
+                    <span
+                      className="font-mono"
+                      style={{
+                        flex: 1,
+                        fontSize: '12px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        color: 'var(--color-text-primary)',
+                      }}
+                      title={insuranceTx}
+                    >
+                      {insuranceTx}
+                    </span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => copyToClipboard(insuranceTx, 'insurance')}
+                      icon={copiedKey === 'insurance' ? <Check size={12} /> : <Copy size={12} />}
+                      style={{ height: '26px', fontSize: '11px' }}
+                    >
+                      {copiedKey === 'insurance' ? 'Đã chép' : 'Chép'}
+                    </Button>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      padding: 'var(--space-2) var(--space-3)',
+                      backgroundColor: 'var(--color-surface-secondary)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px dashed var(--color-border)',
+                      fontSize: 'var(--text-xs)',
+                      color: 'var(--color-text-tertiary)',
+                    }}
+                  >
+                    {isEvidencePending
+                      ? 'Đang chờ bằng chứng neo Merkle root hợp lệ trước khi giải ngân.'
+                      : `Chưa có lệnh chi trả bồi thường (chỉ kích hoạt khi vi phạm > ${shipment.violation_duration_minutes} phút).`}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Mandatory Rule Reminder from ROADMAP */}
+          <div
+            style={{
+              padding: 'var(--space-3) var(--space-4)',
+              borderRadius: 'var(--radius-sm)',
+              backgroundColor: 'var(--color-surface-secondary)',
+              border: '1px solid var(--color-border-subtle)',
+              fontSize: '11px',
+              color: 'var(--color-text-tertiary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+            }}
+          >
+            <AlertCircle size={14} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+            <span>
+              <strong>Nguyên tắc thẩm định giao dịch:</strong> <code>PENDING ≠ CONFIRMED</code>. Sự tồn tại của mã hash giao dịch
+              chưa đủ chứng minh đã chi trả; trạng thái hoàn tất chỉ được xác nhận khi có receipt thành công và sự kiện <code>InsurancePaid</code> trên Blockchain.
+              Frontend không ký giao dịch người dùng hay gọi trực tiếp Smart Contract.
+            </span>
+          </div>
+        </div>
       </Card>
 
       {/* PROMINENT WARNING IF ANY BATCH HAS DATA_INTEGRITY_FAILED */}
