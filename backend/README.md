@@ -114,7 +114,7 @@ Mỗi mẫu được so với `[temp_min_c, temp_max_c]` của lô hàng. Mẫu 
 
 Ở `APP_ENV=development`, endpoint `POST /api/v1/demo/shipments/{id}/scenario` nhận `{"scenario":"normal"}` hoặc `{"scenario":"temperature_breach"}`. Kịch bản vi phạm dùng đồng hồ ảo, tạo bốn mẫu cho chính sách 15 phút/ngưỡng gap 5 phút và chạy qua cùng service với ESP32. Hãy dùng lô hàng demo riêng vì đồng hồ ảo có thể đưa `received_at` vào tương lai. Endpoint không được đăng ký trong production.
 
-Nếu ESP32 truy cập từ LAN, sửa `WIFI_SSID`, `WIFI_PASSWORD` và `API_BASE_URL` trong `device/cold_chain_device.ino`. Khi dùng Backend local, chạy Uvicorn với `--host 0.0.0.0` và cho phép cổng 8000 trên firewall. Không đưa dịch vụ HTTP phát triển trực tiếp ra Internet.
+Để cấu hình ESP32, sao chép `device/cold_chain_device/config.example.h` thành `config.h` cùng thư mục và xem `device/README.md`. Sketch yêu cầu HTTPS với CA hợp lệ. Để thử Backend local qua HTTP, dùng Python simulator trên localhost; không đưa dịch vụ HTTP phát triển trực tiếp ra Internet.
 
 Endpoint hiện có: `GET /api/v1/health`, `POST/GET /api/v1/shipments`, `GET /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, và endpoint demo trong development. Tọa độ vẫn là mô phỏng ở Backend.
 

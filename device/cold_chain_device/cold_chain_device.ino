@@ -16,19 +16,7 @@
 #include <mbedtls/pk.h>
 #include <mbedtls/version.h>
 
-#define API_BASE_URL "https://smart-coldchain-insurance.onrender.com"
-#define WIFI_SSID "GU 22"
-#define WIFI_PASSWORD "12345678"
-#define SHIPMENT_ID "67f1e79a-68cb-461b-b104-5c7583bd9047"
-#define DEVICE_ID "WOKWI-85499B16C8"
-#define KEY_ID "wokwi-key-v1"
-
-static const char DEVICE_PRIVATE_KEY_PEM[] = R"PEM(-----BEGIN EC PRIVATE KEY-----
-MHcCAQEEIBciCvXZ5tNbEXUUYLtsxl36SyE6BZGh6N0wiN+HHZsnoAoGCCqGSM49
-AwEHoUQDQgAE5t7UC5yvLKt2IJrVkRdPrt79is9A3EXEhvhpxBYZBGUy13uCA5bJ
-MjbAHlge0SQ30n1qb6ubPtNlWTZcdkDXaw==
------END EC PRIVATE KEY-----
-)PEM";
+#include "config.h"  // Local credentials and TLS CA; ignored by Git.
 
 namespace {
 constexpr int kDhtPin = 27;
@@ -36,10 +24,8 @@ constexpr uint32_t kSampleIntervalMs = 60000;
 constexpr int kHttpTimeoutMs = 30000;
 constexpr char kFirmwareVersion[] = "esp32-1.0";
 
-// Sequence 2 and 3 have already collided on the backend.
-// On a fresh Preferences store, the next attempted sequence will therefore be 4.
-// If 4 (or later values) are also occupied, sendReading() automatically skips them.
-constexpr uint32_t kInitialSequenceNumber = 3;
+// A newly provisioned device starts at sequence 1. Existing NVS values survive reboot.
+constexpr uint32_t kInitialSequenceNumber = 0;
 constexpr uint8_t kMaxSequenceConflictSkips = 50;
 
 DHTesp sensor;
@@ -187,7 +173,7 @@ int postTelemetry(const String &body) {
   for (int attempt = 1; attempt <= 3; ++attempt) {
     WiFiClientSecure client;
     // Test configuration only: TLS certificate verification is disabled.
-    client.setInsecure();
+    client.setCACert(TLS_ROOT_CA_PEM);
 
     HTTPClient http;
     http.setConnectTimeout(kHttpTimeoutMs);
