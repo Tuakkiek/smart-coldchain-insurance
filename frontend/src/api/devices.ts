@@ -5,7 +5,75 @@ import {
   DeviceItemOut,
   DeviceHealthOut,
   DeviceMissingSequencesOut,
+  ShipmentDevicesOut,
+  DeviceRegisterPayload,
+  AdminDeviceViewOut,
 } from '../types/api';
+
+/**
+ * Admin: Register a new ESP32 device with its SPKI public key and assign to a shipment.
+ * Endpoint: POST /api/v1/devices
+ * Requires header: X-Admin-Key
+ */
+export async function registerDevice(
+  payload: DeviceRegisterPayload,
+  adminKey?: string
+): Promise<AdminDeviceViewOut> {
+  const key = adminKey || apiClient.getAdminKey();
+  if (!key) {
+    throw new ApiError(
+      'Chưa cấu hình X-Admin-Key. Vui lòng cung cấp Admin API Key để thực hiện.',
+      401,
+      'UNAUTHORIZED'
+    );
+  }
+
+  if (apiClient.isMockEnabled()) {
+    return mockAdapter.registerDevice(payload);
+  }
+
+  return apiClient.post<AdminDeviceViewOut>('/api/v1/devices', payload, undefined, {
+    'X-Admin-Key': key,
+  });
+}
+
+/**
+ * Admin: Fetch detailed cryptographic keys and assignments for a device.
+ * Endpoint: GET /api/v1/devices/{device_id}
+ * Requires header: X-Admin-Key
+ */
+export async function getAdminDeviceDetails(
+  deviceId: string,
+  adminKey?: string
+): Promise<AdminDeviceViewOut> {
+  const key = adminKey || apiClient.getAdminKey();
+  if (!key) {
+    throw new ApiError(
+      'Chưa cấu hình X-Admin-Key. Vui lòng cung cấp Admin API Key để thực hiện.',
+      401,
+      'UNAUTHORIZED'
+    );
+  }
+
+  if (apiClient.isMockEnabled()) {
+    return mockAdapter.getAdminDeviceDetails(deviceId);
+  }
+
+  return apiClient.get<AdminDeviceViewOut>(`/api/v1/devices/${deviceId}`, undefined, {
+    'X-Admin-Key': key,
+  });
+}
+
+/**
+ * Fetch devices assigned to a specific shipment and their live telemetry/registration status.
+ * Official contract: GET /api/v1/shipments/{shipment_id}/devices
+ */
+export async function getShipmentDevices(shipmentId: string): Promise<ShipmentDevicesOut> {
+  if (apiClient.isMockEnabled()) {
+    return mockAdapter.listShipmentDevices(shipmentId);
+  }
+  return apiClient.get<ShipmentDevicesOut>(`/api/v1/shipments/${shipmentId}/devices`);
+}
 
 /**
  * Fetch all registered ESP32 devices and their integrity status.

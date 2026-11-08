@@ -1,7 +1,11 @@
 import {
   ShipmentOut,
   ShipmentsOut,
+  ShipmentCreatePayload,
+  TelemetryCreatePayload,
+  TelemetryOut,
   TelemetryListOut,
+  EventOut,
   EventListOut,
   DemoScenarioOut,
   DemoScenarioPayload,
@@ -10,6 +14,10 @@ import {
   DeviceItemOut,
   DeviceHealthOut,
   DeviceMissingSequencesOut,
+  ShipmentDevicesOut,
+  DeviceTelemetryStatus,
+  DeviceRegisterPayload,
+  AdminDeviceViewOut,
   IntegrityBatch,
   IntegrityBatchesOut,
   IntegritySummaryOut,
@@ -107,6 +115,48 @@ class MockAdapter {
     }
   }
 
+  async listShipmentDevices(shipmentId: string): Promise<ShipmentDevicesOut> {
+    const assigned = this.devices.filter(
+      (d) => d.assigned_shipment_id === shipmentId || d.assigned_shipment_code === shipmentId
+    );
+
+    if (assigned.length > 0) {
+      return {
+        items: assigned.map((d) => {
+          let status: DeviceTelemetryStatus = 'ONLINE';
+          if (d.health.online_status === 'OFFLINE') status = 'OFFLINE';
+          else if (d.health.online_status === 'UNKNOWN') status = 'UNKNOWN';
+
+          return {
+            device_id: d.device_id,
+            registration_status: 'active',
+            telemetry_status: status,
+            last_seen_at: d.health.last_seen_at,
+            last_sequence_number: d.health.last_sequence_number ?? 0,
+          };
+        }),
+      };
+    }
+
+    // Nếu không tìm thấy qua assignment trực tiếp, kiểm tra shipment xem có telemetry không
+    const ship = this.shipments.find((s) => s.id === shipmentId || s.code === shipmentId);
+    if (ship?.latest_telemetry?.device_id) {
+      return {
+        items: [
+          {
+            device_id: ship.latest_telemetry.device_id,
+            registration_status: 'active',
+            telemetry_status: 'ONLINE',
+            last_seen_at: ship.latest_telemetry.received_at,
+            last_sequence_number: ship.latest_telemetry.sequence_number ?? 1,
+          },
+        ],
+      };
+    }
+
+    return { items: [] };
+  }
+
   async listDevices(): Promise<DevicesOut> {
     return {
       items: JSON.parse(JSON.stringify(this.devices)),
@@ -139,6 +189,68 @@ class MockAdapter {
     return JSON.parse(JSON.stringify(missing));
   }
 
+  async registerDevice(payload: DeviceRegisterPayload): Promise<AdminDeviceViewOut> {
+    const existing = this.devices.find((d) => d.device_id.toLowerCase() === payload.device_id.trim().toLowerCase());
+    if (existing) {
+      throw new Error(`Thiết bị '${payload.device_id}' đã tồn tại trong hệ thống.`);
+    }
+
+    const assignedShipment = this.shipments.find(
+      (s) => s.id === payload.shipment_id || s.code === payload.shipment_id
+    );
+
+    const newDevice: DeviceItemOut = {
+      id: `dev-mock-${Date.now()}`,
+      device_id: payload.device_id.trim(),
+      key_id: payload.key_id.trim(),
+      public_key_pem: payload.public_key_pem.trim(),
+      firmware_version: 'esp32-1.0',
+      assigned_shipment_id: assignedShipment?.id || payload.shipment_id,
+      assigned_shipment_code: assignedShipment?.code || 'ASSIGNED',
+      signature_status: 'VALID',
+      completeness_status: 'COMPLETE',
+      registered_at: new Date().toISOString(),
+      health: {
+        device_id: payload.device_id.trim(),
+        last_sequence_number: 0,
+        missing_sequence_count: 0,
+        last_heartbeat_at: null,
+        last_seen_at: null,
+        online_status: 'ONLINE',
+        firmware_version: 'esp32-1.0',
+      },
+    };
+
+    this.devices.unshift(newDevice);
+
+    return {
+      device_id: newDevice.device_id,
+      status: 'active',
+      last_sequence_number: 0,
+      last_seen_at: null,
+      keys: [{ key_id: payload.key_id.trim(), status: 'active' }],
+      assignments: [{ shipment_id: payload.shipment_id, active: true }],
+    };
+  }
+
+  async getAdminDeviceDetails(deviceId: string): Promise<AdminDeviceViewOut> {
+    const dev = this.devices.find((d) => d.device_id === deviceId);
+    if (!dev) {
+      throw new Error(`Mock 404: Không tìm thấy thiết bị ${deviceId}`);
+    }
+
+    return {
+      device_id: dev.device_id,
+      status: 'active',
+      last_sequence_number: dev.health.last_sequence_number ?? 0,
+      last_seen_at: dev.health.last_seen_at,
+      keys: [{ key_id: dev.key_id, status: 'active' }],
+      assignments: dev.assigned_shipment_id
+        ? [{ shipment_id: dev.assigned_shipment_id, active: true }]
+        : [],
+    };
+  }
+
   async getHealth(): Promise<HealthOut> {
     return { status: 'ok' };
   }
@@ -148,6 +260,48 @@ class MockAdapter {
       items: [...this.shipments],
       total: this.shipments.length,
     };
+  }
+
+  async createShipment(payload: ShipmentCreatePayload): Promise<ShipmentOut> {
+    const trimmedCode = payload.code.trim();
+    const existing = this.shipments.find((s) => s.code.toLowerCase() === trimmedCode.toLowerCase());
+    if (existing) {
+      throw new Error(`Mã lô hàng '${trimmedCode}' đã tồn tại trong hệ thống.`);
+    }
+
+    const newId = `mock-ship-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const newShipment: ShipmentOut = {
+      id: newId,
+      code: trimmedCode,
+      cargo_type: payload.cargo_type.trim(),
+      status: 'created',
+      origin: {
+        name: payload.origin.name.trim(),
+        latitude: payload.origin.latitude,
+        longitude: payload.origin.longitude,
+      },
+      destination: {
+        name: payload.destination.name.trim(),
+        latitude: payload.destination.latitude,
+        longitude: payload.destination.longitude,
+      },
+      temp_min_c: payload.temp_min_c,
+      temp_max_c: payload.temp_max_c,
+      violation_duration_minutes: payload.violation_duration_minutes ?? 15,
+      latest_telemetry: null,
+      location: null,
+      insurance: {
+        insured_amount_vnd: payload.insured_amount_vnd,
+        status: 'active',
+        payout_status: 'not_requested',
+      },
+      blockchain: null,
+      created_at: new Date().toISOString(),
+    };
+
+    // Đưa lên đầu danh sách
+    this.shipments.unshift(newShipment);
+    return JSON.parse(JSON.stringify(newShipment));
   }
 
   async getShipment(id: string): Promise<ShipmentOut> {
@@ -163,6 +317,80 @@ class MockAdapter {
     return {
       items: JSON.parse(JSON.stringify(samples)),
     };
+  }
+
+  async postTelemetry(shipmentId: string, payload: TelemetryCreatePayload): Promise<TelemetryOut> {
+    const item = this.shipments.find((s) => s.id === shipmentId || s.code === shipmentId);
+    if (!item) {
+      throw new Error(`Mock 404: Shipment ${shipmentId} not found`);
+    }
+
+    const now = new Date().toISOString();
+    const currentSamples = this.telemetry[item.id] || [];
+    const sampleCount = currentSamples.length + 1;
+    const progress = Math.min(100, Math.max(5, sampleCount * 5));
+
+    const lat = item.origin.latitude + ((item.destination.latitude - item.origin.latitude) * progress) / 100;
+    const lng = item.origin.longitude + ((item.destination.longitude - item.origin.longitude) * progress) / 100;
+
+    const sample: TelemetryOut = {
+      id: `tel-mock-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      shipment_id: item.id,
+      device_id: payload.device_id,
+      sequence_number: sampleCount,
+      temperature_c: payload.temperature_c,
+      humidity_pct: payload.humidity_pct,
+      recorded_at: payload.recorded_at || now,
+      received_at: now,
+      signature_status: 'VALID',
+      data_status: 'DATA_VERIFIED',
+      location: {
+        latitude: parseFloat(lat.toFixed(6)),
+        longitude: parseFloat(lng.toFixed(6)),
+        location_source: 'backend_simulated',
+        progress_pct: progress,
+      },
+    };
+
+    if (!this.telemetry[item.id]) {
+      this.telemetry[item.id] = [];
+    }
+    this.telemetry[item.id].push(sample);
+
+    item.status = 'in_transit';
+    item.latest_telemetry = {
+      id: sample.id,
+      device_id: sample.device_id,
+      sequence_number: sample.sequence_number,
+      temperature_c: sample.temperature_c,
+      humidity_pct: sample.humidity_pct,
+      recorded_at: sample.recorded_at,
+      received_at: sample.received_at,
+      signature_status: sample.signature_status,
+      data_status: sample.data_status,
+    };
+    item.location = sample.location;
+
+    // Kiểm tra xem có vượt ngưỡng nhiệt độ không
+    if (payload.temperature_c < item.temp_min_c || payload.temperature_c > item.temp_max_c) {
+      const breachEvent: EventOut = {
+        id: `ev-breach-${Date.now()}`,
+        shipment_id: item.id,
+        type: 'TEMPERATURE_BREACH_STARTED',
+        occurred_at: now,
+        details: {
+          temperature_c: payload.temperature_c,
+          temp_min_c: item.temp_min_c,
+          temp_max_c: item.temp_max_c,
+        },
+      };
+      if (!this.events[item.id]) {
+        this.events[item.id] = [];
+      }
+      this.events[item.id].push(breachEvent);
+    }
+
+    return JSON.parse(JSON.stringify(sample));
   }
 
   async listEvents(id: string): Promise<EventListOut> {

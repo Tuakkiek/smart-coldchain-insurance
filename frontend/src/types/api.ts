@@ -35,6 +35,47 @@ export interface DeviceHealthOut {
   firmware_version: string | null;
 }
 
+export type DeviceRegistrationStatus = 'active' | 'revoked';
+export type DeviceTelemetryStatus = 'UNKNOWN' | 'ONLINE' | 'OFFLINE';
+
+export interface ShipmentDeviceOut {
+  device_id: string;
+  registration_status: DeviceRegistrationStatus;
+  telemetry_status: DeviceTelemetryStatus;
+  last_seen_at: string | null;
+  last_sequence_number: number;
+}
+
+export interface ShipmentDevicesOut {
+  items: ShipmentDeviceOut[];
+}
+
+export interface DeviceRegisterPayload {
+  device_id: string;
+  key_id: string;
+  public_key_pem: string;
+  shipment_id: string;
+}
+
+export interface AdminDeviceKeyView {
+  key_id: string;
+  status: 'active' | 'revoked';
+}
+
+export interface AdminDeviceAssignmentView {
+  shipment_id: string;
+  active: boolean;
+}
+
+export interface AdminDeviceViewOut {
+  device_id: string;
+  status: 'active' | 'revoked';
+  last_sequence_number: number;
+  last_seen_at: string | null;
+  keys: AdminDeviceKeyView[];
+  assignments: AdminDeviceAssignmentView[];
+}
+
 export interface DeviceItemOut {
   id: string;
   device_id: string;
