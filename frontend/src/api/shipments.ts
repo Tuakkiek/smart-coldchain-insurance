@@ -33,7 +33,7 @@ export async function getShipmentById(id: string): Promise<ShipmentOut> {
 
 export async function createShipment(payload: ShipmentCreatePayload): Promise<ShipmentOut> {
   if (apiClient.isMockEnabled()) {
-    throw new Error('Chức năng tạo lô hàng chỉ hoạt động ở chế độ API thật');
+    return mockAdapter.createShipment(payload);
   }
   return apiClient.post<ShipmentOut>('/api/v1/shipments', payload);
 }
