@@ -119,15 +119,44 @@ class ApiClient {
     }
   }
 
-  get<T>(path: string, timeoutMs?: number): Promise<T> {
-    return this.request<T>(path, { method: 'GET' }, timeoutMs);
+  getAdminKey(): string | null {
+    return (
+      localStorage.getItem('coldchain_admin_api_key') ||
+      import.meta.env.VITE_ADMIN_API_KEY ||
+      null
+    );
   }
 
-  post<T>(path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+  setAdminKey(key: string): void {
+    if (key && key.trim()) {
+      localStorage.setItem('coldchain_admin_api_key', key.trim());
+    } else {
+      localStorage.removeItem('coldchain_admin_api_key');
+    }
+  }
+
+  get<T>(path: string, timeoutMs?: number, customHeaders?: Record<string, string>): Promise<T> {
+    return this.request<T>(
+      path,
+      {
+        method: 'GET',
+        headers: customHeaders,
+      },
+      timeoutMs
+    );
+  }
+
+  post<T>(
+    path: string,
+    body?: unknown,
+    timeoutMs?: number,
+    customHeaders?: Record<string, string>
+  ): Promise<T> {
     return this.request<T>(
       path,
       {
         method: 'POST',
+        headers: customHeaders,
         body: body ? JSON.stringify(body) : undefined,
       },
       timeoutMs

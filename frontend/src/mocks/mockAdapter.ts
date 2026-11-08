@@ -16,6 +16,8 @@ import {
   DeviceMissingSequencesOut,
   ShipmentDevicesOut,
   DeviceTelemetryStatus,
+  DeviceRegisterPayload,
+  AdminDeviceViewOut,
   IntegrityBatch,
   IntegrityBatchesOut,
   IntegritySummaryOut,
@@ -185,6 +187,68 @@ class MockAdapter {
       ranges: [],
     };
     return JSON.parse(JSON.stringify(missing));
+  }
+
+  async registerDevice(payload: DeviceRegisterPayload): Promise<AdminDeviceViewOut> {
+    const existing = this.devices.find((d) => d.device_id.toLowerCase() === payload.device_id.trim().toLowerCase());
+    if (existing) {
+      throw new Error(`Thiết bị '${payload.device_id}' đã tồn tại trong hệ thống.`);
+    }
+
+    const assignedShipment = this.shipments.find(
+      (s) => s.id === payload.shipment_id || s.code === payload.shipment_id
+    );
+
+    const newDevice: DeviceItemOut = {
+      id: `dev-mock-${Date.now()}`,
+      device_id: payload.device_id.trim(),
+      key_id: payload.key_id.trim(),
+      public_key_pem: payload.public_key_pem.trim(),
+      firmware_version: 'esp32-1.0',
+      assigned_shipment_id: assignedShipment?.id || payload.shipment_id,
+      assigned_shipment_code: assignedShipment?.code || 'ASSIGNED',
+      signature_status: 'VALID',
+      completeness_status: 'COMPLETE',
+      registered_at: new Date().toISOString(),
+      health: {
+        device_id: payload.device_id.trim(),
+        last_sequence_number: 0,
+        missing_sequence_count: 0,
+        last_heartbeat_at: null,
+        last_seen_at: null,
+        online_status: 'ONLINE',
+        firmware_version: 'esp32-1.0',
+      },
+    };
+
+    this.devices.unshift(newDevice);
+
+    return {
+      device_id: newDevice.device_id,
+      status: 'active',
+      last_sequence_number: 0,
+      last_seen_at: null,
+      keys: [{ key_id: payload.key_id.trim(), status: 'active' }],
+      assignments: [{ shipment_id: payload.shipment_id, active: true }],
+    };
+  }
+
+  async getAdminDeviceDetails(deviceId: string): Promise<AdminDeviceViewOut> {
+    const dev = this.devices.find((d) => d.device_id === deviceId);
+    if (!dev) {
+      throw new Error(`Mock 404: Không tìm thấy thiết bị ${deviceId}`);
+    }
+
+    return {
+      device_id: dev.device_id,
+      status: 'active',
+      last_sequence_number: dev.health.last_sequence_number ?? 0,
+      last_seen_at: dev.health.last_seen_at,
+      keys: [{ key_id: dev.key_id, status: 'active' }],
+      assignments: dev.assigned_shipment_id
+        ? [{ shipment_id: dev.assigned_shipment_id, active: true }]
+        : [],
+    };
   }
 
   async getHealth(): Promise<HealthOut> {

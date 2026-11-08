@@ -23,6 +23,8 @@ import {
   DeviceMissingSequencesOut,
 } from '../types/api';
 import { ApiError } from '../api/client';
+import { RegisterDeviceModal } from '../components/devices/RegisterDeviceModal';
+import { AdminDeviceDetailModal } from '../components/devices/AdminDeviceDetailModal';
 import {
   Cpu,
   KeyRound,
@@ -39,6 +41,8 @@ import {
   Server,
   HelpCircle,
   ExternalLink,
+  Plus,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const DevicesPage: React.FC = () => {
@@ -54,6 +58,12 @@ export const DevicesPage: React.FC = () => {
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+
+  // Admin modals
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [isAdminDetailModalOpen, setIsAdminDetailModalOpen] = useState(false);
+  const [adminModalDeviceId, setAdminModalDeviceId] = useState<string | null>(null);
+  const [adminSuccessMsg, setAdminSuccessMsg] = useState<string | null>(null);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -249,9 +259,54 @@ export const DevicesPage: React.FC = () => {
             >
               Làm mới
             </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setIsRegisterModalOpen(true)}
+              icon={<Plus size={14} />}
+            >
+              Đăng ký thiết bị (Admin)
+            </Button>
           </div>
         }
       />
+
+      {/* Admin action success banner */}
+      {adminSuccessMsg && (
+        <div
+          style={{
+            marginBottom: 'var(--space-4)',
+            padding: 'var(--space-3) var(--space-4)',
+            backgroundColor: 'var(--color-success-soft)',
+            border: '1px solid var(--color-success)',
+            borderRadius: 'var(--radius-md)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+        >
+          <div className="flex-row items-center gap-2">
+            <CheckCircle2 size={16} style={{ color: 'var(--color-success)' }} />
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-success)', fontWeight: 600 }}>
+              {adminSuccessMsg}
+            </span>
+          </div>
+          <button
+            onClick={() => setAdminSuccessMsg(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--color-text-tertiary)',
+              fontSize: 'var(--text-sm)',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Backend Cold Start vs Device Offline Alert */}
       <BackendStatusAlert
@@ -789,6 +844,22 @@ export const DevicesPage: React.FC = () => {
                   ESP32 và không bao giờ xuất hiện trên API hoặc giao diện.
                 </div>
               </div>
+
+              {/* Button to open Admin View */}
+              <div style={{ marginTop: 'var(--space-3)' }}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setAdminModalDeviceId(selectedDevice.device_id);
+                    setIsAdminDetailModalOpen(true);
+                  }}
+                  icon={<ShieldCheck size={14} />}
+                  style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-xs)' }}
+                >
+                  Xem chi tiết bảo mật (X-Admin-Key View) →
+                </Button>
+              </div>
             </Card>
 
             {/* BẢNG THEO DÕI SEQUENCE NUMBER, HEARTBEAT, MISSING SEQUENCE VÀ DẢI MẤT GÓI */}
@@ -1152,6 +1223,27 @@ export const DevicesPage: React.FC = () => {
           </table>
         </div>
       </Card>
+
+      {/* Admin Modals */}
+      <RegisterDeviceModal
+        isOpen={isRegisterModalOpen}
+        onClose={() => setIsRegisterModalOpen(false)}
+        onSuccess={(res) => {
+          setAdminSuccessMsg(
+            `Đã đăng ký thành công thiết bị ${res.device_id} kèm Key '${res.keys[0]?.key_id || ''}'.`
+          );
+          fetchDevicesList(false);
+        }}
+      />
+
+      <AdminDeviceDetailModal
+        deviceId={adminModalDeviceId}
+        isOpen={isAdminDetailModalOpen}
+        onClose={() => {
+          setIsAdminDetailModalOpen(false);
+          setAdminModalDeviceId(null);
+        }}
+      />
     </div>
   );
 };

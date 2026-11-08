@@ -50,6 +50,32 @@ export interface ShipmentDevicesOut {
   items: ShipmentDeviceOut[];
 }
 
+export interface DeviceRegisterPayload {
+  device_id: string;
+  key_id: string;
+  public_key_pem: string;
+  shipment_id: string;
+}
+
+export interface AdminDeviceKeyView {
+  key_id: string;
+  status: 'active' | 'revoked';
+}
+
+export interface AdminDeviceAssignmentView {
+  shipment_id: string;
+  active: boolean;
+}
+
+export interface AdminDeviceViewOut {
+  device_id: string;
+  status: 'active' | 'revoked';
+  last_sequence_number: number;
+  last_seen_at: string | null;
+  keys: AdminDeviceKeyView[];
+  assignments: AdminDeviceAssignmentView[];
+}
+
 export interface DeviceItemOut {
   id: string;
   device_id: string;
