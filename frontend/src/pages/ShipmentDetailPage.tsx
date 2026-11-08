@@ -17,7 +17,7 @@ import { SimulatedRouteMap } from '../components/data-display/SimulatedRouteMap'
 import { TelemetryChart } from '../components/data-display/TelemetryChart';
 import { EventTimeline } from '../components/data-display/EventTimeline';
 import { getShipmentById, getShipmentTelemetry } from '../api/shipments';
-import { getDeviceHealth } from '../api/devices';
+import { getDeviceHealth, getShipmentDevices } from '../api/devices';
 import { getShipmentEvents } from '../api/events';
 import { getIntegrityBatches, verifyBatch } from '../api/integrity';
 import {
@@ -25,6 +25,7 @@ import {
   TelemetryOut,
   EventOut,
   DeviceHealthOut,
+  ShipmentDeviceOut,
   IntegrityBatch,
   BatchVerifyResultOut,
 } from '../types/api';
@@ -32,6 +33,7 @@ import { MerkleBatchTable } from '../components/integrity/MerkleBatchTable';
 import { IntegrityViolationAlert } from '../components/integrity/IntegrityViolationAlert';
 import { BatchVerificationModal } from '../components/integrity/BatchVerificationModal';
 import { BatchDetailModal } from '../components/integrity/BatchDetailModal';
+import { SendTelemetryModal } from '../components/shipments/SendTelemetryModal';
 import {
   ArrowLeft,
   MapPin,
@@ -50,6 +52,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   ShieldCheck,
+  Radio,
 } from 'lucide-react';
 
 export const ShipmentDetailPage: React.FC = () => {
@@ -60,12 +63,17 @@ export const ShipmentDetailPage: React.FC = () => {
   const [telemetry, setTelemetry] = useState<TelemetryOut[]>([]);
   const [events, setEvents] = useState<EventOut[]>([]);
   const [deviceHealth, setDeviceHealth] = useState<DeviceHealthOut | null>(null);
+  const [shipmentDevices, setShipmentDevices] = useState<ShipmentDeviceOut[]>([]);
   const [batches, setBatches] = useState<IntegrityBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+
+  // Send Telemetry Modal
+  const [isSendTelemetryOpen, setIsSendTelemetryOpen] = useState(false);
+  const [telemetrySuccessMsg, setTelemetrySuccessMsg] = useState<string | null>(null);
 
   // Batch Verification & Detail Modals
   const [verifyingBatchId, setVerifyingBatchId] = useState<string | null>(null);
@@ -86,15 +94,29 @@ export const ShipmentDetailPage: React.FC = () => {
     }
     setError(null);
     try {
-      const [shipmentData, telemetryData, eventsData, batchesData] = await Promise.all([
+      const [shipmentData, telemetryData, eventsData, batchesData, devicesData] = await Promise.all([
         getShipmentById(id),
         getShipmentTelemetry(id).catch(() => ({ items: [] })),
         getShipmentEvents(id).catch(() => ({ items: [] })),
         getIntegrityBatches({ shipment_id: id }).catch(() => ({ items: [], total: 0 })),
+        getShipmentDevices(id).catch(() => ({ items: [] })),
       ]);
 
+      const primaryDevice = devicesData.items.length > 0 ? devicesData.items[0] : null;
       let devHealth: DeviceHealthOut | null = null;
-      if (shipmentData.latest_telemetry?.device_id) {
+
+      if (primaryDevice) {
+        devHealth = {
+          device_id: primaryDevice.device_id,
+          last_sequence_number: primaryDevice.last_sequence_number,
+          missing_sequence_count: 0,
+          last_heartbeat_at: primaryDevice.last_seen_at,
+          last_seen_at: primaryDevice.last_seen_at,
+          online_status: primaryDevice.telemetry_status,
+          firmware_version: null,
+        };
+      } else if (shipmentData.latest_telemetry?.device_id) {
+        // Fallback khi thiết bị chưa có assignment chính thức nhưng đã gửi telemetry
         devHealth = await getDeviceHealth(shipmentData.latest_telemetry.device_id).catch(
           () => null
         );
@@ -105,6 +127,7 @@ export const ShipmentDetailPage: React.FC = () => {
         setTelemetry(telemetryData.items);
         setEvents(eventsData.items);
         setDeviceHealth(devHealth);
+        setShipmentDevices(devicesData.items);
         setBatches(batchesData.items);
       }
     } catch (err: unknown) {
@@ -270,8 +293,54 @@ export const ShipmentDetailPage: React.FC = () => {
           >
             Làm mới
           </Button>
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setIsSendTelemetryOpen(true)}
+            icon={<Radio size={14} />}
+          >
+            Gửi Telemetry
+          </Button>
         </div>
       </div>
+
+      {/* Success alert when telemetry is posted */}
+      {telemetrySuccessMsg && (
+        <div
+          style={{
+            marginBottom: 'var(--space-4)',
+            padding: 'var(--space-3) var(--space-4)',
+            backgroundColor: 'var(--color-success-soft)',
+            border: '1px solid var(--color-success)',
+            borderRadius: 'var(--radius-md)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+        >
+          <div className="flex-row items-center gap-2">
+            <CheckCircle2 size={16} style={{ color: 'var(--color-success)' }} />
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-success)', fontWeight: 500 }}>
+              {telemetrySuccessMsg}
+            </span>
+          </div>
+          <button
+            onClick={() => setTelemetrySuccessMsg(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--color-text-tertiary)',
+              fontSize: 'var(--text-sm)',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <PageHeader
         title={`Lô hàng: ${shipment.code}`}
@@ -489,7 +558,94 @@ export const ShipmentDetailPage: React.FC = () => {
         {/* Device Integrity quick card */}
         <Card title="Thiết bị & Chữ ký cảm biến">
           <div style={{ marginTop: 'var(--space-2)' }}>
-            {shipment.latest_telemetry ? (
+            {shipmentDevices.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                {shipmentDevices.map((dev) => (
+                  <div
+                    key={dev.device_id}
+                    style={{
+                      padding: 'var(--space-3)',
+                      backgroundColor: 'var(--color-surface-secondary)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--color-border-subtle)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 'var(--space-2)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 'var(--text-sm)',
+                          fontWeight: 600,
+                          color: 'var(--color-text-primary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <Cpu size={16} /> {dev.device_id}
+                      </div>
+                      <div className="flex-row items-center gap-1">
+                        <DeviceOnlineBadge
+                          status={dev.telemetry_status}
+                          lastHeartbeat={dev.last_seen_at}
+                        />
+                        <Badge
+                          variant={dev.registration_status === 'active' ? 'success' : 'danger'}
+                        >
+                          {dev.registration_status.toUpperCase()}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {shipment.latest_telemetry && shipment.latest_telemetry.device_id === dev.device_id && (
+                      <div style={{ marginBottom: 'var(--space-2)' }}>
+                        <SignatureStatusBadge
+                          status={shipment.latest_telemetry.signature_status || 'VALID'}
+                        />
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--color-text-secondary)',
+                        paddingTop: 'var(--space-2)',
+                        borderTop: '1px solid var(--color-border-subtle)',
+                      }}
+                    >
+                      <span>
+                        Sequence: <strong>#{dev.last_sequence_number}</strong>
+                      </span>
+                      <span>
+                        Cập nhật:{' '}
+                        <strong>
+                          {dev.last_seen_at ? new Date(dev.last_seen_at).toLocaleTimeString('vi-VN') : 'Chưa có'}
+                        </strong>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+
+                <div style={{ marginTop: 'var(--space-1)' }}>
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    onClick={() => navigate('/devices')}
+                    style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-xs)' }}
+                  >
+                    Xem chi tiết xác thực thiết bị →
+                  </Button>
+                </div>
+              </div>
+            ) : shipment.latest_telemetry ? (
               <>
                 <div
                   style={{
@@ -538,17 +694,7 @@ export const ShipmentDetailPage: React.FC = () => {
                     Sequence: #{deviceHealth?.last_sequence_number ?? shipment.latest_telemetry.sequence_number ?? 'N/A'}
                   </span>
                   <span>
-                    Gói thiếu:{' '}
-                    <strong
-                      style={{
-                        color:
-                          (deviceHealth?.missing_sequence_count || 0) > 0
-                            ? 'var(--color-warning)'
-                            : 'var(--color-success)',
-                      }}
-                    >
-                      {deviceHealth?.missing_sequence_count ?? 0}
-                    </strong>
+                    Trạng thái: <strong>Đang gửi telemetry</strong>
                   </span>
                 </div>
 
@@ -564,8 +710,8 @@ export const ShipmentDetailPage: React.FC = () => {
                 </div>
               </>
             ) : (
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-                Chưa có thiết bị nào gửi telemetry cho lô hàng này.
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', padding: 'var(--space-2) 0' }}>
+                Chưa có thiết bị nào được gán hoặc gửi dữ liệu cho lô hàng này.
               </div>
             )}
           </div>
@@ -1019,6 +1165,29 @@ export const ShipmentDetailPage: React.FC = () => {
         onClose={() => setIsDetailModalOpen(false)}
         onVerify={handleVerifyBatch}
         isVerifying={verifyingBatchId === selectedBatch?.batch_id}
+      />
+
+      {/* Modal Gửi Dữ Liệu Đo Cảm Biến */}
+      <SendTelemetryModal
+        isOpen={isSendTelemetryOpen}
+        onClose={() => setIsSendTelemetryOpen(false)}
+        shipmentId={shipment.id}
+        shipmentCode={shipment.code}
+        tempMin={shipment.temp_min_c}
+        tempMax={shipment.temp_max_c}
+        assignedDevices={
+          shipmentDevices.length > 0
+            ? shipmentDevices.map((d) => d.device_id)
+            : shipment.latest_telemetry
+            ? [shipment.latest_telemetry.device_id]
+            : ['ESP32-01']
+        }
+        onSuccess={(sample) => {
+          setTelemetrySuccessMsg(
+            `Đã gửi thành công dữ liệu đo cảm biến: ${sample.temperature_c}°C, độ ẩm ${sample.humidity_pct}% từ thiết bị ${sample.device_id}.`
+          );
+          fetchData(true);
+        }}
       />
     </div>
   );

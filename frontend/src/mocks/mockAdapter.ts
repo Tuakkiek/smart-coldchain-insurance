@@ -2,7 +2,10 @@ import {
   ShipmentOut,
   ShipmentsOut,
   ShipmentCreatePayload,
+  TelemetryCreatePayload,
+  TelemetryOut,
   TelemetryListOut,
+  EventOut,
   EventListOut,
   DemoScenarioOut,
   DemoScenarioPayload,
@@ -11,6 +14,8 @@ import {
   DeviceItemOut,
   DeviceHealthOut,
   DeviceMissingSequencesOut,
+  ShipmentDevicesOut,
+  DeviceTelemetryStatus,
   IntegrityBatch,
   IntegrityBatchesOut,
   IntegritySummaryOut,
@@ -106,6 +111,48 @@ class MockAdapter {
         network: 'Ethereum Localnet / Hardhat',
       };
     }
+  }
+
+  async listShipmentDevices(shipmentId: string): Promise<ShipmentDevicesOut> {
+    const assigned = this.devices.filter(
+      (d) => d.assigned_shipment_id === shipmentId || d.assigned_shipment_code === shipmentId
+    );
+
+    if (assigned.length > 0) {
+      return {
+        items: assigned.map((d) => {
+          let status: DeviceTelemetryStatus = 'ONLINE';
+          if (d.health.online_status === 'OFFLINE') status = 'OFFLINE';
+          else if (d.health.online_status === 'UNKNOWN') status = 'UNKNOWN';
+
+          return {
+            device_id: d.device_id,
+            registration_status: 'active',
+            telemetry_status: status,
+            last_seen_at: d.health.last_seen_at,
+            last_sequence_number: d.health.last_sequence_number ?? 0,
+          };
+        }),
+      };
+    }
+
+    // Nếu không tìm thấy qua assignment trực tiếp, kiểm tra shipment xem có telemetry không
+    const ship = this.shipments.find((s) => s.id === shipmentId || s.code === shipmentId);
+    if (ship?.latest_telemetry?.device_id) {
+      return {
+        items: [
+          {
+            device_id: ship.latest_telemetry.device_id,
+            registration_status: 'active',
+            telemetry_status: 'ONLINE',
+            last_seen_at: ship.latest_telemetry.received_at,
+            last_sequence_number: ship.latest_telemetry.sequence_number ?? 1,
+          },
+        ],
+      };
+    }
+
+    return { items: [] };
   }
 
   async listDevices(): Promise<DevicesOut> {
@@ -206,6 +253,80 @@ class MockAdapter {
     return {
       items: JSON.parse(JSON.stringify(samples)),
     };
+  }
+
+  async postTelemetry(shipmentId: string, payload: TelemetryCreatePayload): Promise<TelemetryOut> {
+    const item = this.shipments.find((s) => s.id === shipmentId || s.code === shipmentId);
+    if (!item) {
+      throw new Error(`Mock 404: Shipment ${shipmentId} not found`);
+    }
+
+    const now = new Date().toISOString();
+    const currentSamples = this.telemetry[item.id] || [];
+    const sampleCount = currentSamples.length + 1;
+    const progress = Math.min(100, Math.max(5, sampleCount * 5));
+
+    const lat = item.origin.latitude + ((item.destination.latitude - item.origin.latitude) * progress) / 100;
+    const lng = item.origin.longitude + ((item.destination.longitude - item.origin.longitude) * progress) / 100;
+
+    const sample: TelemetryOut = {
+      id: `tel-mock-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      shipment_id: item.id,
+      device_id: payload.device_id,
+      sequence_number: sampleCount,
+      temperature_c: payload.temperature_c,
+      humidity_pct: payload.humidity_pct,
+      recorded_at: payload.recorded_at || now,
+      received_at: now,
+      signature_status: 'VALID',
+      data_status: 'DATA_VERIFIED',
+      location: {
+        latitude: parseFloat(lat.toFixed(6)),
+        longitude: parseFloat(lng.toFixed(6)),
+        location_source: 'backend_simulated',
+        progress_pct: progress,
+      },
+    };
+
+    if (!this.telemetry[item.id]) {
+      this.telemetry[item.id] = [];
+    }
+    this.telemetry[item.id].push(sample);
+
+    item.status = 'in_transit';
+    item.latest_telemetry = {
+      id: sample.id,
+      device_id: sample.device_id,
+      sequence_number: sample.sequence_number,
+      temperature_c: sample.temperature_c,
+      humidity_pct: sample.humidity_pct,
+      recorded_at: sample.recorded_at,
+      received_at: sample.received_at,
+      signature_status: sample.signature_status,
+      data_status: sample.data_status,
+    };
+    item.location = sample.location;
+
+    // Kiểm tra xem có vượt ngưỡng nhiệt độ không
+    if (payload.temperature_c < item.temp_min_c || payload.temperature_c > item.temp_max_c) {
+      const breachEvent: EventOut = {
+        id: `ev-breach-${Date.now()}`,
+        shipment_id: item.id,
+        type: 'TEMPERATURE_BREACH_STARTED',
+        occurred_at: now,
+        details: {
+          temperature_c: payload.temperature_c,
+          temp_min_c: item.temp_min_c,
+          temp_max_c: item.temp_max_c,
+        },
+      };
+      if (!this.events[item.id]) {
+        this.events[item.id] = [];
+      }
+      this.events[item.id].push(breachEvent);
+    }
+
+    return JSON.parse(JSON.stringify(sample));
   }
 
   async listEvents(id: string): Promise<EventListOut> {

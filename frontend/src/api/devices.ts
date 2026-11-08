@@ -5,7 +5,19 @@ import {
   DeviceItemOut,
   DeviceHealthOut,
   DeviceMissingSequencesOut,
+  ShipmentDevicesOut,
 } from '../types/api';
+
+/**
+ * Fetch devices assigned to a specific shipment and their live telemetry/registration status.
+ * Official contract: GET /api/v1/shipments/{shipment_id}/devices
+ */
+export async function getShipmentDevices(shipmentId: string): Promise<ShipmentDevicesOut> {
+  if (apiClient.isMockEnabled()) {
+    return mockAdapter.listShipmentDevices(shipmentId);
+  }
+  return apiClient.get<ShipmentDevicesOut>(`/api/v1/shipments/${shipmentId}/devices`);
+}
 
 /**
  * Fetch all registered ESP32 devices and their integrity status.
