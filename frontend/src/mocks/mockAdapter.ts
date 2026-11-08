@@ -1,6 +1,7 @@
 import {
   ShipmentOut,
   ShipmentsOut,
+  ShipmentCreatePayload,
   TelemetryListOut,
   EventListOut,
   DemoScenarioOut,
@@ -148,6 +149,48 @@ class MockAdapter {
       items: [...this.shipments],
       total: this.shipments.length,
     };
+  }
+
+  async createShipment(payload: ShipmentCreatePayload): Promise<ShipmentOut> {
+    const trimmedCode = payload.code.trim();
+    const existing = this.shipments.find((s) => s.code.toLowerCase() === trimmedCode.toLowerCase());
+    if (existing) {
+      throw new Error(`Mã lô hàng '${trimmedCode}' đã tồn tại trong hệ thống.`);
+    }
+
+    const newId = `mock-ship-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const newShipment: ShipmentOut = {
+      id: newId,
+      code: trimmedCode,
+      cargo_type: payload.cargo_type.trim(),
+      status: 'created',
+      origin: {
+        name: payload.origin.name.trim(),
+        latitude: payload.origin.latitude,
+        longitude: payload.origin.longitude,
+      },
+      destination: {
+        name: payload.destination.name.trim(),
+        latitude: payload.destination.latitude,
+        longitude: payload.destination.longitude,
+      },
+      temp_min_c: payload.temp_min_c,
+      temp_max_c: payload.temp_max_c,
+      violation_duration_minutes: payload.violation_duration_minutes ?? 15,
+      latest_telemetry: null,
+      location: null,
+      insurance: {
+        insured_amount_vnd: payload.insured_amount_vnd,
+        status: 'active',
+        payout_status: 'not_requested',
+      },
+      blockchain: null,
+      created_at: new Date().toISOString(),
+    };
+
+    // Đưa lên đầu danh sách
+    this.shipments.unshift(newShipment);
+    return JSON.parse(JSON.stringify(newShipment));
   }
 
   async getShipment(id: string): Promise<ShipmentOut> {

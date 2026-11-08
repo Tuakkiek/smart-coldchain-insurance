@@ -9,7 +9,8 @@ import { ErrorState } from '../components/feedback/ErrorState';
 import { EmptyState } from '../components/feedback/EmptyState';
 import { getShipments } from '../api/shipments';
 import { ShipmentOut, ShipmentStatus } from '../types/api';
-import { Search, MapPin, Thermometer, Shield } from 'lucide-react';
+import { Search, MapPin, Thermometer, Shield, Plus, CheckCircle, ArrowRight } from 'lucide-react';
+import { CreateShipmentModal } from '../components/shipments/CreateShipmentModal';
 
 export const ShipmentsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -17,6 +18,8 @@ export const ShipmentsPage: React.FC = () => {
   const [filtered, setFiltered] = useState<ShipmentOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [successShipment, setSuccessShipment] = useState<ShipmentOut | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -33,6 +36,11 @@ export const ShipmentsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleShipmentCreated = (newShipment: ShipmentOut) => {
+    setShipments((prev) => [newShipment, ...prev]);
+    setSuccessShipment(newShipment);
   };
 
   useEffect(() => {
@@ -80,11 +88,75 @@ export const ShipmentsPage: React.FC = () => {
         title="Danh sách Lô hàng Lạnh"
         description="Quản lý và giám sát thời gian thực các lô hàng đang lưu thông trong chuỗi cung ứng."
         action={
-          <Button variant="secondary" size="sm" onClick={fetchShipments}>
-            Làm mới
-          </Button>
+          <div className="flex-row items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={fetchShipments}>
+              Làm mới
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setIsCreateModalOpen(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Plus size={16} />
+              Tạo Lô Hàng Mới
+            </Button>
+          </div>
         }
       />
+
+      {/* Success Notification Banner */}
+      {successShipment && (
+        <div
+          style={{
+            marginBottom: 'var(--space-5)',
+            padding: 'var(--space-3) var(--space-4)',
+            backgroundColor: 'var(--color-success-soft)',
+            border: '1px solid var(--color-success)',
+            borderRadius: 'var(--radius-md)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+        >
+          <div className="flex-row items-center gap-2">
+            <CheckCircle size={18} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
+            <div>
+              <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-success)' }}>
+                Đã tạo thành công lô hàng mới: {successShipment.code} ({successShipment.cargo_type})
+              </span>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                Lộ trình: {successShipment.origin.name} ➔ {successShipment.destination.name} | Nhiệt độ an toàn: {successShipment.temp_min_c}°C đến {successShipment.temp_max_c}°C
+              </div>
+            </div>
+          </div>
+          <div className="flex-row items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => navigate(`/shipments/${successShipment.id}`)}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)' }}
+            >
+              Xem chi tiết <ArrowRight size={14} />
+            </Button>
+            <button
+              onClick={() => setSuccessShipment(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--color-text-tertiary)',
+                padding: '2px 6px',
+                fontSize: 'var(--text-sm)',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <Card style={{ marginBottom: 'var(--space-6)', padding: 'var(--space-4)' }}>
@@ -274,6 +346,13 @@ export const ShipmentsPage: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* Modal Tạo Lô Hàng Mới */}
+      <CreateShipmentModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={handleShipmentCreated}
+      />
     </div>
   );
 };
