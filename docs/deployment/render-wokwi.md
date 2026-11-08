@@ -1,6 +1,6 @@
 # Render + Wokwi: kiểm tra nhiệt độ đầu cuối
 
-`render.yaml` triển khai **backend** trên Render với `APP_ENV=production`. Ở chế độ này API chỉ nhận telemetry có chữ ký. Sketch duy nhất `device/cold_chain_device.ino` dùng ESP32 + DHT22, ký ECDSA P-256 và gửi HTTPS trực tiếp tới Render.
+`render.yaml` triển khai **backend** trên Render với `APP_ENV=production`. Ở chế độ này API chỉ nhận telemetry có chữ ký. Sketch `device/cold_chain_device/cold_chain_device.ino` dùng ESP32 + DHT22, ký ECDSA P-256 và gửi HTTPS trực tiếp tới Render.
 
 ## 1. Chuẩn bị MySQL
 
@@ -28,19 +28,19 @@ Nếu MySQL giới hạn IP nguồn, cho phép kết nối từ Render theo cấ
 
 ## 3. Chạy ESP32 thật hoặc Wokwi
 
-1. Trong `device/cold_chain_device.ino`, sửa `WIFI_SSID`, `WIFI_PASSWORD` và `API_BASE_URL`; giữ đúng `SHIPMENT_ID`, `DEVICE_ID`, `KEY_ID` và private key tương ứng với public key đã đăng ký.
+1. Sao chép `device/cold_chain_device/config.example.h` thành `device/cold_chain_device/config.h` (Git bỏ qua file đích). Điền Wi-Fi, URL, identity, private key mới và CA xác thực chứng chỉ của Backend. Đăng ký public key tương ứng qua API admin. Xem `device/README.md`.
 2. Nối DHT22: `VCC -> 3V3`, `DATA/SDA -> GPIO27`, `GND -> GND`. Sơ đồ Wokwi tương ứng là `device/diagram.json`.
 3. Cài thư viện **DHT sensor library for ESPx**, biên dịch và upload bằng Arduino IDE hoặc dán sketch vào Wokwi. Mở Serial Monitor 115200.
 4. Khi thành công, Serial Monitor báo `HTTP 201`, `signature_status: "VALID"`, `duplicate: false`. Kiểm tra `GET .../shipments/<UUID>` để xem `latest_telemetry`.
 
-Sketch hiện dùng `WiFiClientSecure.setInsecure()` để đơn giản hóa lần test đầu: HTTPS được mã hóa nhưng chưa kiểm tra danh tính máy chủ TLS. Trước khi dùng lâu dài trên ESP32 thật, thay bằng CA của Render hoặc cơ chế trust phù hợp và đổi test key.
+Sketch dùng `WiFiClientSecure.setCACert()`; thiếu CA hoặc CA không khớp sẽ chặn gửi. Key và mật khẩu từng có trong Git history cần được thay và key cũ cần bị revoke trước khi triển khai.
 
 ## Lỗi thường gặp
 
 | Triệu chứng | Kiểm tra |
 |---|---|
 | `HTTP 503 ADMIN_NOT_CONFIGURED` khi cấp thiết bị | `ADMIN_API_KEY` chưa được đặt trên Render. |
-| `HTTP 401 INVALID_SIGNATURE` | Build lại sau khi `provision.py` tạo `config.h`; kiểm tra public key đăng ký cùng device ID. |
+| `HTTP 401 INVALID_SIGNATURE` | Kiểm tra `config.h` và public key đã đăng ký cùng device ID/key ID. |
 | `HTTP 403 DEVICE_NOT_ASSIGNED` | Device và shipment ID trong `config.h` không khớp assignment. |
 | `HTTP 409 SEQUENCE_REPLAY` | Wokwi mất NVS; cấp thiết bị mới. |
 | `HTTP 422` | Xem JSON lỗi trong Serial; kiểm tra UUID, timestamp UTC, giá trị cảm biến. |
