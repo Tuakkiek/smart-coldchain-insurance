@@ -50,7 +50,7 @@ export async function postShipmentTelemetry(
   payload: TelemetryCreatePayload
 ): Promise<TelemetryOut> {
   if (apiClient.isMockEnabled()) {
-    throw new Error('Chức năng gửi telemetry chỉ hoạt động ở chế độ API thật');
+    return mockAdapter.postTelemetry(shipmentId, payload);
   }
   return apiClient.post<TelemetryOut>(`/api/v1/shipments/${shipmentId}/telemetry`, payload);
 }
