@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
@@ -19,6 +20,9 @@ from app.models import (Device, DeviceAssignment, DeviceKey, IngestionAudit,
 from app.schemas.api import SignedTelemetryCreate, TelemetryCreate
 from app.services import shipments
 from app.services.telemetry_protocol import canonical_signed_bytes, verify_signature
+
+
+logger = logging.getLogger(__name__)
 
 
 class IngestionError(Exception):
@@ -153,7 +157,8 @@ def _response(sample: Telemetry, receipt: SignedTelemetryReceipt, duplicate: boo
 
 
 def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, clock,
-           gap_minutes: int, rate_limit_per_minute: int) -> dict:
+           gap_minutes: int, rate_limit_per_minute: int,
+           batch_max_records: int = 100, batch_max_age_minutes: int = 5) -> dict:
     if payload.shipment_id != shipment_id:
         _reject(session, payload, "SHIPMENT_MISMATCH", 422, "Body shipment_id does not match path")
     shipments.get_shipment(session, shipment_id)
@@ -225,4 +230,24 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
         if existing and existing.canonical_sha256 == digest:
             return _response(session.get(Telemetry, existing.telemetry_id), existing, True)
         _reject(session, payload, "SEQUENCE_CONFLICT", 409, "Sequence already has different content")
+    try:
+        # Telemetry is already committed. Sealing is a separate transaction so
+        # a batch failure can never roll back accepted sensor data.
+        from app.services.batch_service import seal_ready_batch
+
+        seal_ready_batch(
+            session,
+            shipment_id,
+            device.id,
+            now,
+            max_records=batch_max_records,
+            max_age_minutes=batch_max_age_minutes,
+        )
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "Automatic integrity batch sealing failed shipment_id=%s device_id=%s",
+            shipment_id,
+            device.id,
+        )
     return _response(sample, receipt, False)

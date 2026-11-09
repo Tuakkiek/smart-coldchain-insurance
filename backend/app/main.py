@@ -19,6 +19,7 @@ from app.services.clock import SYSTEM_CLOCK
 from app.services.demo import DemoScenarioError
 from app.services.blockchain_outbox import configured_coordinator
 from app.services.signed_ingestion import IngestionError
+from app.services.batch_service import BatchServiceError
 
 
 logger = logging.getLogger(__name__)
@@ -146,6 +147,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(IngestionError)
     async def ingestion_error(_request: Request, exc: IngestionError):
+        return error_response(exc.status_code, exc.code, exc.message)
+
+    @app.exception_handler(BatchServiceError)
+    async def batch_service_error(_request: Request, exc: BatchServiceError):
         return error_response(exc.status_code, exc.code, exc.message)
 
     @app.exception_handler(StarletteHTTPException)

@@ -231,13 +231,53 @@ class TelemetryListOut(BaseModel):
 class EventOut(BaseModel):
     id: str
     shipment_id: str
-    type: Literal["TEMPERATURE_BREACH_STARTED", "INSURANCE_TRIGGERED", "SENSOR_DATA_GAP"]
+    type: Literal[
+        "TEMPERATURE_BREACH_STARTED", "INSURANCE_TRIGGERED", "SENSOR_DATA_GAP", "INTEGRITY_MISMATCH"
+    ]
     occurred_at: datetime
     details: dict[str, Any]
 
 
 class EventListOut(BaseModel):
     items: list[EventOut]
+
+
+class SealBatchIn(StrictBody):
+    device_id: str = Field(min_length=1, max_length=100)
+    force: bool = True
+
+
+class IntegrityBatchOut(BaseModel):
+    batch_id: str
+    shipment_id: str
+    device_id: str
+    status: Literal["SEALED"]
+    first_sequence: int
+    last_sequence: int
+    record_count: int
+    merkle_root: str
+    hash_version: Literal["MERKLE-v1"]
+    verification_status: Literal["NOT_CHECKED", "MATCHED", "DATA_INTEGRITY_FAILED"]
+    anchor_status: Literal["NOT_READY", "BLOCKCHAIN_PENDING", "DATA_ANCHORED", "BLOCKCHAIN_FAILED"]
+    sealed_at: datetime
+    verified_at: datetime | None
+
+
+class IntegrityBatchListOut(BaseModel):
+    items: list[IntegrityBatchOut]
+    total: int
+
+
+class IntegrityVerifyOut(IntegrityBatchOut):
+    calculated_root: str | None
+
+
+class IntegritySummaryOut(BaseModel):
+    shipment_id: str
+    batch_count: int
+    record_count: int
+    verification_status: Literal["NOT_CHECKED", "MATCHED", "DATA_INTEGRITY_FAILED"]
+    anchor_status: Literal["NOT_READY", "BLOCKCHAIN_PENDING", "DATA_ANCHORED", "BLOCKCHAIN_FAILED"]
 
 
 class DemoScenarioIn(StrictBody):
