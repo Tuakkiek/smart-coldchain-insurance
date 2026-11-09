@@ -135,3 +135,59 @@ class IngestionAudit(Base):
     sequence_number: Mapped[int | None] = mapped_column(BigInteger)
     code: Mapped[str] = mapped_column(String(40), nullable=False)
     received_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)
+
+
+class IntegrityBatch(Base):
+    __tablename__ = "integrity_batches"
+    __table_args__ = (
+        Index("ix_integrity_batches_shipment", "shipment_id", "sealed_at", "id"),
+        Index("ix_integrity_batches_anchor", "anchor_status", "sealed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    shipment_id: Mapped[str] = mapped_column(ForeignKey("shipments.id"), nullable=False)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="SEALED")
+    first_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    last_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    record_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    merkle_root: Mapped[str] = mapped_column(String(64), nullable=False)
+    hash_version: Mapped[str] = mapped_column(String(16), nullable=False, default="MERKLE-v1")
+    verification_status: Mapped[str] = mapped_column(String(32), nullable=False, default="NOT_CHECKED")
+    anchor_status: Mapped[str] = mapped_column(String(32), nullable=False, default="NOT_READY")
+    sealed_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)
+    verified_at: Mapped[datetime | None] = mapped_column(UTC_DATETIME)
+
+
+class IntegrityBatchItem(Base):
+    __tablename__ = "integrity_batch_items"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "leaf_index", name="uq_integrity_batch_leaf_index"),
+        UniqueConstraint("telemetry_id", name="uq_integrity_batch_telemetry"),
+    )
+
+    batch_id: Mapped[str] = mapped_column(ForeignKey("integrity_batches.id"), primary_key=True)
+    telemetry_id: Mapped[str] = mapped_column(ForeignKey("telemetry.id"), primary_key=True)
+    leaf_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    leaf_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    sequence_number: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+class IntegrationOutbox(Base):
+    __tablename__ = "integration_outbox"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_integration_outbox_idempotency"),
+        Index("ix_integration_outbox_ready", "status", "available_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    aggregate_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="PENDING")
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    available_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)
+    last_error: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)

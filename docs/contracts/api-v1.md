@@ -257,7 +257,7 @@ Backend giữ telemetry và event đầy đủ off-chain. Adapter đọc ABI t�
 
 ## Signed Telemetry v1 và Integrity
 
-**Signed telemetry và API quản trị thiết bị đã có trong OpenAPI; integrity/anchoring vẫn là draft.** Các field dự kiến cho Frontend ở cuối mục cần Member 3 xác nhận.
+**Signed telemetry, API quản trị thiết bị và integrity batch đã có trong OpenAPI.** Anchoring transaction vẫn thuộc Phase 5; batch mới seal ở trạng thái `NOT_READY` và có durable outbox chờ dispatcher.
 
 `POST /api/v1/shipments/{shipment_id}/telemetry` nhận `payload_version=1`, `shipment_id`, `device_id`, `key_id`, `sequence_number`, `temperature_c`, `humidity_pct`, `temperature_milli_c`, `humidity_milli_pct`, `recorded_at`, `firmware_version`, `signature`. Hai số hiển thị phải bằng chính xác integer đã scale ÷1000, tối đa ba chữ số thập phân. `shipment_id` body phải khớp path. Chữ ký ECDSA P-256/SHA-256 trên projection cố định trong [data-integrity.md](../architecture/data-integrity.md), truyền DER/Base64. Backend gán `received_at`, không chấp nhận client gửi tọa độ hoặc `received_at`. Mẫu hợp lệ trả `201` và `signature_status: "VALID"`, `sequence_number`, `completeness_status`, `missing_sequences`, `duplicate: false`; retry cùng canonical content trả `200`, `duplicate: true` và cùng telemetry ID.
 
@@ -266,6 +266,16 @@ API quản trị hiện có: `POST /api/v1/devices`, `GET/PATCH /api/v1/devices/
 
 Idempotency hiện có: cùng `(device_id, sequence_number)` và cùng canonical signed content trả mẫu cũ với `duplicate=true`; cùng sequence nhưng content khác trả `409` và audit. Gap cắt chuỗi vi phạm 15 phút. `recorded_at` chỉ là metadata; thời lượng vi phạm dựa trên `received_at` của Backend. `BODY_TOO_LARGE` trả `413`, `RATE_LIMITED` trả `429` cho thiết bị đã đăng ký. Public history/detail hiển thị `signature_status`, `sequence_number`, `completeness_status` và `missing_sequences` ở mẫu đã ký; mẫu cũ không có các field này.
 
-API integrity dự kiến: `GET /api/v1/shipments/{shipment_id}/integrity`, `GET /api/v1/shipments/{shipment_id}/batches`, `GET /api/v1/batches/{batch_id}`, `POST /api/v1/batches/{batch_id}/verify`. Batch response cần `batch_id`, cặp shipment/device, first/last sequence, record count, root hex, `hash_version`, `verification_status` (`NOT_CHECKED`, `MATCHED`, `DATA_INTEGRITY_FAILED`) và `anchor_status` (`NOT_READY`, `BLOCKCHAIN_PENDING`, `DATA_ANCHORED`, `BLOCKCHAIN_FAILED`). Anchor transaction và insurance payout transaction là hai đối tượng riêng. `DATA_ANCHORED` chỉ sau receipt thành công, đủ confirmations và đọc lại root trên chain khớp.
+API integrity hiện có:
 
-Insurance mở rộng dùng `payout_status` riêng: `NOT_ELIGIBLE`, `EVIDENCE_PENDING`, `PENDING`, `CONFIRMED`, `FAILED`. `CONFIRMED` chỉ có khi receipt, event và on-chain state xác nhận payout. Tên trạng thái này **chưa thay thế** các giá trị chữ thường trong response hiện tại. Policy `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true` và ngưỡng gap cần nhóm xác nhận trước khi nối Oracle với luồng mới. Contract hiện tại chỉ có insurance; `batch_key`, ABI và address của Data Integrity Contract còn chờ Member 2.
+- `GET /api/v1/shipments/{shipment_id}/integrity`: tổng số batch/record cùng trạng thái verification và anchoring tổng hợp.
+- `GET /api/v1/shipments/{shipment_id}/batches`: danh sách batch đã seal.
+- `POST /api/v1/shipments/{shipment_id}/batches/seal`: đóng phần telemetry ký số chưa được batch; yêu cầu `X-Admin-Key`, body `{"device_id":"ESP32-001","force":true}`.
+- `GET /api/v1/batches/{batch_id}`: metadata và Merkle root bất biến.
+- `POST /api/v1/batches/{batch_id}/verify`: tính lại leaf/root từ dữ liệu đang lưu; mismatch chuyển `verification_status` thành `DATA_INTEGRITY_FAILED` và tạo một event `INTEGRITY_MISMATCH`.
+
+Backend tự seal khi một cặp shipment/device đạt `INTEGRITY_BATCH_MAX_RECORDS` (mặc định 100) hoặc khi có mẫu mới sau `INTEGRITY_BATCH_MAX_AGE_MINUTES` (mặc định 5 phút). Batch nhỏ có thể seal thủ công khi kết thúc chuyến/mất kết nối. Mỗi telemetry chỉ thuộc một batch; membership, leaf index, leaf hash và root được ghi trong cùng transaction. Cùng transaction đó tạo `integration_outbox` loại `ANCHOR_BATCH` với idempotency key `anchor:{batch_id}`.
+
+Batch response gồm `batch_id`, cặp shipment/device, first/last sequence, record count, root `0x` + 64 hex, `hash_version: MERKLE-v1`, `verification_status` (`NOT_CHECKED`, `MATCHED`, `DATA_INTEGRITY_FAILED`) và `anchor_status` (`NOT_READY`, `BLOCKCHAIN_PENDING`, `DATA_ANCHORED`, `BLOCKCHAIN_FAILED`). Anchor transaction và insurance payout transaction là hai đối tượng riêng. `DATA_ANCHORED` chỉ được dùng sau Phase 5 khi receipt thành công, đủ confirmations và root đọc lại trên chain khớp.
+
+Insurance mở rộng dùng `payout_status` riêng: `NOT_ELIGIBLE`, `EVIDENCE_PENDING`, `PENDING`, `CONFIRMED`, `FAILED`. `CONFIRMED` chỉ có khi receipt, event và on-chain state xác nhận payout. Tên trạng thái này **chưa thay thế** các giá trị chữ thường trong response hiện tại. Policy `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true` và ngưỡng gap cần nhóm xác nhận trước khi nối Oracle với luồng mới. `ColdChainDataIntegrity` và quy tắc `batchKey = keccak256(UTF8(batch_id))` đã có trong `blockchain/INTEGRATION.md`; Backend adapter anchor/readback sẽ được nối ở Phase 5.

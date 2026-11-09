@@ -28,9 +28,15 @@ from app.schemas.api import (
     DeviceStateUpdate,
     AssignmentUpdate,
     DeviceHealthListOut,
+    SealBatchIn,
+    IntegrityBatchOut,
+    IntegrityBatchListOut,
+    IntegrityVerifyOut,
+    IntegritySummaryOut,
 )
 from app.services import shipments
 from app.services import signed_ingestion
+from app.services import batch_service
 from app.models import SignedTelemetryReceipt
 from app.services.device_health_service import shipment_devices
 
@@ -75,6 +81,8 @@ def add_telemetry(shipment_id: UUID4, payload: SignedTelemetryCreate | Telemetry
             session, str(shipment_id), payload, request.app.state.clock,
             request.app.state.settings.sensor_gap_minutes,
             request.app.state.settings.signed_rate_limit_per_minute,
+            request.app.state.settings.integrity_batch_max_records,
+            request.app.state.settings.integrity_batch_max_age_minutes,
         )
         if result["duplicate"]:
             response.status_code = 200
@@ -169,6 +177,48 @@ def list_shipment_devices(shipment_id: UUID4, request: Request, session: DbSessi
         session, str(shipment_id), request.app.state.clock,
         request.app.state.settings.sensor_gap_minutes,
     )}
+
+
+@router.get("/shipments/{shipment_id}/integrity", response_model=IntegritySummaryOut)
+def get_integrity_summary(shipment_id: UUID4, session: DbSession):
+    return batch_service.integrity_summary(session, str(shipment_id))
+
+
+@router.get("/shipments/{shipment_id}/batches", response_model=IntegrityBatchListOut)
+def list_integrity_batches(shipment_id: UUID4, session: DbSession):
+    items = [batch_service.batch_dict(item) for item in batch_service.list_batches(session, str(shipment_id))]
+    return {"items": items, "total": len(items)}
+
+
+@router.post(
+    "/shipments/{shipment_id}/batches/seal", response_model=IntegrityBatchOut, status_code=201,
+)
+def seal_integrity_batch(
+    shipment_id: UUID4, payload: SealBatchIn, request: Request, session: AdminSession,
+):
+    settings = request.app.state.settings
+    batch = batch_service.seal_ready_batch(
+        session,
+        str(shipment_id),
+        payload.device_id,
+        request.app.state.clock.now(),
+        max_records=settings.integrity_batch_max_records,
+        max_age_minutes=settings.integrity_batch_max_age_minutes,
+        force=payload.force,
+    )
+    if batch is None:
+        raise batch_service.BatchServiceError(409, "BATCH_NOT_READY", "Batch is not ready to seal")
+    return batch_service.batch_dict(batch)
+
+
+@router.get("/batches/{batch_id}", response_model=IntegrityBatchOut)
+def get_integrity_batch(batch_id: UUID4, session: DbSession):
+    return batch_service.batch_dict(batch_service.get_batch(session, str(batch_id)))
+
+
+@router.post("/batches/{batch_id}/verify", response_model=IntegrityVerifyOut)
+def verify_integrity_batch(batch_id: UUID4, request: Request, session: DbSession):
+    return batch_service.verify_batch(session, str(batch_id), request.app.state.clock.now())
 
 
 @demo_router.post("/shipments/{shipment_id}/scenario", response_model=DemoScenarioOut)

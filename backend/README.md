@@ -106,7 +106,7 @@ Backend nội suy đường thẳng từ `origin` đến `destination` theo số
 
 Trên MySQL, Backend khóa bản ghi lô hàng khi nhận telemetry để các request đồng thời nhận mức tiến độ khác nhau.
 
-## Vi phạm nhiệt độ (Phase 4)
+## Vi phạm nhiệt độ (Phase 6)
 
 Mỗi mẫu được so với `[temp_min_c, temp_max_c]` của lô hàng. Mẫu đầu ngoài ngưỡng tạo `TEMPERATURE_BREACH_STARTED`; chuỗi mẫu tiếp tục ngoài ngưỡng đủ `violation_duration_minutes` (mặc định 15) tạo đúng một `INSURANCE_TRIGGERED` cho lô hàng. Nhiệt độ trở lại ngưỡng reset chuỗi. Thời lượng dùng `received_at` của Backend; `recorded_at` từ ESP32 chỉ để đối chiếu. Kích hoạt bảo hiểm off-chain không tự đặt `payout_status` thành `paid`.
 
@@ -116,7 +116,21 @@ Mỗi mẫu được so với `[temp_min_c, temp_max_c]` của lô hàng. Mẫu 
 
 Để cấu hình ESP32, sao chép `device/cold_chain_device/config.example.h` thành `config.h` cùng thư mục và xem `device/README.md`. Sketch yêu cầu HTTPS với CA hợp lệ. Để thử Backend local qua HTTP, dùng Python simulator trên localhost; không đưa dịch vụ HTTP phát triển trực tiếp ra Internet.
 
-Endpoint hiện có: `GET /api/v1/health`, `POST/GET /api/v1/shipments`, `GET /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, và endpoint demo trong development. Tọa độ vẫn là mô phỏng ở Backend.
+Endpoint hiện có: `GET /api/v1/health`, `POST/GET /api/v1/shipments`, `GET /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, các endpoint integrity bên dưới và endpoint demo trong development. Tọa độ vẫn là mô phỏng ở Backend.
+
+## Integrity batch (Phase 4)
+
+Telemetry ký số hợp lệ được nhóm riêng theo `(shipment_id, device_id)` và chỉ được đưa vào tối đa một batch. Backend tự seal khi đủ `INTEGRITY_BATCH_MAX_RECORDS` hoặc khi mẫu mới đến sau `INTEGRITY_BATCH_MAX_AGE_MINUTES`; khi kết thúc chuyến có thể đóng batch nhỏ bằng API admin:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/shipments/<shipment-id>/batches/seal \
+  -H "Content-Type: application/json" -H "X-Admin-Key: <admin-key>" \
+  -d '{"device_id":"ESP32-001","force":true}'
+```
+
+Các endpoint đọc/verify gồm `GET /api/v1/shipments/{id}/integrity`, `GET /api/v1/shipments/{id}/batches`, `GET /api/v1/batches/{batch_id}` và `POST /api/v1/batches/{batch_id}/verify`. Seal lưu atomically `integrity_batches`, `integrity_batch_items` và một `integration_outbox` `ANCHOR_BATCH`; chưa gửi RPC ở Phase 4. Verify tính lại MERKLE-v1 từ telemetry/receipt trong database. Nếu root, leaf, membership hoặc giá trị hiển thị không còn khớp signed receipt, batch chuyển `DATA_INTEGRITY_FAILED` và tạo một `INTEGRITY_MISMATCH` duy nhất cho lần phát hiện đầu.
+
+Sau khi lấy code mới, chạy `./.venv/Scripts/python.exe -m app.cli upgrade-db` để áp dụng revision `20261109_02`. Không áp dụng migration production trước khi có backup và cửa sổ triển khai.
 
 ## Tích hợp Blockchain (Phase 5)
 

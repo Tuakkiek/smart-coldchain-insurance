@@ -28,16 +28,18 @@ def test_existing_schema_upgrades_and_downgrades_without_losing_legacy_rows(tmp_
         upgrade_schema(engine)  # idempotent at head
         table_names = set(inspect(engine).get_table_names())
         assert {"devices", "device_keys", "device_assignments", "signed_telemetry_receipts",
-                "ingestion_audit", "alembic_version"} <= table_names
+                "ingestion_audit", "integrity_batches", "integrity_batch_items",
+                "integration_outbox", "alembic_version"} <= table_names
         with engine.connect() as connection:
             assert connection.scalar(select(Shipment.code)) == "MIGRATION"
-            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "20261105_01"
+            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "20261109_02"
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
         with engine.begin() as connection:
             config.attributes["connection"] = connection
             command.downgrade(config, "base")
         assert "devices" not in inspect(engine).get_table_names()
+        assert "integrity_batches" not in inspect(engine).get_table_names()
         with engine.connect() as connection:
             assert connection.scalar(select(Shipment.code)) == "MIGRATION"
     finally:

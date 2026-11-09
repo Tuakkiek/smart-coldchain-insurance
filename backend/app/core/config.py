@@ -24,6 +24,8 @@ class Settings:
     admin_api_key: str = ""
     max_request_body_bytes: int = 8192
     signed_rate_limit_per_minute: int = 120
+    integrity_batch_max_records: int = 100
+    integrity_batch_max_age_minutes: int = 5
     blockchain_enabled: bool = False
     blockchain_network: str = "localhost"
     blockchain_rpc_url: str = "http://127.0.0.1:8545"
@@ -59,6 +61,12 @@ def load_settings() -> Settings:
     signed_rate_limit_per_minute = int(os.getenv("SIGNED_RATE_LIMIT_PER_MINUTE", "120"))
     if signed_rate_limit_per_minute <= 0:
         raise ValueError("SIGNED_RATE_LIMIT_PER_MINUTE must be positive")
+    integrity_batch_max_records = int(os.getenv("INTEGRITY_BATCH_MAX_RECORDS", "100"))
+    if not 1 <= integrity_batch_max_records <= 100:
+        raise ValueError("INTEGRITY_BATCH_MAX_RECORDS must be in [1, 100]")
+    integrity_batch_max_age_minutes = int(os.getenv("INTEGRITY_BATCH_MAX_AGE_MINUTES", "5"))
+    if integrity_batch_max_age_minutes <= 0:
+        raise ValueError("INTEGRITY_BATCH_MAX_AGE_MINUTES must be positive")
     query = {"charset": "utf8mb4"}
     if ca_path := os.getenv("MYSQL_SSL_CA"):
         query["ssl_ca"] = ca_path
@@ -83,6 +91,8 @@ def load_settings() -> Settings:
         admin_api_key=os.getenv("ADMIN_API_KEY", ""),
         max_request_body_bytes=max_request_body_bytes,
         signed_rate_limit_per_minute=signed_rate_limit_per_minute,
+        integrity_batch_max_records=integrity_batch_max_records,
+        integrity_batch_max_age_minutes=integrity_batch_max_age_minutes,
         blockchain_enabled=blockchain_enabled,
         blockchain_network=os.getenv("BLOCKCHAIN_NETWORK", "localhost"),
         blockchain_rpc_url=os.getenv("BLOCKCHAIN_RPC_URL", "http://127.0.0.1:8545"),
