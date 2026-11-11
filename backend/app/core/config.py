@@ -11,7 +11,8 @@ from sqlalchemy.engine import URL
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_ABI_PATH = BACKEND_DIR.parent / "blockchain/artifacts/contracts/ColdChainInsurance.sol/ColdChainInsurance.json"
+DEFAULT_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainInsurance.json"
+DEFAULT_INTEGRITY_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainDataIntegrity.json"
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,10 @@ class Settings:
     blockchain_contract_address: str = ""
     blockchain_oracle_private_key: str = ""
     blockchain_abi_path: Path = DEFAULT_ABI_PATH
+    data_integrity_contract_address: str = ""
+    blockchain_anchorer_private_key: str = ""
+    data_integrity_abi_path: Path = DEFAULT_INTEGRITY_ABI_PATH
+    blockchain_confirmations: int = 1
     blockchain_receipt_timeout_seconds: int = 15
 
 
@@ -44,11 +49,35 @@ def load_settings() -> Settings:
     blockchain_enabled = enabled_text == "true"
     contract_address = os.getenv("BLOCKCHAIN_CONTRACT_ADDRESS", "")
     oracle_private_key = os.getenv("BLOCKCHAIN_ORACLE_PRIVATE_KEY", "")
-    if blockchain_enabled and (not contract_address or not oracle_private_key):
-        raise ValueError("Blockchain contract address and oracle private key are required when enabled")
+    if bool(contract_address) != bool(oracle_private_key):
+        raise ValueError(
+            "BLOCKCHAIN_CONTRACT_ADDRESS and BLOCKCHAIN_ORACLE_PRIVATE_KEY must be set together"
+        )
     abi_path = Path(os.getenv("BLOCKCHAIN_ABI_PATH", str(DEFAULT_ABI_PATH)))
     if not abi_path.is_absolute():
         abi_path = BACKEND_DIR.parent / abi_path
+    integrity_contract_address = os.getenv("DATA_INTEGRITY_CONTRACT_ADDRESS", "")
+    anchorer_private_key = os.getenv("BACKEND_ANCHORER_PRIVATE_KEY", "")
+    if bool(integrity_contract_address) != bool(anchorer_private_key):
+        raise ValueError(
+            "DATA_INTEGRITY_CONTRACT_ADDRESS and BACKEND_ANCHORER_PRIVATE_KEY must be set together"
+        )
+    if blockchain_enabled and not (
+        (contract_address and oracle_private_key)
+        or (integrity_contract_address and anchorer_private_key)
+    ):
+        raise ValueError(
+            "Blockchain contract address and oracle private key, or Data Integrity contract and "
+            "anchorer private key, are required when enabled"
+        )
+    integrity_abi_path = Path(
+        os.getenv("DATA_INTEGRITY_ABI_PATH", str(DEFAULT_INTEGRITY_ABI_PATH))
+    )
+    if not integrity_abi_path.is_absolute():
+        integrity_abi_path = BACKEND_DIR.parent / integrity_abi_path
+    confirmations = int(os.getenv("BLOCKCHAIN_CONFIRMATIONS", "1"))
+    if confirmations <= 0:
+        raise ValueError("BLOCKCHAIN_CONFIRMATIONS must be positive")
     receipt_timeout = int(os.getenv("BLOCKCHAIN_RECEIPT_TIMEOUT_SECONDS", "15"))
     if receipt_timeout <= 0:
         raise ValueError("BLOCKCHAIN_RECEIPT_TIMEOUT_SECONDS must be positive")
@@ -100,5 +129,9 @@ def load_settings() -> Settings:
         blockchain_contract_address=contract_address,
         blockchain_oracle_private_key=oracle_private_key,
         blockchain_abi_path=abi_path,
+        data_integrity_contract_address=integrity_contract_address,
+        blockchain_anchorer_private_key=anchorer_private_key,
+        data_integrity_abi_path=integrity_abi_path,
+        blockchain_confirmations=confirmations,
         blockchain_receipt_timeout_seconds=receipt_timeout,
     )

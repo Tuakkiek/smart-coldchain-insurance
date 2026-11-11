@@ -34,7 +34,6 @@ def test_one_violation_pays_once_on_local_chain(tmp_path):
         blockchain_chain_id=deployment["chainId"],
         blockchain_contract_address=deployment["contracts"]["ColdChainInsurance"]["address"],
         blockchain_oracle_private_key=oracle_key,
-        blockchain_abi_path=REPO_ROOT / "blockchain/artifacts/contracts/ColdChainInsurance.sol/ColdChainInsurance.json",
     ))
     Base.metadata.create_all(app.state.engine)
     try:

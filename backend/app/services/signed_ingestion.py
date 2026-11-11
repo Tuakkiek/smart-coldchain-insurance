@@ -158,7 +158,8 @@ def _response(sample: Telemetry, receipt: SignedTelemetryReceipt, duplicate: boo
 
 def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, clock,
            gap_minutes: int, rate_limit_per_minute: int,
-           batch_max_records: int = 100, batch_max_age_minutes: int = 5) -> dict:
+           batch_max_records: int = 100, batch_max_age_minutes: int = 5,
+           integrity_anchor=None) -> dict:
     if payload.shipment_id != shipment_id:
         _reject(session, payload, "SHIPMENT_MISMATCH", 422, "Body shipment_id does not match path")
     shipments.get_shipment(session, shipment_id)
@@ -242,6 +243,7 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
             now,
             max_records=batch_max_records,
             max_age_minutes=batch_max_age_minutes,
+            anchor_coordinator=integrity_anchor,
         )
     except Exception:
         session.rollback()

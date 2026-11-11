@@ -247,6 +247,16 @@ class SealBatchIn(StrictBody):
     force: bool = True
 
 
+class IntegrityAnchorTransactionOut(BaseModel):
+    network: str | None
+    transaction_hash: str | None
+    status: Literal["PENDING", "SUBMITTED", "CONFIRMED", "FAILED"]
+    attempt_count: int
+    last_error: str | None
+    submitted_at: datetime | None
+    confirmed_at: datetime | None
+
+
 class IntegrityBatchOut(BaseModel):
     batch_id: str
     shipment_id: str
@@ -261,6 +271,7 @@ class IntegrityBatchOut(BaseModel):
     anchor_status: Literal["NOT_READY", "BLOCKCHAIN_PENDING", "DATA_ANCHORED", "BLOCKCHAIN_FAILED"]
     sealed_at: datetime
     verified_at: datetime | None
+    anchor_transaction: IntegrityAnchorTransactionOut | None = None
 
 
 class IntegrityBatchListOut(BaseModel):
@@ -270,6 +281,7 @@ class IntegrityBatchListOut(BaseModel):
 
 class IntegrityVerifyOut(IntegrityBatchOut):
     calculated_root: str | None
+    on_chain_match: bool | None = None
 
 
 class IntegritySummaryOut(BaseModel):

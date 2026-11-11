@@ -45,6 +45,10 @@ LOG_LEVEL=INFO
 SENSOR_GAP_MINUTES=5
 INTEGRITY_BATCH_MAX_RECORDS=100
 INTEGRITY_BATCH_MAX_AGE_MINUTES=5
+BLOCKCHAIN_CONFIRMATIONS=1
+DATA_INTEGRITY_CONTRACT_ADDRESS=<data-integrity-contract-address>
+BACKEND_ANCHORER_PRIVATE_KEY=<set-as-render-secret>
+DATA_INTEGRITY_ABI_PATH=backend/app/integrations/abi/ColdChainDataIntegrity.json
 
 # Cấu hình kết nối MySQL ngoài Render (ví dụ Aiven)
 MYSQL_HOST=<your-aiven-host>

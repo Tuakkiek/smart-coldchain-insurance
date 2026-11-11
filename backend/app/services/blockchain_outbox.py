@@ -198,7 +198,11 @@ class BlockchainCoordinator:
 
 
 def configured_coordinator(settings) -> BlockchainCoordinator | None:
-    if not settings.blockchain_enabled:
+    if (
+        not settings.blockchain_enabled
+        or not settings.blockchain_contract_address
+        or not settings.blockchain_oracle_private_key
+    ):
         return None
     return BlockchainCoordinator(
         network=settings.blockchain_network,

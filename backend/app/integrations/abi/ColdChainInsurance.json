@@ -1,0 +1,50 @@
+{
+  "contractName": "ColdChainInsurance",
+  "abi": [
+    {
+      "anonymous": false,
+      "inputs": [
+        {"indexed": true, "internalType": "bytes32", "name": "shipmentKey", "type": "bytes32"},
+        {"indexed": true, "internalType": "address", "name": "beneficiary", "type": "address"},
+        {"indexed": false, "internalType": "uint256", "name": "payoutAmount", "type": "uint256"},
+        {"indexed": false, "internalType": "bytes32", "name": "evidenceHash", "type": "bytes32"},
+        {"indexed": false, "internalType": "uint256", "name": "detectedAt", "type": "uint256"}
+      ],
+      "name": "InsurancePaid",
+      "type": "event"
+    },
+    {
+      "inputs": [{"internalType": "bytes32", "name": "_shipmentKey", "type": "bytes32"}],
+      "name": "getPolicy",
+      "outputs": [
+        {"internalType": "address", "name": "insurer", "type": "address"},
+        {"internalType": "address", "name": "beneficiary", "type": "address"},
+        {"internalType": "uint256", "name": "payoutAmount", "type": "uint256"},
+        {"internalType": "uint256", "name": "expiry", "type": "uint256"},
+        {"internalType": "enum ColdChainInsurance.PolicyStatus", "name": "status", "type": "uint8"},
+        {"internalType": "bytes32", "name": "evidenceHash", "type": "bytes32"},
+        {"internalType": "uint256", "name": "detectedAt", "type": "uint256"}
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "oracle",
+      "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {"internalType": "bytes32", "name": "_shipmentKey", "type": "bytes32"},
+        {"internalType": "bytes32", "name": "_evidenceHash", "type": "bytes32"},
+        {"internalType": "uint256", "name": "_detectedAt", "type": "uint256"}
+      ],
+      "name": "reportViolation",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ]
+}

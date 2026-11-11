@@ -83,6 +83,7 @@ def add_telemetry(shipment_id: UUID4, payload: SignedTelemetryCreate | Telemetry
             request.app.state.settings.signed_rate_limit_per_minute,
             request.app.state.settings.integrity_batch_max_records,
             request.app.state.settings.integrity_batch_max_age_minutes,
+            request.app.state.integrity_blockchain,
         )
         if result["duplicate"]:
             response.status_code = 200
@@ -186,7 +187,7 @@ def get_integrity_summary(shipment_id: UUID4, session: DbSession):
 
 @router.get("/shipments/{shipment_id}/batches", response_model=IntegrityBatchListOut)
 def list_integrity_batches(shipment_id: UUID4, session: DbSession):
-    items = [batch_service.batch_dict(item) for item in batch_service.list_batches(session, str(shipment_id))]
+    items = [batch_service.batch_view(session, item) for item in batch_service.list_batches(session, str(shipment_id))]
     return {"items": items, "total": len(items)}
 
 
@@ -205,20 +206,38 @@ def seal_integrity_batch(
         max_records=settings.integrity_batch_max_records,
         max_age_minutes=settings.integrity_batch_max_age_minutes,
         force=payload.force,
+        anchor_coordinator=request.app.state.integrity_blockchain,
     )
     if batch is None:
         raise batch_service.BatchServiceError(409, "BATCH_NOT_READY", "Batch is not ready to seal")
-    return batch_service.batch_dict(batch)
+    return batch_service.batch_view(session, batch)
 
 
 @router.get("/batches/{batch_id}", response_model=IntegrityBatchOut)
 def get_integrity_batch(batch_id: UUID4, session: DbSession):
-    return batch_service.batch_dict(batch_service.get_batch(session, str(batch_id)))
+    return batch_service.batch_view(session, batch_service.get_batch(session, str(batch_id)))
+
+
+@router.post("/batches/{batch_id}/anchor", response_model=IntegrityBatchOut)
+def anchor_integrity_batch(batch_id: UUID4, request: Request, session: AdminSession):
+    coordinator = request.app.state.integrity_blockchain
+    if coordinator is None:
+        raise batch_service.BatchServiceError(
+            503, "BLOCKCHAIN_NOT_CONFIGURED", "Data Integrity blockchain adapter is not configured",
+        )
+    batch = batch_service.get_batch(session, str(batch_id))
+    coordinator.dispatch(session, batch.id)
+    return batch_service.batch_view(session, batch_service.get_batch(session, batch.id))
 
 
 @router.post("/batches/{batch_id}/verify", response_model=IntegrityVerifyOut)
 def verify_integrity_batch(batch_id: UUID4, request: Request, session: DbSession):
-    return batch_service.verify_batch(session, str(batch_id), request.app.state.clock.now())
+    return batch_service.verify_batch(
+        session,
+        str(batch_id),
+        request.app.state.clock.now(),
+        request.app.state.integrity_blockchain,
+    )
 
 
 @demo_router.post("/shipments/{shipment_id}/scenario", response_model=DemoScenarioOut)

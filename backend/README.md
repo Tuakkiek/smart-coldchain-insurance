@@ -128,9 +128,19 @@ curl -X POST http://127.0.0.1:8000/api/v1/shipments/<shipment-id>/batches/seal \
   -d '{"device_id":"ESP32-001","force":true}'
 ```
 
-Các endpoint đọc/verify gồm `GET /api/v1/shipments/{id}/integrity`, `GET /api/v1/shipments/{id}/batches`, `GET /api/v1/batches/{batch_id}` và `POST /api/v1/batches/{batch_id}/verify`. Seal lưu atomically `integrity_batches`, `integrity_batch_items` và một `integration_outbox` `ANCHOR_BATCH`; chưa gửi RPC ở Phase 4. Verify tính lại MERKLE-v1 từ telemetry/receipt trong database. Nếu root, leaf, membership hoặc giá trị hiển thị không còn khớp signed receipt, batch chuyển `DATA_INTEGRITY_FAILED` và tạo một `INTEGRITY_MISMATCH` duy nhất cho lần phát hiện đầu.
+Các endpoint đọc/verify gồm `GET /api/v1/shipments/{id}/integrity`, `GET /api/v1/shipments/{id}/batches`, `GET /api/v1/batches/{batch_id}` và `POST /api/v1/batches/{batch_id}/verify`. Seal lưu atomically `integrity_batches`, `integrity_batch_items` và một `integration_outbox` `ANCHOR_BATCH`. Verify tính lại MERKLE-v1 từ telemetry/receipt trong database. Nếu root, leaf, membership hoặc giá trị hiển thị không còn khớp signed receipt, batch chuyển `DATA_INTEGRITY_FAILED` và tạo một `INTEGRITY_MISMATCH` duy nhất cho lần phát hiện đầu.
 
 Sau khi lấy code mới, chạy `./.venv/Scripts/python.exe -m app.cli upgrade-db` để áp dụng revision `20261109_02`. Không áp dụng migration production trước khi có backup và cửa sổ triển khai.
+
+### Data Integrity anchoring (Phase 5)
+
+Đặt `BLOCKCHAIN_ENABLED=true`, RPC/chain ID, `DATA_INTEGRITY_CONTRACT_ADDRESS`, `BACKEND_ANCHORER_PRIVATE_KEY` và `DATA_INTEGRITY_ABI_PATH`. Signer phải đúng `anchorer()` của contract. Khi đã cấu hình, batch mới seal sẽ tự dispatch; có thể retry thủ công:
+
+```powershell
+./.venv/Scripts/python.exe -m app.cli retry-integrity --batch-id <UUID_BATCH>
+```
+
+Hoặc gọi `POST /api/v1/batches/{batch_id}/anchor` với `X-Admin-Key`. Backend lưu transaction hash và raw signed transaction trong outbox trước khi broadcast, không trả raw transaction qua API, kiểm tra chain ID/code/role, chờ receipt đủ `BLOCKCHAIN_CONFIRMATIONS`, rồi so sánh shipment/device key, root, sequence bounds và record count đọc từ contract. RPC timeout giữ trạng thái pending và retry cùng transaction; receipt revert/readback mismatch fail closed.
 
 ## Tích hợp Blockchain (Phase 5)
 

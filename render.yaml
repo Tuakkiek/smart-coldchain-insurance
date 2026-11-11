@@ -24,6 +24,20 @@ services:
         value: "5"
       - key: BLOCKCHAIN_ENABLED
         value: "false"
+      - key: BLOCKCHAIN_CONFIRMATIONS
+        value: "1"
+      - key: BLOCKCHAIN_NETWORK
+        sync: false
+      - key: BLOCKCHAIN_RPC_URL
+        sync: false
+      - key: BLOCKCHAIN_CHAIN_ID
+        sync: false
+      - key: DATA_INTEGRITY_CONTRACT_ADDRESS
+        sync: false
+      - key: BACKEND_ANCHORER_PRIVATE_KEY
+        sync: false
+      - key: DATA_INTEGRITY_ABI_PATH
+        value: backend/app/integrations/abi/ColdChainDataIntegrity.json
       - key: MYSQL_HOST
         sync: false
       - key: MYSQL_PORT
