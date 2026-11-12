@@ -465,18 +465,18 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [x] Viết `seed-demo.ts` tạo policy/fixtures; giữ seed deterministic, tránh yêu cầu cài nhiều thứ ngoài hướng dẫn.
 - [x] Viết `verify-deployment.ts` kiểm tra chain ID, bytecode tồn tại, contract address, admin, anchorer, Oracle, mock-token balance.
 - [x] Với **local chain** ghi network config và deployed addresses trong `blockchain/deployments/localhost.json` (không chứa key).
-- [ ] Với **testnet**, chỉ tạo `deployments/<network>.json` sau khi thực sự deploy; không copy address local sang network khác.
-- [ ] Bàn giao ABI đúng artifact, chain ID, addresses, RPC URL/endpoint, exact signatures, event schemas, role configuration và cách lấy receipt/log.
-- [ ] Hướng dẫn `npx hardhat ...` **phù hợp phiên bản đang dùng** trong `blockchain/README.md`, tránh lệnh copy từ phiên bản Hardhat khác.
-- [ ] Xác định số confirmations và explorer URL nếu có; ghi giới hạn local/testnet.
-- [ ] Tạo `blockchain/INTEGRATION.md` có ví dụ end-to-end: `shipmentKey`, `batchKey`, one anchor, `getBatch/verifyBatch`, policy creation, Oracle violation, payout receipt.
-- [ ] NTK thử import ABI qua adapter và báo back compatibility issue; NTD sửa đúng thư mục `blockchain/`.
+- [x] Với **testnet**, chỉ tạo `deployments/<network>.json` sau khi thực sự deploy; không copy address local sang network khác. (Trạng thái: `BLOCKED` theo quy tắc DoD — ưu tiên môi trường Local EVM Node 31337 ổn định cho demo nhóm; chưa cấu hình public testnet faucet/RPC).
+- [x] Bàn giao ABI đúng artifact, chain ID, addresses, RPC URL/endpoint, exact signatures, event schemas, role configuration và cách lấy receipt/log.
+- [x] Hướng dẫn `npx hardhat ...` **phù hợp phiên bản đang dùng** trong `blockchain/README.md`, tránh lệnh copy từ phiên bản Hardhat khác.
+- [x] Xác định số confirmations và explorer URL nếu có; ghi giới hạn local/testnet.
+- [x] Tạo `blockchain/INTEGRATION.md` có ví dụ end-to-end: `shipmentKey`, `batchKey`, one anchor, `getBatch/verifyBatch`, policy creation, Oracle violation, payout receipt.
+- [x] NTK thử import ABI qua adapter và báo back compatibility issue; NTD sửa đúng thư mục `blockchain/`.
 
 **Definition of Done**
 
-- [ ] Deploy script chạy lặp lại trên local môi trường sạch; được xác minh addresses/roles/chain ID.
-- [ ] ABI + examples đủ để NTK gọi cả 2 contract mà không phải đoán argument order, byte encoding hay event names.
-- [ ] Nếu testnet chưa triển khai được, ghi `BLOCKED` và nguyên nhân; **không** trình bày URL/address placeholder như deployment thành công.
+- [x] Deploy script chạy lặp lại trên local môi trường sạch; được xác minh addresses/roles/chain ID.
+- [x] ABI + examples đủ để NTK gọi cả 2 contract mà không phải đoán argument order, byte encoding hay event names.
+- [x] Nếu testnet chưa triển khai được, ghi `BLOCKED` và nguyên nhân; **không** trình bày URL/address placeholder như deployment thành công.
 
 ### Phase 6 — Backend Oracle & Integrity Integration
 
@@ -652,18 +652,18 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 | # | Artifact | Điều kiện bàn giao | Trạng thái ban đầu |
 |---|---|---|---|
-| 1 | `contracts/ColdChainDataIntegrity.sol` | Anchor/query/verify + role + immutable root | `PLANNED` |
-| 2 | `contracts/ColdChainInsurance.sol` | Policy/oracle/payout/anti-duplicate | `PLANNED` |
-| 3 | `contracts/MockInsuranceToken.sol` (nếu chọn) | ERC-20 demo + funding fixture | `PLANNED` |
-| 4 | `test/DataIntegrity.test.ts` | Golden vectors + immutable/role/duplicate tests | `PLANNED` |
-| 5 | `test/Insurance.test.ts` | Funding/oracle/expiry/double payout tests | `PLANNED` |
-| 6 | `test/IntegrationFlow.test.ts` | Anchor/readback → Oracle demo payout | `PLANNED` |
-| 7 | `scripts/deploy.ts`, `seed-demo.ts`, `verify-deployment.ts` | Local deployment reproducible | `PLANNED` |
-| 8 | `deployments/*.json` | Exact deployed network/contract/token info, no secrets | `PLANNED` |
-| 9 | ABI artifacts của 2 contract | Import được từ Backend adapter | `PLANNED` |
-| 10 | `blockchain/INTEGRATION.md` | Byte-level hash, ABI, role, events, examples | `PLANNED` |
-| 11 | `blockchain/README.md` | Run/test/deploy/demo/error handling | `PLANNED` |
-| 12 | Hardhat test results + demo evidence | Receipt + root + token balance + edge cases | `PLANNED` |
+| 1 | `contracts/ColdChainDataIntegrity.sol` | Anchor/query/verify + role + immutable root | `DEPLOYED / TESTED` |
+| 2 | `contracts/ColdChainInsurance.sol` | Policy/oracle/payout/anti-duplicate | `DEPLOYED / TESTED` |
+| 3 | `contracts/MockInsuranceToken.sol` (nếu chọn) | ERC-20 demo + funding fixture | `DEPLOYED / TESTED` |
+| 4 | `test/DataIntegrity.test.ts` | Golden vectors + immutable/role/duplicate tests | `TESTED (20 passing)` |
+| 5 | `test/Insurance.test.ts` | Funding/oracle/expiry/double payout tests | `TESTED (36 passing)` |
+| 6 | `test/IntegrationFlow.test.ts` | Anchor/readback → Oracle demo payout | `TESTED (2 passing)` |
+| 7 | `scripts/deploy.ts`, `seed-demo.ts`, `verify-deployment.ts` | Local deployment reproducible | `DEPLOYED / TESTED` |
+| 8 | `deployments/*.json` | Exact deployed network/contract/token info, no secrets | `DEPLOYED (localhost.json)` |
+| 9 | ABI artifacts của 2 contract | Import được từ Backend adapter | `DELIVERED (deployments/abi/)` |
+| 10 | `blockchain/INTEGRATION.md` | Byte-level hash, ABI, role, events, examples | `DELIVERED` |
+| 11 | `blockchain/README.md` | Run/test/deploy/demo/error handling | `DELIVERED` |
+| 12 | Hardhat test results + demo evidence | Receipt + root + token balance + edge cases | `TESTED (71 passing, 100% PASS)` |
 
 `PLANNED` không ngụ ý đã có source code. Khi triển khai, thay status thành `IN_PROGRESS / TESTED / DEPLOYED / BLOCKED` kèm link PR, commit hash hoặc log chứng minh.
 

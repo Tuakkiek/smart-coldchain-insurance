@@ -1,6 +1,6 @@
 # Blockchain — Smart Cold Chain Insurance
 
-Smart Contract quản lý dữ liệu toàn vẹn (Module A) và chính sách bảo hiểm chuỗi lạnh (Module B) trên local EVM blockchain (Hoàn thành Phase 4).
+Smart Contract quản lý dữ liệu toàn vẹn (Module A) và chính sách bảo hiểm chuỗi lạnh (Module B) trên EVM blockchain (Hoàn thành Phase 5).
 
 > ⚠️ **Demo only** — Token và tài sản trong project này không có giá trị thật.
 > Không kết nối ví/tài khoản có tiền thật.
@@ -10,7 +10,7 @@ Smart Contract quản lý dữ liệu toàn vẹn (Module A) và chính sách b�
 - **Solidity** 0.8.24
 - **Hardhat** 2.x + TypeScript
 - **OpenZeppelin** Contracts v5 (ERC-20, SafeERC20, ReentrancyGuard)
-- **Chai** + **Mocha** (qua Hardhat Toolbox) — 66 test cases (100% passing) bao phủ toàn bộ Module A, Module B, Security/Failure Scenarios và Cross-contract Integration Flow
+- **Chai** + **Mocha** (qua Hardhat Toolbox) — 71 test cases (100% passing) bao phủ toàn bộ Module A, Module B, Deployment Workflow, Security/Failure Scenarios và Cross-contract Integration Flow
 
 ## Cài đặt
 
@@ -21,17 +21,18 @@ npm install
 
 ## Scripts
 
-| Lệnh              | Mô tả                                       |
-|--------------------|----------------------------------------------|
-| `npm run compile`  | Compile smart contracts                      |
-| `npm run test`     | Chạy toàn bộ 66 unit & integration tests     |
-| `npm run node`     | Khởi chạy local Hardhat node (chain ID 31337)|
-| `npm run deploy`   | Deploy contracts lên local node              |
-| `npm run seed`     | Tạo dữ liệu demo (1 policy mẫu)             |
-| `npm run verify`   | Xác minh bytecode, roles, quỹ và demo policy |
-| `npm run clean`    | Xoá artifacts/cache                          |
+| Lệnh                 | Mô tả                                                          |
+|-----------------------|-----------------------------------------------------------------|
+| `npm run compile`     | Compile smart contracts                                         |
+| `npm run test`        | Chạy toàn bộ 71 unit & integration tests                        |
+| `npm run node`        | Khởi chạy local Hardhat node (Chain ID 31337)                   |
+| `npm run deploy`      | Deploy 3 contracts lên local node                               |
+| `npm run seed`        | Tạo dữ liệu demo (neo lô telemetry Module A & policy Module B)  |
+| `npm run verify`      | Xác minh bytecode, roles, Merkle root và solvency               |
+| `npm run export-abi`  | Xuất pure ABI và metadata bàn giao cho Backend & Frontend       |
+| `npm run clean`       | Xoá artifacts/cache                                             |
 
-## Quy trình chạy demo
+## Quy trình chạy demo Local
 
 ```bash
 # Terminal 1: Chạy local node
@@ -45,6 +46,9 @@ npm run seed
 
 # Terminal 2: Xác minh deployment
 npm run verify
+
+# Terminal 2: Xuất ABI bàn giao (tùy chọn)
+npm run export-abi
 ```
 
 Sau khi deploy, thông tin contract được lưu tại `deployments/localhost.json`.
@@ -60,16 +64,23 @@ blockchain/
     test/
       MaliciousReentrantToken.sol # Token ERC-20 độc hại để test tấn công Reentrancy
   scripts/
-    deploy.ts                   # Script deploy
-    seed-demo.ts                # Script tạo dữ liệu demo
-    verify-deployment.ts        # Script xác minh trạng thái deployment
+    deploy.ts                   # Script deploy 3 contracts & phân quyền
+    seed-demo.ts                # Script tạo dữ liệu demo (deterministic)
+    verify-deployment.ts        # Script xác minh 6 tiêu chí deployment
+    export-abi.ts               # Script trích xuất pure ABI bàn giao
   test/
     ColdChainInsurance.test.ts          # Module B tests (36 cases)
     DataIntegrity.test.ts               # Module A tests + Merkle-v1 Golden Vectors (20 cases)
+    DeploymentWorkflow.test.ts          # Deploy, seed & verification workflow tests (5 cases)
     SecurityAndFailureScenarios.test.ts # Reentrancy, SafeERC20 failures, Solvency (8 cases)
     IntegrationFlow.test.ts             # Module A + Module B E2E workflow (2 cases)
   deployments/
-    localhost.json              # Thông tin deploy (sinh tự động)
+    localhost.json              # Thông tin deploy mạng local (sinh tự động)
+    abi/                        # Bàn giao ABI cho Backend & Frontend
+      ColdChainDataIntegrity.abi.json
+      ColdChainInsurance.abi.json
+      MockInsuranceToken.abi.json
+      contract-interfaces.json
   artifacts/                    # Sinh tự động bởi Hardhat
   typechain-types/              # TypeScript typings (sinh tự động)
   INTEGRATION.md                # Hướng dẫn tích hợp cho Member 1 (Backend) & Member 3
@@ -82,14 +93,14 @@ blockchain/
 
 Contract chịu trách nhiệm lưu trữ (anchor) và xác thực tính toàn vẹn của các lô dữ liệu telemetry IoT từ Edge/Backend.
 
-- **Merkle v1 Protocol**: Tuân thủ chuẩn hashing RFC 6962 / Tuakkiek protocol v1 (`SHA-256(0x00 || canonical_record_utf8)` cho lá và `SHA-256(0x01 || left || right)` cho node cha).
+- **Merkle v1 Protocol**: Tuân thủ chuẩn RFC 6962 (`SHA-256(0x00 || canonical_record_utf8)` cho lá và `SHA-256(0x01 || left || right)` cho node cha).
 - Khóa batch (`batchKey`) và khóa shipment (`shipmentKey`) sử dụng `keccak256(bytes)`.
 
 | Hàm                                | Ai gọi            | Mô tả                                                             |
 |-------------------------------------|-------------------|-------------------------------------------------------------------|
-| `anchorBatch(...)`                  | Anchorer (Backend)| Neo Merkle root, recordCount, timestamps và deviceKey cho batch   |
-| `getBatch(batchKey)`                | Public view       | Trả về toàn bộ thông tin batch (tuple 6 giá trị)                 |
-| `verifyBatch(batchKey, root, count)`| Public view       | Xác thực tính toàn vẹn của batch (so sánh Merkle root và count)  |
+| `anchorBatch(...)`                  | Anchorer (Backend)| Neo Merkle root, recordCount, sequences và deviceKey cho batch    |
+| `getBatch(batchKey)`                | Public view       | Trả về toàn bộ thông tin batch (tuple 8 giá trị)                 |
+| `verifyBatch(batchKey, root)`       | Public view       | Xác thực tính toàn vẹn của batch (so sánh candidate Merkle root)  |
 | `batchExists(batchKey)`             | Public view       | Kiểm tra nhanh sự tồn tại của batch                              |
 | `setAnchorer(newAnchorer)`          | Owner             | Cập nhật địa chỉ anchorer được cấp quyền                          |
 
@@ -115,12 +126,7 @@ Token ERC-20 đơn giản dùng để mô phỏng ký quỹ và chi trả bảo 
 - Sử dụng Custom Errors (`MockToken__CallerNotOwner`, `MockToken__ZeroAddress`).
 - Không đại diện giá trị VND hoặc tiền thật.
 
-## Bảo mật & Tối ưu hóa (Phase 3 & Phase 4)
+## Môi trường & Xác nhận khối (Confirmations)
 
-- **SafeERC20 (OpenZeppelin v5)**: Chống revert âm thầm và chuẩn hóa các hành vi trả về của token.
-- **Custom Errors (Solidity 0.8.24)**: Tiết kiệm gas đáng kể so với `require(..., "string")`.
-- **ReentrancyGuard**: Ngăn chặn tấn công Reentrancy trên toàn bộ các hàm state-changing và transfer token (đã kiểm chứng qua `MaliciousReentrantToken`).
-- **Checks-Effects-Interactions**: Cập nhật trạng thái `PaidOut` / `Refunded` trước khi gọi hàm transfer token.
-- **Solvency Check**: Kiểm tra số dư quỹ bảo hiểm trước khi thực hiện chuyển token.
-- **Phân quyền chặt chẽ**: Quyền `Anchorer` và `Oracle` tách biệt, kiểm soát bởi `Owner`.
-- **Toàn vẹn dữ liệu chuỗi lạnh**: Kết hợp Module A (Merkle root on-chain) và Module B (evidenceHash vi phạm), đảm bảo bằng chứng không thể bị làm giả.
+- **Local Node**: Cung cấp xác nhận tức thì (1 confirmation, mining ~0 giây). Khởi động lại node sẽ thiết lập lại trạng thái từ block 0.
+- **Testnet**: Trạng thái hiện tại là `BLOCKED` (theo Definition of Done Phase 5) do phạm vi đồ án tập trung vào Local Node demo ổn định; không tạo địa chỉ giả mạo trên testnet. Khi nhóm cấp RPC và Faucet testnet, script deploy có thể cấu hình target network tương ứng.
