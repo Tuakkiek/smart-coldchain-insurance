@@ -461,10 +461,10 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 **Việc cần làm**
 
-- [ ] Viết `deploy.ts` deploy Data Integrity Contract, token demo (nếu dùng), Insurance Contract; cấu hình role, funding, oracle/anchorer addresses đúng environment.
-- [ ] Viết `seed-demo.ts` tạo policy/fixtures; giữ seed deterministic, tránh yêu cầu cài nhiều thứ ngoài hướng dẫn.
-- [ ] Viết `verify-deployment.ts` kiểm tra chain ID, bytecode tồn tại, contract address, admin, anchorer, Oracle, mock-token balance.
-- [ ] Với **local chain** ghi network config và deployed addresses trong `blockchain/deployments/localhost.json` (không chứa key).
+- [x] Viết `deploy.ts` deploy Data Integrity Contract, token demo (nếu dùng), Insurance Contract; cấu hình role, funding, oracle/anchorer addresses đúng environment.
+- [x] Viết `seed-demo.ts` tạo policy/fixtures; giữ seed deterministic, tránh yêu cầu cài nhiều thứ ngoài hướng dẫn.
+- [x] Viết `verify-deployment.ts` kiểm tra chain ID, bytecode tồn tại, contract address, admin, anchorer, Oracle, mock-token balance.
+- [x] Với **local chain** ghi network config và deployed addresses trong `blockchain/deployments/localhost.json` (không chứa key).
 - [ ] Với **testnet**, chỉ tạo `deployments/<network>.json` sau khi thực sự deploy; không copy address local sang network khác.
 - [ ] Bàn giao ABI đúng artifact, chain ID, addresses, RPC URL/endpoint, exact signatures, event schemas, role configuration và cách lấy receipt/log.
 - [ ] Hướng dẫn `npx hardhat ...` **phù hợp phiên bản đang dùng** trong `blockchain/README.md`, tránh lệnh copy từ phiên bản Hardhat khác.
