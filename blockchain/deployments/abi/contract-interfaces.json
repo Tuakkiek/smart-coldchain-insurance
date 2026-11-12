@@ -1,0 +1,93 @@
+{
+  "ColdChainDataIntegrity": {
+    "functions": [
+      "anchorBatch(bytes32 _batchKey, bytes32 _shipmentKey, bytes32 _deviceKey, bytes32 _merkleRoot, uint64 _firstSequence, uint64 _lastSequence, uint32 _recordCount) -> ()",
+      "anchorer() -> (address)",
+      "batchExists(bytes32 _batchKey) -> (bool)",
+      "getBatch(bytes32 _batchKey) -> (tuple)",
+      "owner() -> (address)",
+      "setAnchorer(address _newAnchorer) -> ()",
+      "verifyBatch(bytes32 _batchKey, bytes32 _candidateRoot) -> (bool)"
+    ],
+    "events": [
+      "event AnchorerUpdated(address indexed previousAnchorer, address indexed newAnchorer)",
+      "event BatchAnchored(bytes32 indexed batchKey, bytes32 indexed shipmentKey, bytes32 indexed deviceKey, bytes32 merkleRoot, uint32 recordCount, address anchoredBy)"
+    ],
+    "errors": [
+      "error ColdChain__BatchAlreadyExists(bytes32 batchKey)",
+      "error ColdChain__BatchNotFound(bytes32 batchKey)",
+      "error ColdChain__CallerNotAnchorer()",
+      "error ColdChain__CallerNotOwner()",
+      "error ColdChain__InvalidBatchKey()",
+      "error ColdChain__InvalidMerkleRoot()",
+      "error ColdChain__InvalidRecordCount()",
+      "error ColdChain__InvalidSequenceRange(uint64 firstSequence, uint64 lastSequence)",
+      "error ColdChain__ZeroAddress()"
+    ]
+  },
+  "ColdChainInsurance": {
+    "functions": [
+      "createPolicy(bytes32 _shipmentKey, address _beneficiary, uint256 _payoutAmount, uint256 _expiry) -> ()",
+      "getContractBalance() -> (uint256)",
+      "getPolicy(bytes32 _shipmentKey) -> (address, address, uint256, uint256, uint8, bytes32, uint256)",
+      "isPolicyActive(bytes32 _shipmentKey) -> (bool)",
+      "oracle() -> (address)",
+      "owner() -> (address)",
+      "payoutToken() -> (address)",
+      "policies(bytes32 ) -> (address, address, uint256, uint256, uint8, bytes32, uint256)",
+      "refundExpiredPolicy(bytes32 _shipmentKey) -> ()",
+      "reportViolation(bytes32 _shipmentKey, bytes32 _evidenceHash, uint256 _detectedAt) -> ()",
+      "setOracle(address _newOracle) -> ()"
+    ],
+    "events": [
+      "event InsurancePaid(bytes32 indexed shipmentKey, address indexed beneficiary, uint256 payoutAmount, bytes32 evidenceHash, uint256 detectedAt)",
+      "event OracleUpdated(address indexed previousOracle, address indexed newOracle)",
+      "event PolicyCreated(bytes32 indexed shipmentKey, address indexed insurer, address indexed beneficiary, uint256 payoutAmount, uint256 expiry)",
+      "event PolicyRefunded(bytes32 indexed shipmentKey, address indexed insurer, uint256 amount)"
+    ],
+    "errors": [
+      "error ColdChain__CallerNotInsurer()",
+      "error ColdChain__CallerNotOracle()",
+      "error ColdChain__CallerNotOwner()",
+      "error ColdChain__ContractInsufficientBalance(uint256 available, uint256 required)",
+      "error ColdChain__InvalidExpiry(uint256 expiry, uint256 currentTimestamp)",
+      "error ColdChain__InvalidPayoutAmount()",
+      "error ColdChain__PolicyAlreadyExists(bytes32 shipmentKey)",
+      "error ColdChain__PolicyExpired(uint256 expiry, uint256 currentTimestamp)",
+      "error ColdChain__PolicyNotActive(bytes32 shipmentKey, uint8 currentStatus)",
+      "error ColdChain__PolicyNotExpired(uint256 expiry, uint256 currentTimestamp)",
+      "error ColdChain__ZeroAddress()",
+      "error ReentrancyGuardReentrantCall()",
+      "error SafeERC20FailedOperation(address token)"
+    ]
+  },
+  "MockInsuranceToken": {
+    "functions": [
+      "allowance(address owner, address spender) -> (uint256)",
+      "approve(address spender, uint256 value) -> (bool)",
+      "balanceOf(address account) -> (uint256)",
+      "decimals() -> (uint8)",
+      "mint(address to, uint256 amount) -> ()",
+      "name() -> (string)",
+      "owner() -> (address)",
+      "symbol() -> (string)",
+      "totalSupply() -> (uint256)",
+      "transfer(address to, uint256 value) -> (bool)",
+      "transferFrom(address from, address to, uint256 value) -> (bool)"
+    ],
+    "events": [
+      "event Approval(address indexed owner, address indexed spender, uint256 value)",
+      "event Transfer(address indexed from, address indexed to, uint256 value)"
+    ],
+    "errors": [
+      "error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)",
+      "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
+      "error ERC20InvalidApprover(address approver)",
+      "error ERC20InvalidReceiver(address receiver)",
+      "error ERC20InvalidSender(address sender)",
+      "error ERC20InvalidSpender(address spender)",
+      "error MockToken__CallerNotOwner()",
+      "error MockToken__ZeroAddress()"
+    ]
+  }
+}
