@@ -10,7 +10,7 @@ Smart Contract quản lý dữ liệu toàn vẹn (Module A) và chính sách b�
 - **Solidity** 0.8.24
 - **Hardhat** 2.x + TypeScript
 - **OpenZeppelin** Contracts v5 (ERC-20, SafeERC20, ReentrancyGuard)
-- **Chai** + **Mocha** (qua Hardhat Toolbox) — 71 test cases (100% passing) bao phủ toàn bộ Module A, Module B, Deployment Workflow, Security/Failure Scenarios và Cross-contract Integration Flow
+- **Chai** + **Mocha** (qua Hardhat Toolbox) — 80 test cases (100% passing) bao phủ toàn bộ Module A, Module B, Deployment Workflow, Phase 6 Integration Readiness, Security/Failure Scenarios và Cross-contract Integration Flow
 
 ## Cài đặt
 
@@ -24,11 +24,13 @@ npm install
 | Lệnh                 | Mô tả                                                          |
 |-----------------------|-----------------------------------------------------------------|
 | `npm run compile`     | Compile smart contracts                                         |
-| `npm run test`        | Chạy toàn bộ 71 unit & integration tests                        |
+| `npm run test`        | Chạy toàn bộ 80 unit & integration tests                        |
 | `npm run node`        | Khởi chạy local Hardhat node (Chain ID 31337)                   |
 | `npm run deploy`      | Deploy 3 contracts lên local node                               |
 | `npm run seed`        | Tạo dữ liệu demo (neo lô telemetry Module A & policy Module B)  |
 | `npm run verify`      | Xác minh bytecode, roles, Merkle root và solvency               |
+| `npm run roles`       | Kiểm tra hoặc cập nhật `anchorer` / `oracle` trên chain         |
+| `npm run inspect`     | Tra cứu trực tiếp event logs (`BatchAnchored`, `InsurancePaid`) |
 | `npm run export-abi`  | Xuất pure ABI và metadata bàn giao cho Backend & Frontend       |
 | `npm run clean`       | Xoá artifacts/cache                                             |
 
@@ -67,11 +69,14 @@ blockchain/
     deploy.ts                   # Script deploy 3 contracts & phân quyền
     seed-demo.ts                # Script tạo dữ liệu demo (deterministic)
     verify-deployment.ts        # Script xác minh 6 tiêu chí deployment
+    manage-roles.ts             # Script kiểm tra / xoay vòng quyền Anchorer & Oracle
+    inspect-onchain.ts          # Script tra cứu event logs & state thực tế trên chain
     export-abi.ts               # Script trích xuất pure ABI bàn giao
   test/
     ColdChainInsurance.test.ts          # Module B tests (36 cases)
     DataIntegrity.test.ts               # Module A tests + Merkle-v1 Golden Vectors (20 cases)
     DeploymentWorkflow.test.ts          # Deploy, seed & verification workflow tests (5 cases)
+    Phase6IntegrationScenarios.test.ts  # Phase 6 Outbox mapping, tamper & E13-E17 tests (9 cases)
     SecurityAndFailureScenarios.test.ts # Reentrancy, SafeERC20 failures, Solvency (8 cases)
     IntegrationFlow.test.ts             # Module A + Module B E2E workflow (2 cases)
   deployments/

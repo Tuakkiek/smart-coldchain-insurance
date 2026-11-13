@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import {
   MockInsuranceToken,
@@ -130,52 +131,53 @@ describe("Deployment and Seed Workflow (Phase 5 Part 1)", function () {
   });
 
   it("Should ensure deployment info schema conforms to requirements without leaking secrets", async function () {
-    const deploymentPath = path.join(__dirname, "..", "deployments", "localhost.json");
-    const deploymentsDir = path.dirname(deploymentPath);
-    if (!fs.existsSync(deploymentsDir)) {
-      fs.mkdirSync(deploymentsDir, { recursive: true });
-    }
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "coldchain-deploy-"));
+    const deploymentPath = path.join(tmpDir, "localhost.json");
 
-    const mockDeployment = {
-      network: "localhost",
-      chainId: 31337,
-      contracts: {
-        MockInsuranceToken: {
-          address: await token.getAddress(),
-          deployer: deployer.address,
+    try {
+      const mockDeployment = {
+        network: "localhost",
+        chainId: 31337,
+        contracts: {
+          MockInsuranceToken: {
+            address: await token.getAddress(),
+            deployer: deployer.address,
+          },
+          ColdChainDataIntegrity: {
+            address: await dataIntegrity.getAddress(),
+            deployer: deployer.address,
+            anchorer: anchorer.address,
+          },
+          ColdChainInsurance: {
+            address: await insurance.getAddress(),
+            deployer: deployer.address,
+            oracle: oracle.address,
+            payoutToken: await token.getAddress(),
+          },
         },
-        ColdChainDataIntegrity: {
-          address: await dataIntegrity.getAddress(),
-          deployer: deployer.address,
-          anchorer: anchorer.address,
-        },
-        ColdChainInsurance: {
-          address: await insurance.getAddress(),
+        roles: {
           deployer: deployer.address,
           oracle: oracle.address,
-          payoutToken: await token.getAddress(),
+          anchorer: anchorer.address,
         },
-      },
-      roles: {
-        deployer: deployer.address,
-        oracle: oracle.address,
-        anchorer: anchorer.address,
-      },
-      deployedAt: new Date().toISOString(),
-    };
+        deployedAt: new Date().toISOString(),
+      };
 
-    fs.writeFileSync(deploymentPath, JSON.stringify(mockDeployment, null, 2));
+      fs.writeFileSync(deploymentPath, JSON.stringify(mockDeployment, null, 2));
 
-    const content = fs.readFileSync(deploymentPath, "utf-8");
-    expect(content).to.not.include("private");
-    expect(content).to.not.include("secret");
-    expect(content).to.not.include("mnemonic");
+      const content = fs.readFileSync(deploymentPath, "utf-8");
+      expect(content).to.not.include("private");
+      expect(content).to.not.include("secret");
+      expect(content).to.not.include("mnemonic");
 
-    const parsed = JSON.parse(content);
-    expect(parsed.contracts.MockInsuranceToken.address).to.properAddress;
-    expect(parsed.contracts.ColdChainDataIntegrity.address).to.properAddress;
-    expect(parsed.contracts.ColdChainInsurance.address).to.properAddress;
-    expect(parsed.roles.anchorer).to.properAddress;
-    expect(parsed.roles.oracle).to.properAddress;
+      const parsed = JSON.parse(content);
+      expect(parsed.contracts.MockInsuranceToken.address).to.properAddress;
+      expect(parsed.contracts.ColdChainDataIntegrity.address).to.properAddress;
+      expect(parsed.contracts.ColdChainInsurance.address).to.properAddress;
+      expect(parsed.roles.anchorer).to.properAddress;
+      expect(parsed.roles.oracle).to.properAddress;
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

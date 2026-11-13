@@ -320,6 +320,30 @@ if policy[4] == 1:  # Active
 
 ---
 
+## 5.1. Ánh xạ Backend Outbox (`ANCHOR_BATCH`) $\rightarrow$ `anchorBatch`
+
+Hiện tại `backend/app/services/batch_service.py` tạo sẵn `IntegrationOutbox(kind="ANCHOR_BATCH")` chứa JSON payload sau khi seal batch:
+
+| Field trong `IntegrationOutbox.payload` | Tham số `ColdChainDataIntegrity.anchorBatch` | Quy tắc chuyển đổi |
+|---|---|---|
+| `batch_id` (UUID/string) | `_batchKey` (`bytes32`) | `bytes(Web3.keccak(text=payload["batch_id"]))` |
+| `shipment_id` (UUID/string) | `_shipmentKey` (`bytes32`) | `bytes(Web3.keccak(text=payload["shipment_id"]))` |
+| `device_id` (string) | `_deviceKey` (`bytes32`) | `bytes(Web3.keccak(text=payload["device_id"]))` |
+| `merkle_root` (`0x` + 64 hex) | `_merkleRoot` (`bytes32`) | `bytes.fromhex(payload["merkle_root"].removeprefix("0x"))` |
+| `first_sequence` (int) | `_firstSequence` (`uint64`) | Giữ nguyên số nguyên `int` |
+| `last_sequence` (int) | `_lastSequence` (`uint64`) | Giữ nguyên số nguyên `int` |
+| `record_count` (int) | `_recordCount` (`uint32`) | Giữ nguyên số nguyên `int` |
+
+### Quy tắc Idempotency & Retry khi RPC Timeout (Phase 6)
+1. **Trước khi broadcast lại (`ANCHOR_BATCH`)**: Backend gọi `batchExists(batchKey)` (hoặc `getBatch(batchKey)`).
+   - Nếu đã tồn tại và `on_chain_batch.merkleRoot == merkle_root`: Tx trước đó đã thành công $\rightarrow$ đối chiếu `BatchAnchored` event & chuyển sang `DATA_ANCHORED`, **không gửi lại giao dịch**.
+   - Nếu đã tồn tại nhưng `merkleRoot` khác: Ghi nhận `DATA_INTEGRITY_FAILED` & cảnh báo audit; **không ghi đè**.
+   - Nếu gửi trùng sẽ nhận Custom Error `ColdChain__BatchAlreadyExists(batchKey)`.
+2. **Trước khi broadcast lại (`reportViolation`)**:
+   - Đọc `getPolicy(shipmentKey)`: nếu `policy[4] == 2` (`PaidOut`) với cùng `evidenceHash` (`policy[5]`) và `detectedAt` (`policy[6]`) $\rightarrow$ reconcile `CONFIRMED`, không gửi lại giao dịch.
+
+---
+
 ## 6. Ma trận kiểm thử (Test Matrix)
 
 | Test File | Phạm vi kiểm thử | Số lượng Cases | Kết quả |
@@ -328,5 +352,6 @@ if policy[4] == 1:  # Active
 | `DataIntegrity.test.ts` | Cross-language Merkle-v1 golden vectors (1, 2, 3 leaves), anchor batch, duplicate revert, sequence validation, verifyBatch mismatch/unknown | 20 | PASS (100%) |
 | `DeploymentWorkflow.test.ts` | Triển khai 3 hợp đồng, phân quyền Anchorer/Oracle, seed dữ liệu mẫu deterministic, schema localhost.json không rò rỉ secrets | 5 | PASS (100%) |
 | `IntegrationFlow.test.ts` | Chu trình E2E kết hợp Module A & Module B: Batch Anchoring $\rightarrow$ Integrity Check $\rightarrow$ Breach $\rightarrow$ Oracle Payout $\rightarrow$ Tampered data detection | 2 | PASS (100%) |
+| `Phase6IntegrationScenarios.test.ts` | Đối chiếu Outbox payload (`batch_service.py`), chống duplicate anchor (E14), MySQL tamper detection (E08/E09/E19), sai Anchorer/Oracle (E13/E15), double payout (E16), expiry refund (E17) | 9 | PASS (100%) |
 | `SecurityAndFailureScenarios.test.ts` | Tấn công Reentrancy qua SafeERC20/ReentrancyGuard, rollback trạng thái khi transfer lỗi, kiểm tra biên thời gian expiry, solvency checks | 8 | PASS (100%) |
-| **Tổng cộng** | **Bao phủ toàn diện Module A & B, Deployment Workflow, Failure Modes & Cross-contract Security** | **71** | **PASS (100%)** |
+| **Tổng cộng** | **Bao phủ toàn diện Module A & B, Deployment Workflow, Phase 6 Integration Readiness & Cross-contract Security** | **80** | **PASS (100%)** |
