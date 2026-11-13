@@ -74,7 +74,10 @@ class FakeGateway:
 
 
 def run_breach(tmp_path, gateway_mode):
-    app = create_app(Settings(database_url=f"sqlite:///{(tmp_path / 'chain.db').as_posix()}"))
+    app = create_app(Settings(
+        database_url=f"sqlite:///{(tmp_path / 'chain.db').as_posix()}",
+        payout_requires_anchored_evidence=False,
+    ))
     Base.metadata.create_all(app.state.engine)
     app.state.clock = VirtualClock(datetime(2026, 11, 4, tzinfo=timezone.utc))
     gateway = FakeGateway(app.state.session_factory)

@@ -157,8 +157,9 @@ def _response(sample: Telemetry, receipt: SignedTelemetryReceipt, duplicate: boo
 
 
 def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, clock,
-           gap_minutes: int, rate_limit_per_minute: int,
-           batch_max_records: int = 100, batch_max_age_minutes: int = 5) -> dict:
+           gap_minutes: int, max_sample_gap_seconds: int, rate_limit_per_minute: int,
+           batch_max_records: int = 100, batch_max_age_minutes: int = 5,
+           integrity_anchor=None, insurance_blockchain=None, evidence_coordinator=None) -> dict:
     if payload.shipment_id != shipment_id:
         _reject(session, payload, "SHIPMENT_MISMATCH", 422, "Body shipment_id does not match path")
     shipments.get_shipment(session, shipment_id)
@@ -204,7 +205,14 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
         TelemetryCreate(device_id=device.id, temperature_c=float(payload.temperature_c),
                         humidity_pct=float(payload.humidity_pct),
                         recorded_at=payload.recorded_at),
-        clock, gap_minutes, None, commit=False, verified_only=True, sequence_gap=gap,
+        clock,
+        gap_minutes,
+        insurance_blockchain if evidence_coordinator is None else None,
+        commit=False,
+        verified_only=True,
+        sequence_gap=gap,
+        max_sample_gap_seconds=max_sample_gap_seconds,
+        evidence_gate=evidence_coordinator is not None,
     )
     receipt = SignedTelemetryReceipt(
         telemetry_id=sample.id, shipment_id=shipment_id, device_id=device.id,
@@ -233,16 +241,33 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
     try:
         # Telemetry is already committed. Sealing is a separate transaction so
         # a batch failure can never roll back accepted sensor data.
-        from app.services.batch_service import seal_ready_batch
+        from app.services.batch_service import BatchServiceError, seal_ready_batch, verify_batch
 
-        seal_ready_batch(
-            session,
-            shipment_id,
-            device.id,
-            now,
-            max_records=batch_max_records,
-            max_age_minutes=batch_max_age_minutes,
+        gate_triggered = (
+            evidence_coordinator is not None
+            and shipments.get_shipment(session, shipment_id).insurance_status == "triggered"
         )
+        while True:
+            try:
+                batch = seal_ready_batch(
+                    session,
+                    shipment_id,
+                    device.id,
+                    now,
+                    max_records=batch_max_records,
+                    max_age_minutes=batch_max_age_minutes,
+                    force=gate_triggered,
+                    anchor_coordinator=integrity_anchor,
+                )
+            except BatchServiceError as exc:
+                if gate_triggered and exc.code == "NO_ELIGIBLE_TELEMETRY":
+                    break
+                raise
+            if batch is None:
+                break
+            verify_batch(session, batch.id, now, integrity_anchor)
+            if not gate_triggered:
+                break
     except Exception:
         session.rollback()
         logger.exception(
@@ -250,4 +275,10 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
             shipment_id,
             device.id,
         )
+    if evidence_coordinator is not None:
+        try:
+            evidence_coordinator.reconcile(session, shipment_id)
+        except Exception:
+            session.rollback()
+            logger.exception("Insurance evidence reconciliation failed shipment_id=%s", shipment_id)
     return _response(sample, receipt, False)

@@ -11,7 +11,8 @@ from sqlalchemy.engine import URL
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_ABI_PATH = BACKEND_DIR.parent / "blockchain/artifacts/contracts/ColdChainInsurance.sol/ColdChainInsurance.json"
+DEFAULT_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainInsurance.json"
+DEFAULT_INTEGRITY_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainDataIntegrity.json"
 
 
 @dataclass(frozen=True)
@@ -24,8 +25,10 @@ class Settings:
     admin_api_key: str = ""
     max_request_body_bytes: int = 8192
     signed_rate_limit_per_minute: int = 120
+    max_sample_gap_seconds: int = 300
     integrity_batch_max_records: int = 100
     integrity_batch_max_age_minutes: int = 5
+    payout_requires_anchored_evidence: bool = True
     blockchain_enabled: bool = False
     blockchain_network: str = "localhost"
     blockchain_rpc_url: str = "http://127.0.0.1:8545"
@@ -33,6 +36,10 @@ class Settings:
     blockchain_contract_address: str = ""
     blockchain_oracle_private_key: str = ""
     blockchain_abi_path: Path = DEFAULT_ABI_PATH
+    data_integrity_contract_address: str = ""
+    blockchain_anchorer_private_key: str = ""
+    data_integrity_abi_path: Path = DEFAULT_INTEGRITY_ABI_PATH
+    blockchain_confirmations: int = 1
     blockchain_receipt_timeout_seconds: int = 15
 
 
@@ -44,11 +51,35 @@ def load_settings() -> Settings:
     blockchain_enabled = enabled_text == "true"
     contract_address = os.getenv("BLOCKCHAIN_CONTRACT_ADDRESS", "")
     oracle_private_key = os.getenv("BLOCKCHAIN_ORACLE_PRIVATE_KEY", "")
-    if blockchain_enabled and (not contract_address or not oracle_private_key):
-        raise ValueError("Blockchain contract address and oracle private key are required when enabled")
+    if bool(contract_address) != bool(oracle_private_key):
+        raise ValueError(
+            "BLOCKCHAIN_CONTRACT_ADDRESS and BLOCKCHAIN_ORACLE_PRIVATE_KEY must be set together"
+        )
     abi_path = Path(os.getenv("BLOCKCHAIN_ABI_PATH", str(DEFAULT_ABI_PATH)))
     if not abi_path.is_absolute():
         abi_path = BACKEND_DIR.parent / abi_path
+    integrity_contract_address = os.getenv("DATA_INTEGRITY_CONTRACT_ADDRESS", "")
+    anchorer_private_key = os.getenv("BACKEND_ANCHORER_PRIVATE_KEY", "")
+    if bool(integrity_contract_address) != bool(anchorer_private_key):
+        raise ValueError(
+            "DATA_INTEGRITY_CONTRACT_ADDRESS and BACKEND_ANCHORER_PRIVATE_KEY must be set together"
+        )
+    if blockchain_enabled and not (
+        (contract_address and oracle_private_key)
+        or (integrity_contract_address and anchorer_private_key)
+    ):
+        raise ValueError(
+            "Blockchain contract address and oracle private key, or Data Integrity contract and "
+            "anchorer private key, are required when enabled"
+        )
+    integrity_abi_path = Path(
+        os.getenv("DATA_INTEGRITY_ABI_PATH", str(DEFAULT_INTEGRITY_ABI_PATH))
+    )
+    if not integrity_abi_path.is_absolute():
+        integrity_abi_path = BACKEND_DIR.parent / integrity_abi_path
+    confirmations = int(os.getenv("BLOCKCHAIN_CONFIRMATIONS", "1"))
+    if confirmations <= 0:
+        raise ValueError("BLOCKCHAIN_CONFIRMATIONS must be positive")
     receipt_timeout = int(os.getenv("BLOCKCHAIN_RECEIPT_TIMEOUT_SECONDS", "15"))
     if receipt_timeout <= 0:
         raise ValueError("BLOCKCHAIN_RECEIPT_TIMEOUT_SECONDS must be positive")
@@ -61,6 +92,14 @@ def load_settings() -> Settings:
     signed_rate_limit_per_minute = int(os.getenv("SIGNED_RATE_LIMIT_PER_MINUTE", "120"))
     if signed_rate_limit_per_minute <= 0:
         raise ValueError("SIGNED_RATE_LIMIT_PER_MINUTE must be positive")
+    max_sample_gap_seconds = int(
+        os.getenv("MAX_SAMPLE_GAP_SECONDS", str(sensor_gap_minutes * 60))
+    )
+    if max_sample_gap_seconds <= 0:
+        raise ValueError("MAX_SAMPLE_GAP_SECONDS must be positive")
+    payout_evidence_text = os.getenv("PAYOUT_REQUIRES_ANCHORED_EVIDENCE", "true").lower()
+    if payout_evidence_text not in {"true", "false"}:
+        raise ValueError("PAYOUT_REQUIRES_ANCHORED_EVIDENCE must be true or false")
     integrity_batch_max_records = int(os.getenv("INTEGRITY_BATCH_MAX_RECORDS", "100"))
     if not 1 <= integrity_batch_max_records <= 100:
         raise ValueError("INTEGRITY_BATCH_MAX_RECORDS must be in [1, 100]")
@@ -91,8 +130,10 @@ def load_settings() -> Settings:
         admin_api_key=os.getenv("ADMIN_API_KEY", ""),
         max_request_body_bytes=max_request_body_bytes,
         signed_rate_limit_per_minute=signed_rate_limit_per_minute,
+        max_sample_gap_seconds=max_sample_gap_seconds,
         integrity_batch_max_records=integrity_batch_max_records,
         integrity_batch_max_age_minutes=integrity_batch_max_age_minutes,
+        payout_requires_anchored_evidence=payout_evidence_text == "true",
         blockchain_enabled=blockchain_enabled,
         blockchain_network=os.getenv("BLOCKCHAIN_NETWORK", "localhost"),
         blockchain_rpc_url=os.getenv("BLOCKCHAIN_RPC_URL", "http://127.0.0.1:8545"),
@@ -100,5 +141,9 @@ def load_settings() -> Settings:
         blockchain_contract_address=contract_address,
         blockchain_oracle_private_key=oracle_private_key,
         blockchain_abi_path=abi_path,
+        data_integrity_contract_address=integrity_contract_address,
+        blockchain_anchorer_private_key=anchorer_private_key,
+        data_integrity_abi_path=integrity_abi_path,
+        blockchain_confirmations=confirmations,
         blockchain_receipt_timeout_seconds=receipt_timeout,
     )

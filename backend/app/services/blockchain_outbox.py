@@ -38,6 +38,7 @@ class BlockchainCoordinator:
         shipment.payout_status = "pending"
         event.details = {
             **event.details,
+            "evidence_status": "PAYOUT_PENDING",
             "blockchain_status": "BLOCKCHAIN_PENDING",
             "attempt_count": 0,
         }
@@ -65,6 +66,11 @@ class BlockchainCoordinator:
         shipment.payout_status = {"pending": "pending", "success": "paid", "failed": "failed"}[status]
         details = dict(event.details)
         details["blockchain_status"] = f"BLOCKCHAIN_{status.upper()}"
+        details["evidence_status"] = {
+            "pending": "PAYOUT_PENDING",
+            "success": "PAYOUT_CONFIRMED",
+            "failed": "PAYOUT_FAILED",
+        }[status]
         if error_code:
             details["last_error"] = error_code
         else:
@@ -198,7 +204,11 @@ class BlockchainCoordinator:
 
 
 def configured_coordinator(settings) -> BlockchainCoordinator | None:
-    if not settings.blockchain_enabled:
+    if (
+        not settings.blockchain_enabled
+        or not settings.blockchain_contract_address
+        or not settings.blockchain_oracle_private_key
+    ):
         return None
     return BlockchainCoordinator(
         network=settings.blockchain_network,

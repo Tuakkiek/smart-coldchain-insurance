@@ -18,6 +18,8 @@ from app.services.shipments import DuplicateShipmentCode, ShipmentNotFound
 from app.services.clock import SYSTEM_CLOCK
 from app.services.demo import DemoScenarioError
 from app.services.blockchain_outbox import configured_coordinator
+from app.services.integrity_anchor_service import configured_integrity_coordinator
+from app.services.insurance_evidence import configured_evidence_coordinator
 from app.services.signed_ingestion import IngestionError
 from app.services.batch_service import BatchServiceError
 
@@ -105,6 +107,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.session_factory = make_session_factory(app.state.engine)
     app.state.clock = SYSTEM_CLOCK
     app.state.blockchain = configured_coordinator(settings)
+    app.state.integrity_blockchain = configured_integrity_coordinator(settings)
+    app.state.insurance_evidence = configured_evidence_coordinator(
+        settings,
+        app.state.blockchain,
+        app.state.integrity_blockchain,
+    )
 
     app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(RequestIdMiddleware)

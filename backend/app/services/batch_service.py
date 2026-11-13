@@ -61,6 +61,7 @@ def seal_ready_batch(
     max_records: int = 100,
     max_age_minutes: int = 5,
     force: bool = False,
+    anchor_coordinator=None,
 ) -> IntegrityBatch | None:
     """Seal one pair-specific batch when size/age is reached, or explicitly forced."""
     if not 1 <= max_records <= 100:
@@ -136,6 +137,8 @@ def seal_ready_batch(
     except IntegrityError as exc:
         session.rollback()
         raise BatchServiceError(409, "BATCH_SEAL_CONFLICT", "Telemetry was sealed concurrently") from exc
+    if anchor_coordinator is not None:
+        anchor_coordinator.dispatch(session, batch.id)
     return batch
 
 
@@ -161,8 +164,19 @@ def list_batches(session: Session, shipment_id: str) -> list[IntegrityBatch]:
     ))
 
 
-def batch_dict(batch: IntegrityBatch) -> dict:
-    return {
+def get_anchor_outbox(session: Session, batch_id: str) -> IntegrationOutbox | None:
+    return session.scalar(select(IntegrationOutbox).where(
+        IntegrationOutbox.kind == "ANCHOR_BATCH",
+        IntegrationOutbox.aggregate_id == batch_id,
+    ))
+
+
+def _timestamp(value: str | None) -> datetime | None:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
+
+
+def batch_dict(batch: IntegrityBatch, outbox: IntegrationOutbox | None = None) -> dict:
+    value = {
         "batch_id": batch.id,
         "shipment_id": batch.shipment_id,
         "device_id": batch.device_id,
@@ -177,6 +191,22 @@ def batch_dict(batch: IntegrityBatch) -> dict:
         "sealed_at": _utc(batch.sealed_at),
         "verified_at": _utc(batch.verified_at) if batch.verified_at else None,
     }
+    if outbox is not None:
+        payload = outbox.payload
+        value["anchor_transaction"] = {
+            "network": payload.get("network"),
+            "transaction_hash": payload.get("transaction_hash"),
+            "status": outbox.status,
+            "attempt_count": outbox.attempt_count,
+            "last_error": outbox.last_error,
+            "submitted_at": _timestamp(payload.get("submitted_at")),
+            "confirmed_at": _timestamp(payload.get("confirmed_at")),
+        }
+    return value
+
+
+def batch_view(session: Session, batch: IntegrityBatch) -> dict:
+    return batch_dict(batch, get_anchor_outbox(session, batch.id))
 
 
 def integrity_summary(session: Session, shipment_id: str) -> dict:
@@ -201,7 +231,7 @@ def integrity_summary(session: Session, shipment_id: str) -> dict:
     }
 
 
-def verify_batch(session: Session, batch_id: str, now: datetime) -> dict:
+def verify_batch(session: Session, batch_id: str, now: datetime, anchor_coordinator=None) -> dict:
     batch = get_batch(session, batch_id)
     persisted = list(session.execute(
         select(IntegrityBatchItem, Telemetry, SignedTelemetryReceipt)
@@ -226,6 +256,17 @@ def verify_batch(session: Session, batch_id: str, now: datetime) -> dict:
     except (RecordIntegrityError, ValueError):
         matched = False
 
+    on_chain_match: bool | None = None
+    if matched and batch.anchor_status == "DATA_ANCHORED" and anchor_coordinator is not None:
+        try:
+            on_chain_match = anchor_coordinator.verify_on_chain(batch)
+        except Exception as exc:
+            session.rollback()
+            raise BatchServiceError(
+                503, "BLOCKCHAIN_UNAVAILABLE", "Could not read the anchored batch from blockchain",
+            ) from exc
+        matched = matched and on_chain_match
+
     previous = batch.verification_status
     batch.verification_status = "MATCHED" if matched else "DATA_INTEGRITY_FAILED"
     batch.verified_at = _utc(now)
@@ -242,4 +283,8 @@ def verify_batch(session: Session, batch_id: str, now: datetime) -> dict:
             },
         ))
     session.commit()
-    return {**batch_dict(batch), "calculated_root": calculated_root}
+    return {
+        **batch_view(session, batch),
+        "calculated_root": calculated_root,
+        "on_chain_match": on_chain_match,
+    }

@@ -43,8 +43,16 @@ PYTHON_VERSION=3.11.9
 APP_ENV=development
 LOG_LEVEL=INFO
 SENSOR_GAP_MINUTES=5
+MAX_SAMPLE_GAP_SECONDS=300
 INTEGRITY_BATCH_MAX_RECORDS=100
 INTEGRITY_BATCH_MAX_AGE_MINUTES=5
+PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true
+BLOCKCHAIN_CONFIRMATIONS=1
+DATA_INTEGRITY_CONTRACT_ADDRESS=<data-integrity-contract-address>
+BACKEND_ANCHORER_PRIVATE_KEY=<set-as-render-secret>
+DATA_INTEGRITY_ABI_PATH=backend/app/integrations/abi/ColdChainDataIntegrity.json
+BLOCKCHAIN_CONTRACT_ADDRESS=<insurance-contract-address>
+BLOCKCHAIN_ORACLE_PRIVATE_KEY=<set-as-render-secret>
 
 # Cấu hình kết nối MySQL ngoài Render (ví dụ Aiven)
 MYSQL_HOST=<your-aiven-host>
@@ -61,6 +69,7 @@ BLOCKCHAIN_ENABLED=false
 ```
 
 > [!NOTE]
+> - Khi evidence gate bật, `retry-integrity` sẽ verify batch và tự thử giải phóng payout; `retry-blockchain` cũng chạy lại evidence gate trước khi gọi Oracle. Có thể dùng API admin `POST /api/v1/shipments/{id}/insurance/reconcile` khi demo.
 > - Nếu dùng Aiven MySQL, hệ thống tự động thiết lập kết nối SSL TLS (`verify_mode=none` nếu không chỉ định `MYSQL_SSL_CA`).
 > - Nếu muốn dùng CA cert của Aiven để xác thực chứng chỉ (`aiven-ca.pem`):
 >   1. Tại mục **Secret Files** trên Render, thêm file tên `aiven-ca.pem` và dán nội dung chứng chỉ CA vào.

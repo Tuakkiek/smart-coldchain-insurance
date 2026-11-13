@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 from alembic import command
@@ -15,10 +16,13 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import load_settings
 from app.core.database import Base, make_engine, make_session_factory
-from app.models import Shipment, ShipmentEvent, Telemetry
+from app.models import IntegrityBatch, IntegrationOutbox, Shipment, ShipmentEvent, Telemetry
 from app.schemas.api import ShipmentCreate, TelemetryCreate
 from app.services.shipments import add_telemetry, create_shipment
 from app.services.blockchain_outbox import configured_coordinator
+from app.services.integrity_anchor_service import configured_integrity_coordinator
+from app.services.insurance_evidence import configured_evidence_coordinator
+from app.services.batch_service import verify_batch
 
 
 DEMO_SHIPMENTS = [
@@ -115,8 +119,14 @@ def upgrade_schema(engine) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("create-db", "init-db", "upgrade-db", "seed-demo", "retry-blockchain"))
+    parser.add_argument(
+        "command",
+        choices=(
+            "create-db", "init-db", "upgrade-db", "seed-demo", "retry-blockchain", "retry-integrity",
+        ),
+    )
     parser.add_argument("--shipment-id", help="retry one shipment; default retries all pending/failed reports")
+    parser.add_argument("--batch-id", help="retry one integrity batch; default retries all pending/failed anchors")
     args = parser.parse_args()
     settings = load_settings()
     try:
@@ -125,7 +135,7 @@ def main() -> None:
             return
         engine = make_engine(settings.database_url)
         try:
-            if args.command != "retry-blockchain":
+            if args.command not in {"retry-blockchain", "retry-integrity"}:
                 upgrade_schema(engine)
                 print("Database schema ready.")
             if args.command == "seed-demo":
@@ -134,21 +144,52 @@ def main() -> None:
                 coordinator = configured_coordinator(settings)
                 if coordinator is None:
                     parser.exit(2, "Set BLOCKCHAIN_ENABLED=true before retrying reports.\n")
+                integrity = configured_integrity_coordinator(settings)
+                evidence = configured_evidence_coordinator(settings, coordinator, integrity)
                 with make_session_factory(engine)() as session:
                     shipment_ids = [args.shipment_id] if args.shipment_id else list(session.scalars(
                         select(Shipment.id).where(
                             Shipment.insurance_status == "triggered",
-                            Shipment.confirmation_status.in_(("pending", "failed")),
+                            Shipment.payout_status.in_(("evidence_pending", "pending", "failed")),
                         )
                     ))
                     session.commit()
                     for shipment_id in shipment_ids:
-                        coordinator.dispatch(session, shipment_id)
+                        if evidence is not None:
+                            evidence.reconcile(session, shipment_id)
+                        else:
+                            coordinator.dispatch(session, shipment_id)
                         current = session.get(Shipment, shipment_id)
                         if current is None:
                             print(f"Not found: {shipment_id}")
                         else:
                             print(f"{shipment_id}: {current.confirmation_status}, tx={current.transaction_hash}")
+            if args.command == "retry-integrity":
+                coordinator = configured_integrity_coordinator(settings)
+                if coordinator is None:
+                    parser.exit(2, "Configure Data Integrity contract and anchorer before retrying batches.\n")
+                with make_session_factory(engine)() as session:
+                    payout = configured_coordinator(settings)
+                    evidence = configured_evidence_coordinator(settings, payout, coordinator)
+                    batch_ids = [args.batch_id] if args.batch_id else list(session.scalars(
+                        select(IntegrityBatch.id)
+                        .join(IntegrationOutbox, IntegrationOutbox.aggregate_id == IntegrityBatch.id)
+                        .where(
+                            IntegrationOutbox.kind == "ANCHOR_BATCH",
+                            IntegrationOutbox.status.in_(("PENDING", "SUBMITTED", "FAILED")),
+                        )
+                    ))
+                    session.commit()
+                    for batch_id in batch_ids:
+                        coordinator.dispatch(session, batch_id)
+                        current = session.get(IntegrityBatch, batch_id)
+                        if current is not None and current.anchor_status == "DATA_ANCHORED":
+                            verify_batch(session, current.id, datetime.now(timezone.utc), coordinator)
+                            if evidence is not None:
+                                evidence.reconcile(session, current.shipment_id)
+                        print(
+                            f"{batch_id}: {current.anchor_status if current else 'NOT_FOUND'}"
+                        )
         finally:
             engine.dispose()
     except ValueError as exc:

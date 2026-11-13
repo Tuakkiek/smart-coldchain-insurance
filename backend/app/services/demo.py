@@ -22,14 +22,20 @@ class DemoScenarioError(Exception):
 
 def run_scenario(
     session: Session, shipment_id: str, payload: DemoScenarioIn, clock: Clock, gap_minutes: int,
+    max_sample_gap_seconds: int,
     blockchain: BlockchainCoordinator | None = None,
+    evidence_coordinator=None,
 ) -> dict:
     shipment = get_shipment(session, shipment_id)
     if payload.scenario == "normal":
         add_telemetry(
             session, shipment_id,
             TelemetryCreate(device_id="SIM-DEMO", temperature_c=shipment.temp_min_c, humidity_pct=70.0),
-            clock=clock, gap_minutes=gap_minutes, blockchain=blockchain,
+            clock=clock,
+            gap_minutes=gap_minutes,
+            blockchain=blockchain if evidence_coordinator is None else None,
+            max_sample_gap_seconds=max_sample_gap_seconds,
+            evidence_gate=evidence_coordinator is not None,
         )
         generated = 1
     else:
@@ -55,9 +61,15 @@ def run_scenario(
             add_telemetry(
                 session, shipment_id,
                 TelemetryCreate(device_id="SIM-DEMO", temperature_c=breach_temp, humidity_pct=70.0),
-                clock=virtual, gap_minutes=gap_minutes, blockchain=blockchain,
+                clock=virtual,
+                gap_minutes=gap_minutes,
+                blockchain=blockchain if evidence_coordinator is None else None,
+                max_sample_gap_seconds=max_sample_gap_seconds,
+                evidence_gate=evidence_coordinator is not None,
             )
         generated = steps + 1
+    if evidence_coordinator is not None:
+        evidence_coordinator.reconcile(session, shipment_id)
     return {
         "shipment_id": shipment_id,
         "scenario": payload.scenario,

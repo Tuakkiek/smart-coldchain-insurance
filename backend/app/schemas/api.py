@@ -169,7 +169,7 @@ class LatestTelemetryOut(BaseModel):
 class InsuranceOut(BaseModel):
     insured_amount_vnd: int
     status: Literal["active", "triggered"]
-    payout_status: Literal["not_requested", "pending", "paid", "failed"]
+    payout_status: Literal["not_requested", "evidence_pending", "pending", "paid", "failed"]
 
 
 class BlockchainOut(BaseModel):
@@ -232,7 +232,8 @@ class EventOut(BaseModel):
     id: str
     shipment_id: str
     type: Literal[
-        "TEMPERATURE_BREACH_STARTED", "INSURANCE_TRIGGERED", "SENSOR_DATA_GAP", "INTEGRITY_MISMATCH"
+        "TEMPERATURE_BREACH_STARTED", "TEMPERATURE_BREACH_ENDED", "INSURANCE_TRIGGERED",
+        "SENSOR_DATA_GAP", "DEVICE_OFFLINE", "INTEGRITY_MISMATCH"
     ]
     occurred_at: datetime
     details: dict[str, Any]
@@ -245,6 +246,16 @@ class EventListOut(BaseModel):
 class SealBatchIn(StrictBody):
     device_id: str = Field(min_length=1, max_length=100)
     force: bool = True
+
+
+class IntegrityAnchorTransactionOut(BaseModel):
+    network: str | None
+    transaction_hash: str | None
+    status: Literal["PENDING", "SUBMITTED", "CONFIRMED", "FAILED"]
+    attempt_count: int
+    last_error: str | None
+    submitted_at: datetime | None
+    confirmed_at: datetime | None
 
 
 class IntegrityBatchOut(BaseModel):
@@ -261,6 +272,7 @@ class IntegrityBatchOut(BaseModel):
     anchor_status: Literal["NOT_READY", "BLOCKCHAIN_PENDING", "DATA_ANCHORED", "BLOCKCHAIN_FAILED"]
     sealed_at: datetime
     verified_at: datetime | None
+    anchor_transaction: IntegrityAnchorTransactionOut | None = None
 
 
 class IntegrityBatchListOut(BaseModel):
@@ -270,6 +282,7 @@ class IntegrityBatchListOut(BaseModel):
 
 class IntegrityVerifyOut(IntegrityBatchOut):
     calculated_root: str | None
+    on_chain_match: bool | None = None
 
 
 class IntegritySummaryOut(BaseModel):

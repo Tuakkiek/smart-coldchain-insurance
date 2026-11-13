@@ -97,7 +97,7 @@ def test_auto_seal_persists_membership_root_and_outbox(integrity_api):
     assert batch["record_count"] == 3
     assert (batch["first_sequence"], batch["last_sequence"]) == (1, 3)
     assert batch["merkle_root"].startswith("0x") and len(batch["merkle_root"]) == 66
-    assert batch["verification_status"] == "NOT_CHECKED"
+    assert batch["verification_status"] == "MATCHED"
     assert batch["anchor_status"] == "NOT_READY"
 
     detail = client.get(f"/api/v1/batches/{batch['batch_id']}")
@@ -108,7 +108,7 @@ def test_auto_seal_persists_membership_root_and_outbox(integrity_api):
         "shipment_id": shipment_id,
         "batch_count": 1,
         "record_count": 3,
-        "verification_status": "NOT_CHECKED",
+        "verification_status": "MATCHED",
         "anchor_status": "NOT_READY",
     }
 
