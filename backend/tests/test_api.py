@@ -96,7 +96,9 @@ def test_multiple_telemetry_samples_and_simulated_location(api):
     assert detail["latest_telemetry"]["id"] == history[-1]["id"]
     assert detail["location"] == history[-1]["location"]
     events = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
-    assert [event["type"] for event in events] == ["TEMPERATURE_BREACH_STARTED"]
+    assert [event["type"] for event in events] == [
+        "TEMPERATURE_BREACH_STARTED", "TEMPERATURE_BREACH_ENDED",
+    ]
 
 
 def test_route_reaches_destination_and_stays_there(api):
@@ -147,10 +149,11 @@ def test_continuous_breach_triggers_once_at_policy_duration(api):
     assert detail["insurance"]["payout_status"] == "not_requested"
     events = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
     assert [item["type"] for item in events] == ["TEMPERATURE_BREACH_STARTED", "INSURANCE_TRIGGERED"]
-    assert events[1]["details"] == {
-        "breach_started_at": "2026-11-04T00:01:00Z", "duration_minutes": 15.0,
-        "consecutive_samples": 5,
-    }
+    assert events[1]["details"]["breach_started_at"] == "2026-11-04T00:01:00Z"
+    assert events[1]["details"]["duration_minutes"] == 15.0
+    assert events[1]["details"]["consecutive_samples"] == 5
+    assert events[1]["details"]["evidence_status"] == "EVIDENCE_REJECTED"
+    assert events[1]["details"]["evidence_reason"] == "SIGNED_EVIDENCE_REQUIRED"
 
     clock.current = start + timedelta(minutes=17)
     client.post(route, json={"device_id": "ESP32-01", "temperature_c": 5.0, "humidity_pct": 70.0})
@@ -185,10 +188,11 @@ def test_recovery_resets_breach_and_sensor_gap_breaks_streak(api):
     assert detail["insurance"]["status"] == "active"
     events = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
     assert [event["type"] for event in events] == [
-        "TEMPERATURE_BREACH_STARTED", "TEMPERATURE_BREACH_STARTED",
+        "TEMPERATURE_BREACH_STARTED", "TEMPERATURE_BREACH_ENDED",
+        "TEMPERATURE_BREACH_STARTED",
         "SENSOR_DATA_GAP", "TEMPERATURE_BREACH_STARTED",
     ]
-    assert events[2]["details"]["gap_minutes"] == 6.0
+    assert events[3]["details"]["gap_minutes"] == 6.0
     assert not any(event["type"] == "INSURANCE_TRIGGERED" for event in events)
 
 

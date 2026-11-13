@@ -108,9 +108,11 @@ Trên MySQL, Backend khóa bản ghi lô hàng khi nhận telemetry để các r
 
 ## Vi phạm nhiệt độ (Phase 6)
 
-Mỗi mẫu được so với `[temp_min_c, temp_max_c]` của lô hàng. Mẫu đầu ngoài ngưỡng tạo `TEMPERATURE_BREACH_STARTED`; chuỗi mẫu tiếp tục ngoài ngưỡng đủ `violation_duration_minutes` (mặc định 15) tạo đúng một `INSURANCE_TRIGGERED` cho lô hàng. Nhiệt độ trở lại ngưỡng reset chuỗi. Thời lượng dùng `received_at` của Backend; `recorded_at` từ ESP32 chỉ để đối chiếu. Kích hoạt bảo hiểm off-chain không tự đặt `payout_status` thành `paid`.
+Mỗi mẫu được so với `[temp_min_c, temp_max_c]` của lô hàng. Mẫu đầu ngoài ngưỡng tạo `TEMPERATURE_BREACH_STARTED`; chuỗi mẫu tiếp tục ngoài ngưỡng đủ `violation_duration_minutes` (mặc định 15) tạo đúng một `INSURANCE_TRIGGERED` cho lô hàng. Nhiệt độ trở lại ngưỡng tạo `TEMPERATURE_BREACH_ENDED` và reset chuỗi. Thời lượng dùng `received_at` của Backend; `recorded_at` từ ESP32 chỉ để đối chiếu. `MAX_SAMPLE_GAP_SECONDS` (mặc định 300) và sequence phải liên tục; gap cắt bằng chứng.
 
 `SENSOR_GAP_MINUTES=5` trong `.env.example` là ngưỡng mất tín hiệu mặc định, phù hợp thiết bị gửi mỗi phút. Khoảng giữa hai mẫu lớn hơn ngưỡng sẽ cắt chuỗi vi phạm và tạo `SENSOR_DATA_GAP` khi mẫu mới tới. Trong lúc chưa có mẫu mới, API chi tiết/danh sách hiển thị `status: "sensor_data_gap"` nếu mẫu cuối quá hạn. Không cần thay đổi schema MySQL cho Phase này; service tính chuỗi từ telemetry đã lưu và ghi event trong cùng transaction với mẫu mới.
+
+Với `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true` (mặc định), `INSURANCE_TRIGGERED` chỉ là đủ điều kiện nghiệp vụ. Backend giữ `payout_status: evidence_pending` cho tới khi mọi telemetry trong chuỗi đều có chữ ký hợp lệ, cùng thiết bị, không gap, thuộc batch đã tính lại `MATCHED`, đã `DATA_ANCHORED` và đọc lại on-chain khớp. Event lưu `violation_evidence_id`, telemetry IDs, batch IDs/root/anchor transaction, `policy_version`, `gap_status`, `evidence_status` và lý do chờ/từ chối. Tamper, batch pending hoặc RPC lỗi không gọi Oracle.
 
 Ở `APP_ENV=development`, endpoint `POST /api/v1/demo/shipments/{id}/scenario` nhận `{"scenario":"normal"}` hoặc `{"scenario":"temperature_breach"}`. Kịch bản vi phạm dùng đồng hồ ảo, tạo bốn mẫu cho chính sách 15 phút/ngưỡng gap 5 phút và chạy qua cùng service với ESP32. Hãy dùng lô hàng demo riêng vì đồng hồ ảo có thể đưa `received_at` vào tương lai. Endpoint không được đăng ký trong production.
 
@@ -142,6 +144,8 @@ Sau khi lấy code mới, chạy `./.venv/Scripts/python.exe -m app.cli upgrade-
 
 Hoặc gọi `POST /api/v1/batches/{batch_id}/anchor` với `X-Admin-Key`. Backend lưu transaction hash và raw signed transaction trong outbox trước khi broadcast, không trả raw transaction qua API, kiểm tra chain ID/code/role, chờ receipt đủ `BLOCKCHAIN_CONFIRMATIONS`, rồi so sánh shipment/device key, root, sequence bounds và record count đọc từ contract. RPC timeout giữ trạng thái pending và retry cùng transaction; receipt revert/readback mismatch fail closed.
 
+Khi một anchor được xác nhận, Backend verify lại batch và tự reconcile evidence. Có thể chạy thủ công `POST /api/v1/shipments/{shipment_id}/insurance/reconcile` với `X-Admin-Key`; endpoint idempotent và không tạo payout thứ hai.
+
 ## Tích hợp Blockchain (Phase 5)
 
 Mặc định `BLOCKCHAIN_ENABLED=false`; Backend tiếp tục lưu sự kiện bảo hiểm off-chain. Khi bật, Backend dùng `blockchain/INTEGRATION.md`: `shipmentKey = keccak256(UTF8(shipment_id))`, `evidenceHash = keccak256(UTF8(event_id))`, `detectedAt` là Unix timestamp giây UTC. Adapter đọc ABI đã compile, kiểm tra chain ID, contract và oracle signer, rồi gọi `reportViolation` cho event `INSURANCE_TRIGGERED`.
@@ -172,7 +176,7 @@ export BLOCKCHAIN_TEST_ORACLE_KEY='PASTE_HARDHAT_ACCOUNT_1_PRIVATE_KEY'
 RUN_BLOCKCHAIN_TESTS=1 ./.venv/Scripts/python.exe -m pytest tests/test_blockchain_local.py -q
 ```
 
-Test này dùng SQLite tạm và policy UUID mẫu trong `seed-demo.ts`; nó gửi một giao dịch chi trả thật trên Hardhat local. Chạy lại cần reset node, deploy và seed lại.
+Test này dùng SQLite tạm và policy UUID mẫu trong `seed-demo.ts`; nó ký telemetry P-256 thật, deploy Data Integrity Contract, anchor/verify các batch rồi gửi giao dịch chi trả thật trên Hardhat local. Chạy lại cần reset node, deploy và seed lại.
 
 ## Kiểm thử
 

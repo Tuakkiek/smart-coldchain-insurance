@@ -78,12 +78,18 @@ def add_telemetry(shipment_id: UUID4, payload: SignedTelemetryCreate | Telemetry
                   request: Request, response: Response, session: DbSession):
     if isinstance(payload, SignedTelemetryCreate):
         result = signed_ingestion.ingest(
-            session, str(shipment_id), payload, request.app.state.clock,
+            session,
+            str(shipment_id),
+            payload,
+            request.app.state.clock,
             request.app.state.settings.sensor_gap_minutes,
+            request.app.state.settings.max_sample_gap_seconds,
             request.app.state.settings.signed_rate_limit_per_minute,
             request.app.state.settings.integrity_batch_max_records,
             request.app.state.settings.integrity_batch_max_age_minutes,
             request.app.state.integrity_blockchain,
+            request.app.state.blockchain,
+            request.app.state.insurance_evidence,
         )
         if result["duplicate"]:
             response.status_code = 200
@@ -92,8 +98,12 @@ def add_telemetry(shipment_id: UUID4, payload: SignedTelemetryCreate | Telemetry
         raise signed_ingestion.IngestionError(403, "SIGNED_TELEMETRY_REQUIRED", "Signed telemetry is required")
     sample = shipments.add_telemetry(
         session, str(shipment_id), payload, request.app.state.clock, request.app.state.settings.sensor_gap_minutes,
-        request.app.state.blockchain,
+        request.app.state.blockchain if request.app.state.insurance_evidence is None else None,
+        max_sample_gap_seconds=request.app.state.settings.max_sample_gap_seconds,
+        evidence_gate=request.app.state.insurance_evidence is not None,
     )
+    if request.app.state.insurance_evidence is not None:
+        request.app.state.insurance_evidence.reconcile(session, str(shipment_id))
     return shipments.telemetry_dict(sample)
 
 
@@ -210,6 +220,11 @@ def seal_integrity_batch(
     )
     if batch is None:
         raise batch_service.BatchServiceError(409, "BATCH_NOT_READY", "Batch is not ready to seal")
+    batch_service.verify_batch(
+        session, batch.id, request.app.state.clock.now(), request.app.state.integrity_blockchain,
+    )
+    if request.app.state.insurance_evidence is not None:
+        request.app.state.insurance_evidence.reconcile(session, str(shipment_id))
     return batch_service.batch_view(session, batch)
 
 
@@ -227,6 +242,11 @@ def anchor_integrity_batch(batch_id: UUID4, request: Request, session: AdminSess
         )
     batch = batch_service.get_batch(session, str(batch_id))
     coordinator.dispatch(session, batch.id)
+    batch = batch_service.get_batch(session, batch.id)
+    if batch.anchor_status == "DATA_ANCHORED":
+        batch_service.verify_batch(session, batch.id, request.app.state.clock.now(), coordinator)
+    if request.app.state.insurance_evidence is not None:
+        request.app.state.insurance_evidence.reconcile(session, batch.shipment_id)
     return batch_service.batch_view(session, batch_service.get_batch(session, batch.id))
 
 
@@ -240,11 +260,34 @@ def verify_integrity_batch(batch_id: UUID4, request: Request, session: DbSession
     )
 
 
+@router.post("/shipments/{shipment_id}/insurance/reconcile", response_model=ShipmentOut)
+def reconcile_insurance_evidence(shipment_id: UUID4, request: Request, session: AdminSession):
+    coordinator = request.app.state.insurance_evidence
+    if coordinator is None:
+        raise batch_service.BatchServiceError(
+            503, "EVIDENCE_GATE_NOT_CONFIGURED", "Anchored insurance evidence gate is not configured",
+        )
+    coordinator.reconcile(session, str(shipment_id))
+    shipment = shipments.get_shipment(session, str(shipment_id))
+    return shipments.shipment_dict(
+        session,
+        shipment,
+        request.app.state.clock,
+        request.app.state.settings.sensor_gap_minutes,
+    )
+
+
 @demo_router.post("/shipments/{shipment_id}/scenario", response_model=DemoScenarioOut)
 def demo_scenario(shipment_id: UUID4, payload: DemoScenarioIn, request: Request, session: DbSession):
     from app.services.demo import run_scenario
 
     return run_scenario(
-        session, str(shipment_id), payload, request.app.state.clock, request.app.state.settings.sensor_gap_minutes,
+        session,
+        str(shipment_id),
+        payload,
+        request.app.state.clock,
+        request.app.state.settings.sensor_gap_minutes,
+        request.app.state.settings.max_sample_gap_seconds,
         request.app.state.blockchain,
+        request.app.state.insurance_evidence,
     )

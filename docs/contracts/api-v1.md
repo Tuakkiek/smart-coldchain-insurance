@@ -67,7 +67,7 @@ Tài liệu này mô tả **API hiện đang chạy** và bản mở rộng Sign
 
 `status`: `created` (chưa có mẫu), `in_transit` (đã có mẫu), `sensor_data_gap` (mẫu gần nhất quá ngưỡng mất tín hiệu), `insurance_triggered` (đã đủ điều kiện vi phạm). Khi hết tín hiệu, `sensor_data_gap` được tính lúc đọc API; `insurance.status` vẫn ghi nhớ `triggered` nếu đã kích hoạt. Một mẫu ngoài ngưỡng chưa đủ thời lượng vẫn giữ `in_transit` và được phản ánh qua event.
 
-`insurance.status`: `active` hoặc `triggered` (Backend xác định đủ điều kiện). `payout_status`: `not_requested`, `pending`, `paid`, `failed`. `paid` chỉ được đặt sau khi có xác nhận thành công từ chain; khi tắt Blockchain, sự kiện có thể `triggered` nhưng `payout_status` vẫn là `not_requested`.
+`insurance.status`: `active` hoặc `triggered` (Backend xác định đủ điều kiện). `payout_status`: `not_requested`, `evidence_pending`, `pending`, `paid`, `failed`. `evidence_pending` nghĩa là đã đủ điều kiện nhiệt độ nhưng chưa đủ signed/verified/anchored evidence để gọi Oracle. `paid` chỉ được đặt sau khi có xác nhận thành công từ chain.
 
 `blockchain` là `null` trước khi gửi giao dịch. Khi có giao dịch, cấu trúc là:
 
@@ -200,21 +200,22 @@ Ví dụ các field thay đổi trong ShipmentDetail sau mẫu trên:
 }
 ```
 
-`type`: `TEMPERATURE_BREACH_STARTED`, `INSURANCE_TRIGGERED`, `SENSOR_DATA_GAP`. `details` là object JSON với các field theo loại:
+`type`: `TEMPERATURE_BREACH_STARTED`, `TEMPERATURE_BREACH_ENDED`, `INSURANCE_TRIGGERED`, `SENSOR_DATA_GAP`, `DEVICE_OFFLINE`, `INTEGRITY_MISMATCH`. `details` là object JSON với các field theo loại:
 
 | `type` | `details` |
 |---|---|
 | `TEMPERATURE_BREACH_STARTED` | `temperature_c`, `temp_min_c`, `temp_max_c` (số). |
-| `INSURANCE_TRIGGERED` | `breach_started_at` (ISO 8601 UTC), `duration_minutes` (số phút đã quan sát), `consecutive_samples` (số mẫu liên tục ngoài ngưỡng). |
+| `TEMPERATURE_BREACH_ENDED` | `breach_ended_at`, `temperature_c`; mẫu đã trở lại trong ngưỡng. |
+| `INSURANCE_TRIGGERED` | `breach_started_at`, `duration_minutes`, `consecutive_samples`, `device_id`, `violation_evidence_id`, `policy_version`, `first_received_at`, `last_received_at`, `telemetry_ids`, `batch_ids`, `batches`, `gap_status`, `evidence_status`, và `evidence_reason` khi chờ/từ chối. |
 | `SENSOR_DATA_GAP` | `last_received_at` (ISO 8601 UTC), `gap_minutes` (số phút không có mẫu). |
 
-Trong luồng **legacy development**, khi `BLOCKCHAIN_ENABLED=true`, event `INSURANCE_TRIGGERED.details` còn có `blockchain_status` (`BLOCKCHAIN_PENDING`, `BLOCKCHAIN_SUCCESS`, `BLOCKCHAIN_FAILED`), `attempt_count`, `sent_at` (UTC, khi RPC chấp nhận giao dịch) và `last_error` (mã lỗi ngắn nếu chưa hoàn tất). Backend không trả raw signed transaction trong API. Nếu RPC tạm lỗi, event và telemetry vẫn được lưu; `payout_status`/`confirmation_status` giữ `pending` để retry. Giao dịch revert có `failed` và có thể retry sau khi sửa policy/chain. Signed ingestion không dispatch payout trước khi có anchored evidence. Khi tắt Blockchain, các field Blockchain không xuất hiện và payout giữ `not_requested`.
+Trong luồng **legacy development**, chỉ khi đặt rõ `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=false`, event `INSURANCE_TRIGGERED.details` mới đi thẳng vào adapter cũ và có `blockchain_status`, `attempt_count`, `sent_at`, `last_error`. Mặc định gate bật nên telemetry chưa ký không được dispatch payout. Backend không trả raw signed transaction trong API; RPC tạm lỗi giữ trạng thái để retry cùng giao dịch.
 
 `items` sắp xếp theo `occurred_at` tăng dần. Khi cùng thời điểm, thứ tự là `SENSOR_DATA_GAP` → `TEMPERATURE_BREACH_STARTED` → `INSURANCE_TRIGGERED`, rồi theo ID.
 
-Mỗi mẫu được so với ngưỡng **bao gồm hai đầu mút** `[temp_min_c, temp_max_c]` của chính lô hàng. Mặc định cần ở ngoài ngưỡng liên tục **15 phút** (hoặc `violation_duration_minutes` của lô hàng), tính bằng `received_at` do Backend tạo; `recorded_at` của thiết bị không tham gia tính. Mẫu đầu tiên ngoài ngưỡng tạo `TEMPERATURE_BREACH_STARTED`. Mẫu về ngưỡng reset chuỗi đo; lần vi phạm sau tạo event bắt đầu mới. Khi đủ thời lượng, Backend tạo `INSURANCE_TRIGGERED` và đặt `insurance.status: "triggered"`, `status: "insurance_triggered"`. Một lô hàng chỉ kích hoạt bảo hiểm một lần; `payout_status` vẫn là `not_requested` cho tới Phase 5.
+Mỗi mẫu được so với ngưỡng **bao gồm hai đầu mút** `[temp_min_c, temp_max_c]` của chính lô hàng. Mặc định cần ở ngoài ngưỡng liên tục **15 phút** (hoặc `violation_duration_minutes` của lô hàng), tính bằng `received_at` do Backend tạo; `recorded_at` của thiết bị không tham gia tính. Mẫu đầu tiên ngoài ngưỡng tạo `TEMPERATURE_BREACH_STARTED`. Mẫu về ngưỡng tạo `TEMPERATURE_BREACH_ENDED` và reset chuỗi đo. Khi đủ thời lượng, Backend tạo một `INSURANCE_TRIGGERED`; với evidence gate bật, payout chuyển `evidence_pending`, chưa gọi Oracle.
 
-`SENSOR_GAP_MINUTES` mặc định **5 phút** (số nguyên dương). Hai mẫu cách nhau **hơn** ngưỡng này không chứng minh được vi phạm liên tục: mẫu mới tạo `SENSOR_DATA_GAP`, rồi bắt đầu chuỗi mới nếu vẫn ngoài ngưỡng. Khi đang chờ mẫu mới, `GET` shipment trả `status: "sensor_data_gap"` nếu mẫu gần nhất đã quá hạn; event gap được ghi khi mẫu kế tiếp đến. Không tự suy diễn nhiệt độ hoặc kích hoạt bảo hiểm trong khoảng mất dữ liệu.
+`MAX_SAMPLE_GAP_SECONDS` mặc định **300 giây** và sequence signed phải tăng liên tục trong evidence. Hai mẫu cách nhau hơn ngưỡng hoặc sequence gap không chứng minh được vi phạm liên tục: mẫu mới tạo `SENSOR_DATA_GAP`, rồi bắt đầu chuỗi mới nếu vẫn ngoài ngưỡng. `SENSOR_GAP_MINUTES` vẫn dùng cho trạng thái thiết bị/shipments offline trên API.
 
 ## Health và demo
 
@@ -274,6 +275,7 @@ API integrity hiện có:
 - `GET /api/v1/batches/{batch_id}`: metadata và Merkle root bất biến.
 - `POST /api/v1/batches/{batch_id}/anchor`: yêu cầu `X-Admin-Key`; dispatch/retry đúng outbox và signed transaction đã lưu.
 - `POST /api/v1/batches/{batch_id}/verify`: tính lại leaf/root từ dữ liệu đang lưu; mismatch chuyển `verification_status` thành `DATA_INTEGRITY_FAILED` và tạo một event `INTEGRITY_MISMATCH`.
+- `POST /api/v1/shipments/{shipment_id}/insurance/reconcile`: yêu cầu `X-Admin-Key`; tính lại evidence state và chỉ dispatch/retry payout khi toàn bộ gate đạt.
 
 Backend tự seal khi một cặp shipment/device đạt `INTEGRITY_BATCH_MAX_RECORDS` (mặc định 100) hoặc khi có mẫu mới sau `INTEGRITY_BATCH_MAX_AGE_MINUTES` (mặc định 5 phút). Batch nhỏ có thể seal thủ công khi kết thúc chuyến/mất kết nối. Mỗi telemetry chỉ thuộc một batch; membership, leaf index, leaf hash và root được ghi trong cùng transaction. Cùng transaction đó tạo `integration_outbox` loại `ANCHOR_BATCH` với idempotency key `anchor:{batch_id}`.
 
@@ -281,4 +283,4 @@ Batch response gồm `batch_id`, cặp shipment/device, first/last sequence, rec
 
 Nếu RPC timeout sau khi node có thể đã nhận giao dịch, Backend giữ nguyên transaction hash + raw signed transaction trong outbox và kiểm tra receipt/on-chain state trước khi broadcast lại. Cùng `batch_id` không tạo anchor thứ hai. Receipt revert hoặc readback sai chuyển `BLOCKCHAIN_FAILED`; RPC tạm lỗi giữ `BLOCKCHAIN_PENDING`. Lệnh vận hành tương đương API retry: `python -m app.cli retry-integrity --batch-id <UUID>`.
 
-Insurance mở rộng dùng `payout_status` riêng: `NOT_ELIGIBLE`, `EVIDENCE_PENDING`, `PENDING`, `CONFIRMED`, `FAILED`. `CONFIRMED` chỉ có khi receipt, event và on-chain state xác nhận payout. Tên trạng thái này **chưa thay thế** các giá trị chữ thường trong response hiện tại. Policy `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true` và ngưỡng gap vẫn cần nối vào Oracle ở Phase 6. `ColdChainDataIntegrity` dùng `batchKey = keccak256(UTF8(batch_id))`, `shipmentKey = keccak256(UTF8(shipment_id))`, `deviceKey = keccak256(UTF8(device_id))` theo `blockchain/INTEGRATION.md`.
+`PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true` là mặc định. Backend chỉ gọi Insurance Oracle khi evidence gồm signed telemetry cùng thiết bị, đủ `violation_duration_minutes`, không có time/sequence gap nội bộ, mọi telemetry thuộc batch, mọi batch `verification_status=MATCHED`, `anchor_status=DATA_ANCHORED`, và readback Data Integrity Contract khớp. Trạng thái API dùng chữ thường `not_requested / evidence_pending / pending / paid / failed`; `evidence_status` chi tiết nằm trong event. Anchor pending/RPC lỗi giữ `evidence_pending`; tamper hoặc mismatch chuyển evidence thành `EVIDENCE_REJECTED` và không gửi payout. `ColdChainDataIntegrity` dùng `batchKey = keccak256(UTF8(batch_id))`, `shipmentKey = keccak256(UTF8(shipment_id))`, `deviceKey = keccak256(UTF8(device_id))` theo `blockchain/INTEGRATION.md`.

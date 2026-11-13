@@ -117,6 +117,8 @@ def add_telemetry(
     commit: bool = True,
     verified_only: bool = False,
     sequence_gap: tuple[int, int] | None = None,
+    max_sample_gap_seconds: int | None = None,
+    evidence_gate: bool = False,
 ) -> Telemetry:
     # Serialize samples for the same shipment on MySQL so each gets a distinct
     # progress step even when two device requests arrive at once.
@@ -132,7 +134,10 @@ def add_telemetry(
         select(Telemetry.received_at).where(Telemetry.shipment_id == shipment_id)
         .order_by(Telemetry.received_at.desc(), Telemetry.id.desc()).limit(1)
     )
-    history_query = select(Telemetry).where(Telemetry.shipment_id == shipment_id)
+    history_query = select(Telemetry).where(
+        Telemetry.shipment_id == shipment_id,
+        Telemetry.device_id == payload.device_id,
+    )
     if verified_only:
         history_query = history_query.join(SignedTelemetryReceipt, SignedTelemetryReceipt.telemetry_id == Telemetry.id)
     prior_samples = session.scalars(
@@ -144,7 +149,15 @@ def add_telemetry(
         if latest_received and received_at <= utc(latest_received):
             received_at = utc(latest_received) + timedelta(microseconds=1)
         history = chain((latest,), prior_samples) if latest else ()
-        decision = evaluate(shipment, history, payload.temperature_c, received_at, gap_minutes, sequence_gap)
+        decision = evaluate(
+            shipment,
+            history,
+            payload.temperature_c,
+            received_at,
+            gap_minutes,
+            sequence_gap,
+            max_sample_gap_seconds,
+        )
     finally:
         prior_samples.close()
     latitude, longitude, progress_pct = location_for_sample(shipment, sample_count + 1)
@@ -163,15 +176,28 @@ def add_telemetry(
     )
     session.add(sample)
     for event_type, details in decision.events:
+        event_id = str(uuid4())
+        if event_type == "INSURANCE_TRIGGERED":
+            details = {
+                **details,
+                "device_id": payload.device_id,
+                "violation_evidence_id": str(uuid4()),
+                "policy_version": "ANCHORED-EVIDENCE-v1",
+                "first_received_at": details["breach_started_at"],
+                "last_received_at": received_at.isoformat().replace("+00:00", "Z"),
+                "evidence_status": "EVIDENCE_PENDING" if evidence_gate else "LEGACY_UNGATED",
+            }
         event = ShipmentEvent(
-            id=str(uuid4()), shipment_id=shipment_id, type=event_type,
+            id=event_id, shipment_id=shipment_id, type=event_type,
             occurred_at=received_at, details=details,
         )
         session.add(event)
-        if event_type == "INSURANCE_TRIGGERED" and blockchain is not None:
+        if event_type == "INSURANCE_TRIGGERED" and blockchain is not None and not evidence_gate:
             blockchain.queue(shipment, event)
     if decision.triggered:
         shipment.insurance_status = "triggered"
+        if evidence_gate:
+            shipment.payout_status = "evidence_pending"
     shipment.status = "insurance_triggered" if shipment.insurance_status == "triggered" else "in_transit"
     if commit:
         session.commit()

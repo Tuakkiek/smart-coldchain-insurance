@@ -169,7 +169,7 @@ class LatestTelemetryOut(BaseModel):
 class InsuranceOut(BaseModel):
     insured_amount_vnd: int
     status: Literal["active", "triggered"]
-    payout_status: Literal["not_requested", "pending", "paid", "failed"]
+    payout_status: Literal["not_requested", "evidence_pending", "pending", "paid", "failed"]
 
 
 class BlockchainOut(BaseModel):
@@ -232,7 +232,8 @@ class EventOut(BaseModel):
     id: str
     shipment_id: str
     type: Literal[
-        "TEMPERATURE_BREACH_STARTED", "INSURANCE_TRIGGERED", "SENSOR_DATA_GAP", "INTEGRITY_MISMATCH"
+        "TEMPERATURE_BREACH_STARTED", "TEMPERATURE_BREACH_ENDED", "INSURANCE_TRIGGERED",
+        "SENSOR_DATA_GAP", "DEVICE_OFFLINE", "INTEGRITY_MISMATCH"
     ]
     occurred_at: datetime
     details: dict[str, Any]

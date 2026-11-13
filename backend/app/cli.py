@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 from alembic import command
@@ -20,6 +21,8 @@ from app.schemas.api import ShipmentCreate, TelemetryCreate
 from app.services.shipments import add_telemetry, create_shipment
 from app.services.blockchain_outbox import configured_coordinator
 from app.services.integrity_anchor_service import configured_integrity_coordinator
+from app.services.insurance_evidence import configured_evidence_coordinator
+from app.services.batch_service import verify_batch
 
 
 DEMO_SHIPMENTS = [
@@ -141,16 +144,21 @@ def main() -> None:
                 coordinator = configured_coordinator(settings)
                 if coordinator is None:
                     parser.exit(2, "Set BLOCKCHAIN_ENABLED=true before retrying reports.\n")
+                integrity = configured_integrity_coordinator(settings)
+                evidence = configured_evidence_coordinator(settings, coordinator, integrity)
                 with make_session_factory(engine)() as session:
                     shipment_ids = [args.shipment_id] if args.shipment_id else list(session.scalars(
                         select(Shipment.id).where(
                             Shipment.insurance_status == "triggered",
-                            Shipment.confirmation_status.in_(("pending", "failed")),
+                            Shipment.payout_status.in_(("evidence_pending", "pending", "failed")),
                         )
                     ))
                     session.commit()
                     for shipment_id in shipment_ids:
-                        coordinator.dispatch(session, shipment_id)
+                        if evidence is not None:
+                            evidence.reconcile(session, shipment_id)
+                        else:
+                            coordinator.dispatch(session, shipment_id)
                         current = session.get(Shipment, shipment_id)
                         if current is None:
                             print(f"Not found: {shipment_id}")
@@ -161,6 +169,8 @@ def main() -> None:
                 if coordinator is None:
                     parser.exit(2, "Configure Data Integrity contract and anchorer before retrying batches.\n")
                 with make_session_factory(engine)() as session:
+                    payout = configured_coordinator(settings)
+                    evidence = configured_evidence_coordinator(settings, payout, coordinator)
                     batch_ids = [args.batch_id] if args.batch_id else list(session.scalars(
                         select(IntegrityBatch.id)
                         .join(IntegrationOutbox, IntegrationOutbox.aggregate_id == IntegrityBatch.id)
@@ -173,6 +183,10 @@ def main() -> None:
                     for batch_id in batch_ids:
                         coordinator.dispatch(session, batch_id)
                         current = session.get(IntegrityBatch, batch_id)
+                        if current is not None and current.anchor_status == "DATA_ANCHORED":
+                            verify_batch(session, current.id, datetime.now(timezone.utc), coordinator)
+                            if evidence is not None:
+                                evidence.reconcile(session, current.shipment_id)
                         print(
                             f"{batch_id}: {current.anchor_status if current else 'NOT_FOUND'}"
                         )

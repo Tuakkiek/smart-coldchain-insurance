@@ -35,10 +35,11 @@ def evaluate(
     received_at: datetime,
     gap_minutes: int,
     sequence_gap: tuple[int, int] | None = None,
+    max_gap_seconds: int | None = None,
 ) -> PolicyDecision:
     """A gap breaks a streak; recorded_at from the device is deliberately ignored."""
     received_at = utc(received_at)
-    gap_limit = timedelta(minutes=gap_minutes)
+    gap_limit = timedelta(seconds=max_gap_seconds or gap_minutes * 60)
     samples = iter(prior_samples_desc)
     previous = next(samples, None)
     events: list[tuple[str, dict]] = []
@@ -52,6 +53,11 @@ def evaluate(
         events.append(("SENSOR_DATA_GAP", details))
 
     if not out_of_range(shipment, temperature_c):
+        if previous is not None and not gap and out_of_range(shipment, previous.temperature_c):
+            events.append(("TEMPERATURE_BREACH_ENDED", {
+                "breach_ended_at": utc_iso(received_at),
+                "temperature_c": temperature_c,
+            }))
         return PolicyDecision(tuple(events), False, 0)
 
     if shipment.insurance_status == "triggered" and previous and not gap and out_of_range(shipment, previous.temperature_c):

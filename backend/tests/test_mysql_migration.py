@@ -19,11 +19,15 @@ def test_runtime_settings_use_mysql_and_keep_special_password(monkeypatch):
     monkeypatch.setenv("MYSQL_USER", "coldchain_app")
     monkeypatch.setenv("MYSQL_PASSWORD", "p@ss/w:rd")
     monkeypatch.setenv("SENSOR_GAP_MINUTES", "7")
+    monkeypatch.setenv("MAX_SAMPLE_GAP_SECONDS", "90")
+    monkeypatch.setenv("PAYOUT_REQUIRES_ANCHORED_EVIDENCE", "false")
     settings = load_settings()
     assert settings.database_url.drivername == "mysql+pymysql"
     assert settings.database_url.password == "p@ss/w:rd"
     assert settings.database_url.query["charset"] == "utf8mb4"
     assert settings.sensor_gap_minutes == 7
+    assert settings.max_sample_gap_seconds == 90
+    assert settings.payout_requires_anchored_evidence is False
     assert settings.blockchain_enabled is False
 
     monkeypatch.setenv("BLOCKCHAIN_ENABLED", "true")
@@ -32,6 +36,16 @@ def test_runtime_settings_use_mysql_and_keep_special_password(monkeypatch):
     with pytest.raises(ValueError, match="contract address and oracle private key"):
         load_settings()
     monkeypatch.setenv("BLOCKCHAIN_ENABLED", "false")
+
+    monkeypatch.setenv("MAX_SAMPLE_GAP_SECONDS", "0")
+    with pytest.raises(ValueError, match="MAX_SAMPLE_GAP_SECONDS"):
+        load_settings()
+    monkeypatch.setenv("MAX_SAMPLE_GAP_SECONDS", "90")
+
+    monkeypatch.setenv("PAYOUT_REQUIRES_ANCHORED_EVIDENCE", "sometimes")
+    with pytest.raises(ValueError, match="PAYOUT_REQUIRES_ANCHORED_EVIDENCE"):
+        load_settings()
+    monkeypatch.setenv("PAYOUT_REQUIRES_ANCHORED_EVIDENCE", "true")
 
     monkeypatch.setenv("SENSOR_GAP_MINUTES", "0")
     with pytest.raises(ValueError, match="SENSOR_GAP_MINUTES"):

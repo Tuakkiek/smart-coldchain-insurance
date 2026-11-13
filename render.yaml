@@ -22,6 +22,10 @@ services:
         value: "100"
       - key: INTEGRITY_BATCH_MAX_AGE_MINUTES
         value: "5"
+      - key: MAX_SAMPLE_GAP_SECONDS
+        value: "300"
+      - key: PAYOUT_REQUIRES_ANCHORED_EVIDENCE
+        value: "true"
       - key: BLOCKCHAIN_ENABLED
         value: "false"
       - key: BLOCKCHAIN_CONFIRMATIONS

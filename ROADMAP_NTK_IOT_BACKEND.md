@@ -11,6 +11,7 @@
 > **Cập nhật 2026-11-08 — Phase 1 IN_PROGRESS:** Đã bổ sung simulator ký P-256 thật với các kịch bản happy/invalid/duplicate/replay/gap/reconnect; test tương thích với Backend pass. Sketch đã chuyển Wi-Fi/private key/CA sang `config.h` bị Git bỏ qua và dùng `setCACert()` thay `setInsecure()`. Chưa cross-test trên board ESP32, chưa có queue bền vững khi mất mạng. Credential/key từng được commit phải được đổi/revoke; xóa khỏi bản hiện tại không xóa Git history. Không đánh dấu Phase 1 hoàn tất.
 > **Cập nhật 2026-11-09 — Phase 4 IN_PROGRESS/LOCAL_TESTED:** Đã thêm Alembic `20261109_02`, bảng batch/item/outbox, auto/manual sealing theo cặp shipment/device, membership bất biến, API summary/list/detail/verify và tamper alert `INTEGRITY_MISMATCH`. Bộ Backend pass `63`, Hardhat pass `66` gồm golden vector/E2E contract. Chưa áp dụng migration lên MySQL production và chưa dispatch outbox tới `ColdChainDataIntegrity`; anchoring/readback thuộc Phase 5 nên chưa đánh dấu Phase 4/5 hoàn tất trên môi trường deploy.
 > **Cập nhật 2026-11-11 — Phase 5 LOCAL_TESTED:** Backend đã có adapter `ColdChainDataIntegrity`, signer anchorer riêng, dispatcher outbox idempotent, persist signed transaction trước broadcast, receipt/confirmation handling, on-chain metadata readback và API admin retry. E2E local Hardhat `signed telemetry → sealed batch → anchorBatch → receipt → getBatch/verify` pass; RPC-timeout reconciliation và mismatch fail-closed có test. Chưa deploy contract/address/signer lên testnet/Render và chưa chạy migration Phase 4 trên MySQL production, nên Phase 5 chưa `DEPLOYED`.
+> **Cập nhật 2026-11-13 — Phase 6 LOCAL_TESTED:** Đã nối evidence gate mặc định `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`: signed telemetry liên tục theo `received_at`, không gap, đủ thời lượng, toàn bộ batch `MATCHED + DATA_ANCHORED` và on-chain readback khớp mới được gọi Insurance Oracle. Event lưu evidence ID, telemetry IDs, batch/root/anchor tx, policy/gap/status; có admin/CLI reconcile idempotent. Unit test chặn payout ở 14 phút, anchor pending và tamper; E2E Hardhat `signed telemetry → multi-batch anchors → evidence verify → reportViolation → paid` pass. Chưa chạy testnet/Render/MySQL production và chưa có worker định kỳ cho offline/retry, nên Phase 6 chưa `DEPLOYED`.
 
 ---
 
@@ -533,20 +534,20 @@ Với API public, các route ghi dữ liệu và route admin cần authenticatio
 
 **Việc cần làm**
 
-- [ ] Giữ `violation_service.py` và logic ngưỡng riêng của mỗi shipment; dùng **`received_at`** theo Backend để xác định thời gian quan sát vi phạm.
-- [ ] Cấu hình `max_sample_gap_seconds` và độ liên tục bằng policy; đề xuất demo 30 giây/mẫu, ngưỡng gap 90 giây, **chỉ có hiệu lực sau khi được team chốt**. Gap, offline, invalid/replay cắt mạch bằng chứng.
-- [ ] Không kích hoạt trước `violation_duration_minutes = 15`; nếu nhiệt độ quay về ngưỡng trước đủ 15 phút thì reset chuỗi; tránh tạo nhiều event cho cùng một đợt vi phạm.
+- [x] Giữ logic ngưỡng riêng của mỗi shipment; dùng **`received_at`** theo Backend để xác định thời gian quan sát vi phạm.
+- [x] Cấu hình `MAX_SAMPLE_GAP_SECONDS` (local mặc định 300 giây; có thể đổi sau khi team chốt). Time gap, sequence gap, invalid/replay cắt mạch bằng chứng.
+- [x] Không kích hoạt trước `violation_duration_minutes = 15`; nếu nhiệt độ quay về ngưỡng trước đủ 15 phút thì reset chuỗi; tránh tạo nhiều event cho cùng một đợt vi phạm.
 - [ ] Event tối thiểu: `TEMPERATURE_BREACH_STARTED`, `TEMPERATURE_BREACH_ENDED`, `SENSOR_DATA_GAP`, `DEVICE_OFFLINE`, `INSURANCE_TRIGGERED`, `INTEGRITY_MISMATCH`.
-- [ ] Gắn `violation_evidence_id`, khoảng `first/last received_at`, telemetry IDs, relevant batch IDs/root/tx, tình trạng gap và policy version vào evidence.
-- [ ] Đề xuất **`PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`**: nếu có bằng chứng đủ 15 phút nhưng batch còn pending, ghi `EVIDENCE_PENDING`, tiếp tục chờ/check chain, **không reportViolation/payout vội**. Nếu team chọn policy khác, phải nêu rõ hậu quả và version hóa.
-- [ ] Chỉ authorized Backend Oracle gọi `reportViolation`/phương thức do Member 2 xác nhận; kiểm tra đúng beneficiary/policy, idempotent event/policy key và trạng thái đã payout.
-- [ ] Phân biệt `INSURANCE_TRIGGERED` (đủ điều kiện nghiệp vụ), `PENDING` (giao dịch đã nộp), `CONFIRMED` (receipt + event/state khẳng định payout), `FAILED` (on-chain thất bại).
-- [ ] Chạy virtual clock ở local/test để minh họa 15 phút **mà không gian lận điều kiện trên production**; test có ký số và batch giống pipeline thật.
+- [x] Gắn `violation_evidence_id`, khoảng `first/last received_at`, telemetry IDs, relevant batch IDs/root/tx, tình trạng gap và policy version vào evidence.
+- [x] Bật mặc định **`PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`**: batch còn pending ghi `EVIDENCE_PENDING`, tiếp tục chờ/check chain và không reportViolation/payout vội.
+- [x] Chỉ authorized Backend Oracle gọi `reportViolation`; adapter kiểm tra policy, idempotent event/policy key và trạng thái đã payout.
+- [x] Phân biệt `INSURANCE_TRIGGERED`, `EVIDENCE_PENDING`, payout `pending`, `paid/confirmed` và `failed` trong shipment/event metadata.
+- [x] Chạy virtual clock ở local/test để minh họa 15 phút; E2E dùng signed telemetry, Merkle batch và hai contract thật trên Hardhat.
 
 **Definition of Done**
 
-- [ ] 14 phút vi phạm không payout; 15 phút với dữ liệu liên tục + evidence đúng điều kiện chỉ trigger một lần.
-- [ ] Sample bình thường, thiếu chuỗi, chữ ký sai, data tamper hoặc anchor pending không tự động payout.
+- [x] 14 phút vi phạm không payout; 15 phút với dữ liệu liên tục + evidence đúng điều kiện chỉ trigger một lần.
+- [x] Sample bình thường, thiếu chuỗi, chữ ký sai, data tamper hoặc anchor pending không tự động payout.
 - [ ] Testnet payout demo chỉ được ghi `CONFIRMED` khi transaction thực sự thành công và contract state/event khớp; có tx metadata đầy đủ.
 
 ### Phase 7 — Public FastAPI Deployment on Render

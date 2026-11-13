@@ -25,8 +25,10 @@ class Settings:
     admin_api_key: str = ""
     max_request_body_bytes: int = 8192
     signed_rate_limit_per_minute: int = 120
+    max_sample_gap_seconds: int = 300
     integrity_batch_max_records: int = 100
     integrity_batch_max_age_minutes: int = 5
+    payout_requires_anchored_evidence: bool = True
     blockchain_enabled: bool = False
     blockchain_network: str = "localhost"
     blockchain_rpc_url: str = "http://127.0.0.1:8545"
@@ -90,6 +92,14 @@ def load_settings() -> Settings:
     signed_rate_limit_per_minute = int(os.getenv("SIGNED_RATE_LIMIT_PER_MINUTE", "120"))
     if signed_rate_limit_per_minute <= 0:
         raise ValueError("SIGNED_RATE_LIMIT_PER_MINUTE must be positive")
+    max_sample_gap_seconds = int(
+        os.getenv("MAX_SAMPLE_GAP_SECONDS", str(sensor_gap_minutes * 60))
+    )
+    if max_sample_gap_seconds <= 0:
+        raise ValueError("MAX_SAMPLE_GAP_SECONDS must be positive")
+    payout_evidence_text = os.getenv("PAYOUT_REQUIRES_ANCHORED_EVIDENCE", "true").lower()
+    if payout_evidence_text not in {"true", "false"}:
+        raise ValueError("PAYOUT_REQUIRES_ANCHORED_EVIDENCE must be true or false")
     integrity_batch_max_records = int(os.getenv("INTEGRITY_BATCH_MAX_RECORDS", "100"))
     if not 1 <= integrity_batch_max_records <= 100:
         raise ValueError("INTEGRITY_BATCH_MAX_RECORDS must be in [1, 100]")
@@ -120,8 +130,10 @@ def load_settings() -> Settings:
         admin_api_key=os.getenv("ADMIN_API_KEY", ""),
         max_request_body_bytes=max_request_body_bytes,
         signed_rate_limit_per_minute=signed_rate_limit_per_minute,
+        max_sample_gap_seconds=max_sample_gap_seconds,
         integrity_batch_max_records=integrity_batch_max_records,
         integrity_batch_max_age_minutes=integrity_batch_max_age_minutes,
+        payout_requires_anchored_evidence=payout_evidence_text == "true",
         blockchain_enabled=blockchain_enabled,
         blockchain_network=os.getenv("BLOCKCHAIN_NETWORK", "localhost"),
         blockchain_rpc_url=os.getenv("BLOCKCHAIN_RPC_URL", "http://127.0.0.1:8545"),
