@@ -10,6 +10,8 @@
     "deploy": "npx hardhat run scripts/deploy.ts --network localhost",
     "seed": "npx hardhat run scripts/seed-demo.ts --network localhost",
     "verify": "npx hardhat run scripts/verify-deployment.ts --network localhost",
+    "roles": "npx hardhat run scripts/manage-roles.ts --network localhost",
+    "inspect": "npx hardhat run scripts/inspect-onchain.ts --network localhost",
     "export-abi": "npx hardhat run scripts/export-abi.ts",
     "clean": "npx hardhat clean"
   },

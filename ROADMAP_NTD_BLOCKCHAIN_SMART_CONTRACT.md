@@ -482,6 +482,10 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 **Phụ thuộc:** Member 1 Phase 4/5 hoàn thành canonical batch + adapter; Phase 5 của NTD đã bàn giao ABI/addresses. Insurance integration dựa trên Member 1 Phase 6.
 
+> **Trạng thái hiện tại (`IN_PROGRESS — WAITING FOR BACKEND PHASE 5/6`):**
+> - **Đã hoàn thành phía `blockchain/` (NTD):** Kiểm chứng mapping payload `IntegrationOutbox` (`batch_service.py`) $\rightarrow$ `anchorBatch`, hoàn thiện test matrix E13–E17 (`Phase6IntegrationScenarios.test.ts`), bổ sung script `manage-roles.ts` (xoay vòng `Anchorer`/`Oracle`) và `inspect-onchain.ts` (đối chiếu event/state trực tiếp trên chain), cập nhật `INTEGRATION.md` quy tắc retry/idempotency.
+> - **Đang chờ phía `backend/` (Member 1 - NTK):** `backend/app/integrations/blockchain_adapter.py` hiện mới tích hợp Module B (`ColdChainInsurance`), **chưa tích hợp** Module A (`anchor_batch`, `verify_batch`, `get_batch`), outbox dispatcher xử lý `ANCHOR_BATCH`, và cơ chế `PAYOUT_REQUIRES_ANCHORED_EVIDENCE`. Do đó các bước kiểm thử E2E trực tiếp với API Backend chưa đủ điều kiện nghiệm thu hoàn tất Phase 6.
+
 **Việc cần làm**
 
 - [ ] Nhận một batch đã `SEALED` từ NTK, đối chiếu `merkleRoot`, `batchKey`, metadata; gọi `anchorBatch` **từ Backend** (NTK thực hiện adapter).
@@ -547,16 +551,16 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 ### 7.3. Checklist package bàn giao thực tế cho NTK
 
-- [ ] `blockchain/INTEGRATION.md` ghi đúng **version giao thức, compiler/chain, contract addresses**.
-- [ ] ABI JSON của cả hai contracts + (nếu có) MockInsuranceToken.
-- [ ] `deployments/localhost.json` và testnet manifest **chỉ sau khi deploy**.
-- [ ] `batchKey` / `shipmentKey` / `deviceKey` / `evidenceHash` vector chính xác.
-- [ ] One successful `anchorBatch` receipt + `BatchAnchored` event + `getBatch` root.
-- [ ] One duplicate `anchorBatch` revert + error decode.
-- [ ] One successful authorized `reportViolation` receipt + `InsurancePaid` + token balance delta.
-- [ ] One unauthorized/reverted payout response.
-- [ ] Oracle/anchorer role grant/revoke scripts and documented confirmation count.
-- [ ] Hardhat tests và command chạy được từ môi trường sạch.
+- [x] `blockchain/INTEGRATION.md` ghi đúng **version giao thức, compiler/chain, contract addresses**.
+- [x] ABI JSON của cả hai contracts + (nếu có) MockInsuranceToken.
+- [x] `deployments/localhost.json` và testnet manifest **chỉ sau khi deploy**.
+- [x] `batchKey` / `shipmentKey` / `deviceKey` / `evidenceHash` vector chính xác.
+- [x] One successful `anchorBatch` receipt + `BatchAnchored` event + `getBatch` root.
+- [x] One duplicate `anchorBatch` revert + error decode.
+- [x] One successful authorized `reportViolation` receipt + `InsurancePaid` + token balance delta.
+- [x] One unauthorized/reverted payout response.
+- [x] Oracle/anchorer role grant/revoke scripts and documented confirmation count.
+- [x] Hardhat tests và command chạy được từ môi trường sạch.
 
 ---
 
@@ -663,7 +667,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 | 9 | ABI artifacts của 2 contract | Import được từ Backend adapter | `DELIVERED (deployments/abi/)` |
 | 10 | `blockchain/INTEGRATION.md` | Byte-level hash, ABI, role, events, examples | `DELIVERED` |
 | 11 | `blockchain/README.md` | Run/test/deploy/demo/error handling | `DELIVERED` |
-| 12 | Hardhat test results + demo evidence | Receipt + root + token balance + edge cases | `TESTED (71 passing, 100% PASS)` |
+| 12 | Hardhat test results + demo evidence | Receipt + root + token balance + edge cases | `TESTED (80 passing, 100% PASS)` |
 
 `PLANNED` không ngụ ý đã có source code. Khi triển khai, thay status thành `IN_PROGRESS / TESTED / DEPLOYED / BLOCKED` kèm link PR, commit hash hoặc log chứng minh.
 
