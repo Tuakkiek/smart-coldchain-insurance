@@ -305,4 +305,6 @@ class DemoScenarioOut(BaseModel):
 
 
 class HealthOut(BaseModel):
-    status: Literal["ok"] = "ok"
+    status: Literal["ok", "degraded"]
+    database: Literal["ok", "degraded", "unavailable"]
+    blockchain: Literal["ok", "degraded", "unavailable"]

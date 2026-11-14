@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, Header, Request, Response, status
 from pydantic import UUID4
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -39,6 +39,7 @@ from app.services import signed_ingestion
 from app.services import batch_service
 from app.models import SignedTelemetryReceipt
 from app.services.device_health_service import shipment_devices
+from app.services.health import service_health
 
 
 router = APIRouter(prefix="/api/v1")
@@ -47,8 +48,16 @@ DbSession = Annotated[Session, Depends(get_session)]
 
 
 @router.get("/health", response_model=HealthOut)
-def health() -> HealthOut:
-    return HealthOut()
+def health(request: Request) -> HealthOut:
+    return HealthOut.model_validate(service_health(request.app.state.engine, request.app.state.settings))
+
+
+@router.get("/ready", response_model=HealthOut)
+def ready(request: Request, response: Response) -> HealthOut:
+    result = service_health(request.app.state.engine, request.app.state.settings)
+    if result["database"] != "ok":
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return HealthOut.model_validate(result)
 
 
 @router.post("/shipments", response_model=ShipmentOut, response_model_exclude_unset=True, status_code=201)
