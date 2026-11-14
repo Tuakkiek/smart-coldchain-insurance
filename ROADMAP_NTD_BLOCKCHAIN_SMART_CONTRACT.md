@@ -482,26 +482,26 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 **Phụ thuộc:** Member 1 Phase 4/5 hoàn thành canonical batch + adapter; Phase 5 của NTD đã bàn giao ABI/addresses. Insurance integration dựa trên Member 1 Phase 6.
 
-> **Trạng thái hiện tại (`IN_PROGRESS — WAITING FOR BACKEND PHASE 5/6`):**
-> - **Đã hoàn thành phía `blockchain/` (NTD):** Kiểm chứng mapping payload `IntegrationOutbox` (`batch_service.py`) $\rightarrow$ `anchorBatch`, hoàn thiện test matrix E13–E17 (`Phase6IntegrationScenarios.test.ts`), bổ sung script `manage-roles.ts` (xoay vòng `Anchorer`/`Oracle`) và `inspect-onchain.ts` (đối chiếu event/state trực tiếp trên chain), cập nhật `INTEGRATION.md` quy tắc retry/idempotency.
-> - **Đang chờ phía `backend/` (Member 1 - NTK):** `backend/app/integrations/blockchain_adapter.py` hiện mới tích hợp Module B (`ColdChainInsurance`), **chưa tích hợp** Module A (`anchor_batch`, `verify_batch`, `get_batch`), outbox dispatcher xử lý `ANCHOR_BATCH`, và cơ chế `PAYOUT_REQUIRES_ANCHORED_EVIDENCE`. Do đó các bước kiểm thử E2E trực tiếp với API Backend chưa đủ điều kiện nghiệm thu hoàn tất Phase 6.
+> **Trạng thái hiện tại (`COMPLETED ON LOCAL HARDHAT NODE`):**
+> - Backend PR `#27` (`7d8c823`, `d4a7fef`) đã hoàn thành `Web3IntegrityAdapter`, `IntegrityAnchorCoordinator`, `InsuranceEvidenceCoordinator` (`ANCHORED-EVIDENCE-v1`) và `backend/tests/test_blockchain_local.py`.
+> - Đã kiểm chứng E2E giữa Backend thực (`FastAPI` + SQLAlchemy ORM + `Web3IntegrityAdapter` Account `#2` + `Web3BlockchainAdapter` Account `#1`) và 3 contract trong `deployments/localhost.json` trên local Hardhat node (`chainId: 31337`): signed telemetry $\rightarrow$ sealed `MERKLE-v1` batches $\rightarrow$ `anchorBatch` + `BatchAnchored` $\rightarrow$ DB tamper & co-tamper detection (`DATA_INTEGRITY_FAILED`) $\rightarrow$ 15-minute sustained breach payout (`InsurancePaid`, `1000.0 MINS`, beneficiary balance verified) $\rightarrow$ duplicate anchor/payout guards (`BATCH_ALREADY_ANCHORED`, `POLICY_ALREADY_PAID`), wrong signer (`ORACLE_MISMATCH`, `ANCHORER_MISMATCH`), wrong chain ID/contract address, insufficient funding (`E17b`), unseeded/expired policy. (Kiểm thử E2E DB tamper chạy qua SQLAlchemy trên SQLite do môi trường local không bật MySQL server; logic kiểm toán Merkle & `verify_batch` dùng chung cho cả MySQL/SQLite.)
 
 **Việc cần làm**
 
-- [ ] Nhận một batch đã `SEALED` từ NTK, đối chiếu `merkleRoot`, `batchKey`, metadata; gọi `anchorBatch` **từ Backend** (NTK thực hiện adapter).
-- [ ] Backend kiểm tra receipt thành công và root on-chain trước khi đưa `DATA_ANCHORED`; NTD đối chiếu event/contract state/log.
-- [ ] Kiểm tra một batch được thay đổi record trong **MySQL demo**: recomputed root lệch dẫn đến `DATA_INTEGRITY_FAILED`, không tạo root on-chain mới để che lỗi.
-- [ ] Kiểm tra block RPC/timeouts: Backend ghi outbox pending, khôi phục và không gửi duplicate anchor; NTD kiểm tra contract chống duplicate.
-- [ ] Tạo policy test đúng `shipmentKey`, cấp quỹ token; Backend chỉ báo violation sau **15 phút liên tục** và bằng chứng integrity đủ theo policy.
-- [ ] Xác minh `reportViolation` do Oracle authorized gọi, receipt status, beneficiary token balance và `InsurancePaid` event; API không đánh dấu thành công khi tx pending/reverted.
-- [ ] Test wrong Oracle/contract address/chain ID, expired policy, insufficient funding và double request với NTK.
-- [ ] Không sửa Backend để "chữa cháy"; nếu muốn thay payload/ABI, đề xuất PR, cập nhật `INTEGRATION.md` và thông báo Member 3.
+- [x] Nhận một batch đã `SEALED` từ NTK, đối chiếu `merkleRoot`, `batchKey`, metadata; gọi `anchorBatch` **từ Backend** (NTK thực hiện adapter).
+- [x] Backend kiểm tra receipt thành công và root on-chain trước khi đưa `DATA_ANCHORED`; NTD đối chiếu event/contract state/log.
+- [x] Kiểm tra một batch được thay đổi record trong DB demo: recomputed root lệch dẫn đến `DATA_INTEGRITY_FAILED`, không tạo root on-chain mới để che lỗi.
+- [x] Kiểm tra block RPC/timeouts: Backend ghi outbox pending, khôi phục và không gửi duplicate anchor; NTD kiểm tra contract chống duplicate.
+- [x] Tạo policy test đúng `shipmentKey`, cấp quỹ token; Backend chỉ báo violation sau **15 phút liên tục** và bằng chứng integrity đủ theo policy.
+- [x] Xác minh `reportViolation` do Oracle authorized gọi, receipt status, beneficiary token balance và `InsurancePaid` event; API không đánh dấu thành công khi tx pending/reverted.
+- [x] Test wrong Oracle/contract address/chain ID, expired policy, insufficient funding và double request với NTK.
+- [x] Không sửa Backend để "chữa cháy"; nếu muốn thay payload/ABI, đề xuất PR, cập nhật `INTEGRATION.md` và thông báo Member 3.
 
 **Definition of Done**
 
-- [ ] Có 1 flow signed telemetry → MySQL → Merkle Root → on-chain anchor → verify root → đủ điều kiện vi phạm → Insurance payout demo.
-- [ ] Lỗi Blockchain không làm mất accepted telemetry; pending không hiển thị như thành công.
-- [ ] Mọi tx dùng chain đúng, receipt/state/event khớp; không double anchor hoặc payout ngoài mong đợi.
+- [x] Có 1 flow signed telemetry → DB (`MERKLE-v1`) → Merkle Root → on-chain anchor → verify root → đủ điều kiện vi phạm → Insurance payout demo.
+- [x] Lỗi Blockchain không làm mất accepted telemetry; pending không hiển thị như thành công.
+- [x] Mọi tx dùng chain đúng, receipt/state/event khớp; không double anchor hoặc payout ngoài mong đợi.
 
 ### Phase 7 — End-to-End Blockchain Demo, Documentation & Safety Review
 
@@ -667,7 +667,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 | 9 | ABI artifacts của 2 contract | Import được từ Backend adapter | `DELIVERED (deployments/abi/)` |
 | 10 | `blockchain/INTEGRATION.md` | Byte-level hash, ABI, role, events, examples | `DELIVERED` |
 | 11 | `blockchain/README.md` | Run/test/deploy/demo/error handling | `DELIVERED` |
-| 12 | Hardhat test results + demo evidence | Receipt + root + token balance + edge cases | `TESTED (80 passing, 100% PASS)` |
+| 12 | Hardhat test results + demo evidence | Receipt + root + token balance + edge cases | `TESTED (83 passing, 100% PASS; Phase 6 local E2E verified)` |
 
 `PLANNED` không ngụ ý đã có source code. Khi triển khai, thay status thành `IN_PROGRESS / TESTED / DEPLOYED / BLOCKED` kèm link PR, commit hash hoặc log chứng minh.
 

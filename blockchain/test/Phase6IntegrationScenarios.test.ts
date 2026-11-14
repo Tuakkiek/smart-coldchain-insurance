@@ -299,6 +299,50 @@ describe("Phase 6: Backend Oracle & Integrity Integration Readiness", function (
         .withArgs(shipmentKey, insurer.address, payoutAmount);
       expect(await token.balanceOf(insurer.address) - insurerBefore).to.equal(payoutAmount);
     });
+
+    it("E17b: Should reject createPolicy when insurer has insufficient MINS balance or allowance", async function () {
+      const expiry = (await time.latest()) + 3600;
+      const hugeAmount = ethers.parseEther("99999999");
+
+      // Insufficient allowance
+      await expect(
+        insurance.connect(insurer).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry)
+      ).to.be.revertedWithCustomError(token, "ERC20InsufficientAllowance");
+
+      // Insufficient balance (even after approving)
+      await token.connect(insurer).approve(await insurance.getAddress(), hugeAmount);
+      await expect(
+        insurance.connect(insurer).createPolicy(shipmentKey, beneficiary.address, hugeAmount, expiry)
+      ).to.be.revertedWithCustomError(token, "ERC20InsufficientBalance");
+    });
+
+    it("Should reject reportViolation when policy has not been seeded yet (PolicyNotActive = 0)", async function () {
+      const unknownShipmentKey = ethers.keccak256(ethers.toUtf8Bytes("unseeded-shipment"));
+      const detectedAt = await time.latest();
+
+      await expect(
+        insurance.connect(oracle).reportViolation(unknownShipmentKey, evidenceHash, detectedAt)
+      )
+        .to.be.revertedWithCustomError(insurance, "ColdChain__PolicyNotActive")
+        .withArgs(unknownShipmentKey, 0);
+    });
+
+    it("Should support rotating ORACLE role safely via setOracle", async function () {
+      await createActivePolicy(3600);
+      const newOracle = attacker;
+      await expect(insurance.connect(owner).setOracle(newOracle.address))
+        .to.emit(insurance, "OracleUpdated")
+        .withArgs(oracle.address, newOracle.address);
+
+      const detectedAt = await time.latest();
+      await expect(
+        insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt)
+      ).to.be.revertedWithCustomError(insurance, "ColdChain__CallerNotOracle");
+
+      await expect(
+        insurance.connect(newOracle).reportViolation(shipmentKey, evidenceHash, detectedAt)
+      ).to.emit(insurance, "InsurancePaid");
+    });
   });
 });
 
