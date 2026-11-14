@@ -352,6 +352,9 @@ Hiện tại `backend/app/services/batch_service.py` tạo sẵn `IntegrationOut
 | `DataIntegrity.test.ts` | Cross-language Merkle-v1 golden vectors (1, 2, 3 leaves), anchor batch, duplicate revert, sequence validation, verifyBatch mismatch/unknown | 20 | PASS (100%) |
 | `DeploymentWorkflow.test.ts` | Triển khai 3 hợp đồng, phân quyền Anchorer/Oracle, seed dữ liệu mẫu deterministic, schema localhost.json không rò rỉ secrets | 5 | PASS (100%) |
 | `IntegrationFlow.test.ts` | Chu trình E2E kết hợp Module A & Module B: Batch Anchoring $\rightarrow$ Integrity Check $\rightarrow$ Breach $\rightarrow$ Oracle Payout $\rightarrow$ Tampered data detection | 2 | PASS (100%) |
-| `Phase6IntegrationScenarios.test.ts` | Đối chiếu Outbox payload (`batch_service.py`), chống duplicate anchor (E14), MySQL tamper detection (E08/E09/E19), sai Anchorer/Oracle (E13/E15), double payout (E16), expiry refund (E17) | 9 | PASS (100%) |
+| `Phase6IntegrationScenarios.test.ts` | Đối chiếu Outbox payload (`batch_service.py`), chống duplicate anchor (E14), DB tamper detection (E08/E09/E19), sai Anchorer/Oracle (E13/E15), double payout (E16), expiry refund (E17), insufficient funding/allowance (`E17b`), unseeded policy guard, xoay vòng `setOracle` | 12 | PASS (100%) |
 | `SecurityAndFailureScenarios.test.ts` | Tấn công Reentrancy qua SafeERC20/ReentrancyGuard, rollback trạng thái khi transfer lỗi, kiểm tra biên thời gian expiry, solvency checks | 8 | PASS (100%) |
-| **Tổng cộng** | **Bao phủ toàn diện Module A & B, Deployment Workflow, Phase 6 Integration Readiness & Cross-contract Security** | **80** | **PASS (100%)** |
+| **Tổng cộng** | **Bao phủ toàn diện Module A & B, Deployment Workflow, Phase 6 E2E Integration & Cross-contract Security** | **83** | **PASS (100%)** |
+
+> **Xác nhận tương thích Phase 6 với Backend (`backend/app/integrations/blockchain_adapter.py`):**
+> Đã đối chiếu khớp 100% ABI (`deployments/abi/*.abi.json` == `backend/app/integrations/abi/*.json`) và kiểm thử E2E thành công `Web3IntegrityAdapter` (Anchorer Account `#2`) + `Web3BlockchainAdapter` (Oracle Account `#1`) cùng `InsuranceEvidenceCoordinator` trên local Hardhat node (`chainId: 31337`).

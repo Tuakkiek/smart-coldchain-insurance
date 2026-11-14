@@ -1,6 +1,6 @@
 # Blockchain — Smart Cold Chain Insurance
 
-Smart Contract quản lý dữ liệu toàn vẹn (Module A) và chính sách bảo hiểm chuỗi lạnh (Module B) trên EVM blockchain (Hoàn thành Phase 5).
+Smart Contract quản lý dữ liệu toàn vẹn (Module A) và chính sách bảo hiểm chuỗi lạnh (Module B) trên EVM blockchain (Hoàn thành Phase 6).
 
 > ⚠️ **Demo only** — Token và tài sản trong project này không có giá trị thật.
 > Không kết nối ví/tài khoản có tiền thật.
@@ -10,7 +10,7 @@ Smart Contract quản lý dữ liệu toàn vẹn (Module A) và chính sách b�
 - **Solidity** 0.8.24
 - **Hardhat** 2.x + TypeScript
 - **OpenZeppelin** Contracts v5 (ERC-20, SafeERC20, ReentrancyGuard)
-- **Chai** + **Mocha** (qua Hardhat Toolbox) — 80 test cases (100% passing) bao phủ toàn bộ Module A, Module B, Deployment Workflow, Phase 6 Integration Readiness, Security/Failure Scenarios và Cross-contract Integration Flow
+- **Chai** + **Mocha** (qua Hardhat Toolbox) — 83 test cases (100% passing) bao phủ toàn bộ Module A, Module B, Deployment Workflow, Phase 6 Backend Oracle/Integrity Integration, Security/Failure Scenarios và Cross-contract Integration Flow
 
 ## Cài đặt
 
@@ -24,7 +24,7 @@ npm install
 | Lệnh                 | Mô tả                                                          |
 |-----------------------|-----------------------------------------------------------------|
 | `npm run compile`     | Compile smart contracts                                         |
-| `npm run test`        | Chạy toàn bộ 80 unit & integration tests                        |
+| `npm run test`        | Chạy toàn bộ 83 unit & integration tests                        |
 | `npm run node`        | Khởi chạy local Hardhat node (Chain ID 31337)                   |
 | `npm run deploy`      | Deploy 3 contracts lên local node                               |
 | `npm run seed`        | Tạo dữ liệu demo (neo lô telemetry Module A & policy Module B)  |
@@ -76,7 +76,7 @@ blockchain/
     ColdChainInsurance.test.ts          # Module B tests (36 cases)
     DataIntegrity.test.ts               # Module A tests + Merkle-v1 Golden Vectors (20 cases)
     DeploymentWorkflow.test.ts          # Deploy, seed & verification workflow tests (5 cases)
-    Phase6IntegrationScenarios.test.ts  # Phase 6 Outbox mapping, tamper & E13-E17 tests (9 cases)
+    Phase6IntegrationScenarios.test.ts  # Phase 6 Outbox mapping, tamper & E13-E17b tests (12 cases)
     SecurityAndFailureScenarios.test.ts # Reentrancy, SafeERC20 failures, Solvency (8 cases)
     IntegrationFlow.test.ts             # Module A + Module B E2E workflow (2 cases)
   deployments/
