@@ -6,6 +6,21 @@
 > **Kết quả mong đợi:** hai contract triển khai được trên local chain/testnet, có Hardhat tests, ABI/deployment artifacts, ví dụ gọi hàm và tài liệu `blockchain/INTEGRATION.md` đủ chi tiết để NTK kết nối từ FastAPI mà không phải đoán giao thức.  
 > **Trạng thái tài liệu:** KẾ HOẠCH CẬP NHẬT — không ngụ ý source code, hợp đồng, deployment hay test đã được thực hiện.
 
+> **Điều chỉnh thiết kế demo 2026-11-15:** Đồng bộ [roadmap NTK](ROADMAP_NTK_IOT_BACKEND.md) và [roadmap TTDK](ROADMAP_TTDK_FRONTEND_QA.md); chỉ điều chỉnh tích hợp bị ảnh hưởng bởi đăng ký/gán/cấp khóa. Repo đã có hai contract, ABI/adapter và `blockchain/INTEGRATION.md`; phần thiết kế bên dưới dùng để đối chiếu/tái sử dụng, **không yêu cầu viết lại contract**. Giữ nguyên checkbox/tiến độ lịch sử; lượt này không chạy lại test, deploy hoặc sửa Solidity.
+
+### Quy trình demo và định danh dùng chung
+
+**Admin đăng ký thiết bị → Admin đăng ký chuyến hàng → Liên kết thiết bị với chuyến hàng → Cấp khóa cho ESP32 → ESP32 ký và gửi dữ liệu → Backend xác minh bằng Public Key → Lưu MySQL → Tạo bằng chứng Blockchain → Xử lý bảo hiểm.**
+
+- Device đăng ký bằng `device_id = "ESP32-001"`, `device_name = "Cold Chain Sensor 01"`, chưa cần key/chuyến. Mỗi device có tối đa một assignment active; nhiều device có thể cùng một shipment. Bỏ gán cũ rồi mới đổi chuyến, giữ sequence và dữ liệu lịch sử.
+- Mã chuyến Admin nhập `SHIP-001` là **`shipments.code`**, còn `shipments.id` là **UUID v4 chữ thường do Backend tạo**. UUID là `shipment_id` trong path, signed payload, assignment và input cho `shipmentKey`; không hash `code` thay UUID. Frontend hiển thị mã dễ đọc, Backend/adapter dùng ID chuẩn.
+- NTK quản lý registry, tên, public key và assignment hoàn toàn ở **Backend/MySQL**. Script Python trên máy tin cậy tạo một cặp ECDSA P-256 riêng/device, private key vào `config.h` rồi nạp USB, public key SPKI PEM qua API admin. Không PKI/OTA/remote provisioning và không có UI nhận private key.
+- Chỉ device đăng ký/active, đúng assignment, có key active, ký đúng **ECDSA P-256 + SHA-256 / SIGNED-TELEMETRY-v1**, sequence hợp lệ mới tạo accepted telemetry. Payload không hợp lệ chỉ audit, không vào Merkle batch/evidence.
+- **Không đăng ký ESP32 trên Blockchain, không đưa public/private key hoặc từng record lên chain, không thêm Device Registry Contract.** `deviceKey = keccak256(UTF8(device_id))` trong batch metadata chỉ là hash định danh, **không phải khóa mật mã ESP32**.
+- `ColdChainDataIntegrity` tiếp tục lưu root/batch commitment; `ColdChainInsurance` xử lý policy/payout; Backend tiếp tục là Oracle và Blockchain Adapter. Tạo shipment trong MySQL chưa đồng nghĩa policy đã được tạo/fund trên chain.
+
+Chi tiết request/response, lỗi và schema dùng chung: [NTK §3.6 và Phase 3](ROADMAP_NTK_IOT_BACKEND.md#36-contract-mục-tiêu-cho-đăng-ký-gán-chuyến-và-cấp-khóa--chưa-triển-khai). Các bước mới vẫn là thiết kế, chưa tự động được nghiệm thu.
+
 ---
 
 ## 1. Phạm vi và ranh giới sở hữu
@@ -26,6 +41,7 @@
 - **Không sửa** `frontend/` của Member 3; không yêu cầu Frontend giữ private key, ký giao dịch hoặc truy cập RPC cho nghiệp vụ.
 - **Không tự đổi** `docs/contracts/api-v1.md` hay schema của Backend; mở issue/PR đề xuất cho Member 1 chốt khi cần.
 - Không triển khai tính năng blockchain để thay thế MySQL; không đưa raw telemetry, private key, PII hoặc payload cảm biến lên chain.
+- Public key ESP32 cũng chỉ nằm trong MySQL; NTD không sở hữu cấp khóa/assignment và không yêu cầu certificate hay đăng ký key on-chain để mở khóa anchoring.
 - Không tự khẳng định dữ liệu cảm biến đúng vật lý chỉ vì chữ ký hợp lệ hoặc Merkle Root đã anchor.
 
 ### 1.3. Cấu trúc thư mục mục tiêu
@@ -67,10 +83,14 @@ Cấu trúc trên là **đề xuất mở rộng từ Roadmap cũ**; nếu repos
 ### 2.1. Luồng dữ liệu mới — hai module hợp đồng, một Backend Oracle
 
 ```text
-ESP32 + Sensors
+Admin → register device (ID/name) → create shipment (code → UUID) → assign in MySQL
+    → trusted Python provisioning → config.h / USB → public key registration via admin API
+
+ESP32 + DHT22
     │  Signed Telemetry (ECDSA P-256, sequence_number, timestamp)
     ▼
 FastAPI Backend (Member 1; chạy public trên Render khi deploy)
+    │  Check registered active device / shipment assignment / public key in MySQL
     │  Verify signature / sequence / gap / replay
     ▼
 External MySQL (toàn bộ accepted telemetry và audit)
@@ -151,6 +171,7 @@ NTK chịu trách nhiệm cung cấp trước khi NTD chốt ABI:
 - [ ] Dự thảo anchor payload, lookup/verify expectations, idempotency key và cách xử lý pending/failed.
 - [ ] Insurance evidence: `violation_evidence_id`, `shipment_id`, `detectedAt`, telemetry/batch references, policy, rule 15 phút, điều kiện xử lý gap và trạng thái integrity.
 - [ ] Yêu cầu backend Oracle, authorized anchorer, nhận tx receipts/events và data để Frontend hiển thị.
+- [ ] Ánh xạ `code=SHIP-001` → UUID `shipments.id`; snapshot request/DeviceView §3.6 NTK và quan hệ `device_assignments` một active/device. Hồ sơ chỉ mô tả public metadata/giả định kiểm chứng, **không bàn giao khóa ESP32 cho contract/NTD**.
 
 **Điểm khóa:** NTD **không** đoán cách canonicalize telemetry từ tên field; phải nhận fixture do NTK xuất và tính được expected root giống nhau. Các thông số chưa thống nhất phải đánh dấu `TBD` thay vì triển khai ngầm.
 
@@ -173,6 +194,29 @@ NTK chịu trách nhiệm cung cấp trước khi NTD chốt ABI:
 - Member 3 phản hồi CORS origins, API types, loading/error states, Blockchain pending, integrity warning và demo acceptance; không quyết định trực tiếp ABI.
 - NTD cung cấp **event semantics** và explorer/network metadata **thông qua NTK**; giúp QA kiểm tra `BatchAnchored`, `InsurancePaid`, không yêu cầu frontend đọc RPC/contract hoặc tự suy luận thành công chỉ từ `tx_hash`.
 - Khi thay ABI/hash/rule: tạo PR cập nhật `blockchain/INTEGRATION.md` và tests/fixtures → gửi NTK duyệt adapter/API impact → thông báo Member 3 → mới merge; breaking change cần version/migration plan.
+
+### 3.4. API và schema đăng ký demo — tác động tới Blockchain
+
+Prefix `/api/v1`; ba roadmap dùng cùng contract mục tiêu ở NTK §3.6:
+
+| Method | Endpoint | Request / response cần biết | Hiện trạng |
+|---|---|---|---|
+| `POST` | `/api/v1/devices` | `{device_id, device_name}` → `201 DeviceView`, chưa key/chuyến | Có route; **cần đổi DTO đăng ký gộp** |
+| `GET` | `/api/v1/devices` | `{items: DeviceView[], total}`, gồm device chưa key/chưa gán | **Cần bổ sung ở Backend** |
+| `POST` | `/api/v1/shipments` | `code`, cargo, origin/destination, ngưỡng/thời lượng, VND → `201 ShipmentDetail` có `id` UUID | Có; giữ DTO, **cần bảo vệ create bằng AdminSession** |
+| `GET` | `/api/v1/shipments` | `{items: ShipmentDetail[], total}` | Có; giữ nguyên |
+| `POST` | `/api/v1/devices/{device_id}/assignments` | `{shipment_id: UUID, active: true/false}` → `200 DeviceView` | Có; **cần chặn gán active sang chuyến khác**, cùng cặp idempotent |
+| `POST` | `/api/v1/devices/{device_id}/keys` | Script gửi `{key_id, public_key_pem}` → `201 DeviceView` | Có; tái sử dụng sau đăng ký, không thêm `/public-key` |
+| `POST` | `/api/v1/shipments/{shipment_id}/telemetry` | Signed v1 với UUID và `key_id` bắt buộc → `201`, duplicate hợp lệ `200` | Có; giữ protocol/anti-replay |
+
+- `DeviceView` mục tiêu giữ `device_id`, `status`, `last_sequence_number`, `last_seen_at`, metadata `keys` và `assignments`; thêm `device_name`, `has_public_key`, `current_shipment_id` (UUID hoặc `null`). Hai trường cuối suy ra từ key/assignment active. Đây là **field đề xuất chưa có trong view hiện tại**, không phải transaction on-chain.
+- Các thao tác quản trị dùng `X-Admin-Key`; không thêm alias `/assign`. Đăng ký/gán/cấp key là ba thao tác độc lập; `has_public_key=true` chỉ nói có key active trong DB, không chứng minh board đã flash đúng khóa. Ingestion mới là bước kiểm chứng.
+- Giữ lỗi `409 DEVICE_EXISTS`, `DUPLICATE_SHIPMENT_CODE`, `KEY_EXISTS`; thêm `409 DEVICE_ALREADY_ASSIGNED` khi gán sang chuyến khác. Unknown/unassigned/key missing/invalid signature bị Backend chặn theo NTK §3.6. Không nhận telemetry thì không có leaf, anchor hoặc payout evidence tương ứng.
+- MySQL dùng lại `devices.id` (API `device_id`), `device_keys` (public PEM, PK device/key), `device_assignments` (device/shipment, active), `shipments.id` UUID và `code` unique, `telemetry` + `signed_telemetry_receipts` (unique device/sequence), `ingestion_audit`. NTK thêm `devices.device_name` và constraint một assignment active/device bằng migration mới; không tạo bảng registry/policy on-chain để thay DB.
+- Tạo shipment off-chain trước, rồi tiếp tục quy trình seed/`createPolicy(shipmentKey, ...)` hiện có khi cần demo bảo hiểm. **Không đổi ABI, event, logic payout hoặc evidence hash vì thao tác đăng ký mới.** Cùng UUID phải đi xuyên MySQL → canonical signed record → batch → policy/Oracle.
+- Anchor/status đọc bằng các API có sẵn: `/shipments/{shipment_id}/batches`, `/batches/{batch_id}`, `/shipments/{shipment_id}/integrity`; insurance tx từ ShipmentDetail `blockchain.transaction_hash`, anchor tx từ `anchor_transaction.transaction_hash` của batch. Backend trả payout `not_requested/evidence_pending/pending/paid/failed`; `CONFIRMED` ở roadmap/UI là nhãn của `paid` sau xác nhận chain, không phải enum mới bắt buộc.
+
+**Kết luận tác động:** thay đổi chính nằm ở NTK (DTO/view/auth/migration/provisioning) và TTDK (form/dropdown/QA); NTD đối chiếu ID/hash và regression hai contract. Không phát sinh module Smart Contract thứ ba.
 
 ---
 
@@ -204,9 +248,9 @@ NTK chịu trách nhiệm cung cấp trước khi NTD chốt ABI:
 
 **Hash Chain:** chỉ tùy chọn để nối audit log hoặc các batch theo thời gian, phải có domain/version riêng. Không dùng Hash Chain làm tên gọi khác của Merkle root, không bắt buộc triển khai trong MVP.
 
-### 4.3. Quy tắc định danh `bytes32` — đề xuất cần cả nhóm chốt Phase 0
+### 4.3. Quy tắc định danh `bytes32` — giữ INTEGRATION hiện có
 
-Để giữ quy ước `shipmentKey` gốc và tương thích kiểu `bytes32`, đề xuất:
+Giữ quy tắc đã có trong `blockchain/INTEGRATION.md` và adapter; thao tác đăng ký mới không thay đổi các byte đầu vào:
 
 ```text
 shipmentKey = keccak256(UTF8(shipment_id))
@@ -217,14 +261,15 @@ deviceKey   = keccak256(UTF8(device_id))
 - Dùng bytes UTF-8 của **ID đúng như được Backend phát hành**, không tự trim, lowercase, chuẩn hóa Unicode hay encode UUID theo dạng nhị phân. Nên giới hạn ID ở ASCII có pattern/version rõ ràng để tránh nhập mơ hồ.
 - `keccak256` **chỉ dùng cho chuyển ID sang `bytes32`**; **Merkle hash vẫn là SHA-256** như §4.2. Không đánh đồng hai hash function.
 - `batchKey` là **định danh duy nhất của batch**, không dùng `merkleRoot` làm key (hai batch khác nhau được phép có root giống nhau nếu nội dung trùng).
-- `evidenceHash` là commitment của **evidence nghiệp vụ canonical** do NTK tạo theo một rule/version **khác** `MERKLE-v1`; chưa chốt thì ghi `EVIDENCE-v1: TBD`. Không dùng `hash JSON` với thứ tự key tùy ý.
+- `shipment_id` là UUID `shipments.id`, **không** phải mã `SHIP-001`; đổi tên device hoặc mã hiển thị không được đổi key của batch/policy đã tồn tại. `deviceKey` là hash định danh, không phải public key P-256.
+- Giữ **`evidenceHash = keccak256(UTF8(event_id))`** như `blockchain/INTEGRATION.md`/adapter hiện có; `event_id` là UUID của sự kiện `INSURANCE_TRIGGERED`. Evidence chi tiết vẫn do Backend lưu/verify. Không tạo thêm giao thức `EVIDENCE-v1` hoặc hash JSON mới cho yêu cầu đăng ký.
 - Sau khi thống nhất, viết bảng vectors bằng input string, UTF-8 hex, expected bytes32 vào `blockchain/INTEGRATION.md`. Một giao thức đã chốt **không tự đổi** khi triển khai.
 
 ### 4.4. Module A — `ColdChainDataIntegrity.sol`
 
 **Mục tiêu:** lưu root bất biến cho mỗi batch đã khóa và cho Backend tra cứu/đối chiếu. Contract không cần lưu toàn bộ metadata telemetry có trong MySQL.
 
-**Giao diện đề xuất v1 (chưa phải ABI cuối cùng):**
+**Giao diện tham chiếu v1:** đối chiếu ABI/source/`INTEGRATION.md` hiện có khi tích hợp, không sinh contract registry hay đổi signature do thay đổi đăng ký.
 
 ```solidity
 function anchorBatch(
@@ -254,7 +299,7 @@ event BatchAnchored(
 
 **Quy tắc contract:**
 
-- [ ] Chỉ `ANCHORER_ROLE` (Backend signer hoặc service account được cấp quyền) có thể gọi `anchorBatch`; owner/admin có quy trình grant/revoke rõ ràng.
+- [ ] Chỉ địa chỉ **`anchorer` được cấp quyền** theo contract hiện có có thể gọi `anchorBatch`; owner quản lý bằng `setAnchorer`. `ANCHORER` trong roadmap chỉ vai trò nghiệp vụ, không bắt buộc thêm `ANCHORER_ROLE`/đổi access-control ABI.
 - [ ] Từ chối `batchKey == 0`, `merkleRoot == 0`, `recordCount == 0`, và `firstSequence > lastSequence`; validate input/phạm vi type phù hợp.
 - [ ] Từ chối **batchKey đã tồn tại** bằng custom error; **không overwrite** root/metadata của một batch đã anchor, kể cả owner. Không có setter đổi root.
 - [ ] Root/metadata đã lưu chỉ đọc; `verifyBatch`/`getBatch` phải báo rõ **unknown batch** khác **root mismatch**. Nếu `verifyBatch` trả `false` cho unknown batch thì API phải gọi `getBatch` để phân biệt.
@@ -296,20 +341,20 @@ event BatchAnchored(
 - Revert rõ với `UnauthorizedOracle`, `UnknownPolicy`, `DuplicatePolicy`, `ExpiredPolicy`, `UnfundedPolicy`, `AlreadyPaid`, `InvalidEvidence` (tên cuối cùng do implementation quyết định).
 - **Không** dùng token demo để khẳng định hợp đồng bảo hiểm hợp pháp hoặc thanh toán VND thật.
 
-**Interface đề xuất kế thừa từ Roadmap cũ:**
+**Interface tham chiếu từ contract/INTEGRATION hiện có:** giữ kiểu ABI khi tái sử dụng.
 
 ```solidity
 function createPolicy(
     bytes32 shipmentKey,
     address beneficiary,
     uint256 payoutAmount,
-    uint64 expiry
+    uint256 expiry
 ) external;
 
 function reportViolation(
     bytes32 shipmentKey,
     bytes32 evidenceHash,
-    uint64 detectedAt
+    uint256 detectedAt
 ) external;
 
 function setOracle(address newOracle) external;
@@ -321,7 +366,7 @@ event InsurancePaid(...);
 event OracleUpdated(...);
 ```
 
-- Đây là **contract design proposal**, không khẳng định chữ ký ABI đã triển khai. Nếu thêm `violationEvidenceId`, `batchKey`, `policyVersion` vào `reportViolation`, phải thống nhất và version hóa API/ABI **trước** khi adapter tích hợp.
+- Source/ABI và `blockchain/INTEGRATION.md` quyết định chữ ký thực tế; snippet không phải bằng chứng deploy. Yêu cầu đăng ký mới **không cần thêm** `violationEvidenceId`, `batchKey`, `policyVersion` vào `reportViolation`; giữ ABI đã dùng bởi adapter.
 - `detectedAt` là thời gian Backend xác lập sự kiện, thường là Unix seconds từ `received_at`; contract có thể kiểm tra reasonable bounds nhưng **không tự xác thực độ chính xác** của event time do Oracle gửi.
 - **Cần chốt:** sự kiện xảy ra trước `expiry` nhưng transaction gửi sau `expiry` vì anchor pending có được chi trả trong `reporting_grace_period` hay không. Đặc tả chính xác điều kiện `detectedAt`, `block.timestamp`, effective time và anti-backdating thay vì vô tình từ chối hợp lệ hoặc cho phép timestamp giả.
 
@@ -331,7 +376,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 1. Member 1 verify telemetry, sequence, gap và tính khoảng vi phạm **liên tục ít nhất 15 phút** bằng `received_at` và policy của shipment.
 2. Backend tạo evidence đã version hóa, gắn các `batchKey`/Merkle Root liên quan, xác minh trạng thái data integrity.
-3. **Đề xuất `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`:** Backend chỉ gửi `reportViolation` khi các batch bằng chứng cần thiết đã `DATA_ANCHORED`, root tính lại khớp on-chain, không có gap khiến chuỗi 15 phút không đủ tin cậy. Nếu chưa đủ → `EVIDENCE_PENDING`, **không** payout.
+3. **Giữ `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true` mặc định ở Backend hiện có:** chỉ gửi `reportViolation` khi các batch bằng chứng cần thiết đã `DATA_ANCHORED`, root tính lại khớp on-chain, không có gap khiến chuỗi 15 phút không đủ tin cậy. Nếu chưa đủ → API `evidence_pending` (nhãn `EVIDENCE_PENDING`), **không** payout.
 4. Insurance Contract kiểm tra caller **ORACLE**, policy và anti-duplicate; contract **không** tự xác minh 15 phút hoặc proof nếu chưa được thiết kế thêm một interface on-chain rõ ràng.
 5. Khi anchor thành công muộn, Backend đối soát lại bằng chứng và policy/reporting window rồi mới gửi Oracle transaction; không coi pending là payout.
 6. Nếu data tamper/chain mismatch/gap/offline → Backend chặn hoặc cần review theo policy, không mặc định `INSURANCE_TRIGGERED` hay thanh toán.
@@ -365,12 +410,14 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [ ] Làm rõ policy khi integrity pending/failed, `PAYOUT_REQUIRES_ANCHORED_EVIDENCE`, reporting grace period, chain confirmations và số confirmations môi trường local/testnet.
 - [ ] Tạo bản đầu `blockchain/INTEGRATION.md` có interface proposal **gắn trạng thái PROPOSED/APPROVED**, gửi cho Member 1 và nhận phản hồi; thông báo requirements UI qua NTK cho Member 3.
 - [ ] Ghi rõ địa chỉ deploy/RPC chưa có nếu chưa deploy thực tế, không sử dụng địa chỉ ví dụ như thông số production.
+- [ ] Đánh giá contract impact của §3.4 cùng NTK: registry/key/assignment ở MySQL, dùng UUID cho shipmentKey; lập kết luận không cần ABI mới hoặc Device Registry Contract. Giữ `SIGNED-TELEMETRY-v1`, `MERKLE-v1`, evidence hash và logic insurance hiện có.
 
 **Definition of Done**
 
 - [ ] Có interface specification đã được NTK xác nhận hoặc blocker list ngắn gọn; không còn hash method do Member 1 phải tự đoán.
 - [ ] Có golden fixture/plan nhận fixture, data types, roles, enum transaction/event và acceptance criteria.
 - [ ] Không có breaking schema change chưa thông báo cả nhóm.
+- [ ] NTK/TTDK hiểu cùng một ánh xạ `SHIP-001` (`code`) → UUID (`shipment_id`) → `shipmentKey`; không có yêu cầu đăng ký ESP32 hoặc public key on-chain.
 
 ### Phase 1 — Hardhat Setup & Data Integrity Contract
 
@@ -379,12 +426,13 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 **Việc cần làm**
 
 - [ ] Khởi tạo/xác nhận Hardhat + TypeScript + Solidity, pin version, lockfile; tạo scripts `compile`, `test`, `node`, `deploy` phù hợp thực tế.
-- [ ] Thiết lập roles `DEFAULT_ADMIN_ROLE`/`ANCHORER_ROLE` theo thư viện phù hợp; quyền cấp/thu hồi, event và kiểm thử permission.
+- [ ] Đối chiếu quyền owner/anchorer và `setAnchorer` hiện có; giữ quyền cấp/thu hồi, event và test permission. Không chuyển sang `DEFAULT_ADMIN_ROLE`/`ANCHORER_ROLE` chỉ vì quy trình đăng ký mới.
 - [ ] Xây `ColdChainDataIntegrity.sol` với `Batch` metadata tối thiểu, immutable `batchKey`/`merkleRoot`, duplicate prevention và custom errors.
 - [ ] Triển khai `anchorBatch(...)`, `getBatch(...)`, `verifyBatch(...)`, event `BatchAnchored` theo interface đã chốt; không ghi raw telemetry.
 - [ ] Kiểm thử `bytes32` roundtrip và root bắt nguồn SHA-256; lưu đơn vị test dùng fixture thay vì tính hash theo Solidity khác quy tắc.
 - [ ] Viết test từ account có quyền/không quyền, batch rỗng, zero IDs/root, duplicate key, root immutable và retrieval.
 - [ ] Không đưa claim "on-chain validates sensor" vào docs hoặc UI metadata.
+- [ ] Đối chiếu/tái sử dụng `ColdChainDataIntegrity.sol` đã có, giữ mô hình owner/anchorer hiện tại nếu đáp ứng quyền; không bắt buộc chuyển sang AccessControl chỉ để phục vụ đăng ký demo. `deviceKey` chỉ là hash ID, không cần contract quản lý public key.
 
 **Definition of Done**
 
@@ -405,12 +453,14 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [ ] Test pending/duplicate/reorg assumptions ở mức mock adapter/integration test phù hợp; contract revert gửi trùng theo đúng error.
 - [ ] Tài liệu hóa vòng đời `SUBMITTED → MINED → CONFIRMED` và cách Backend lấy receipt, check `status=1`, `getBatch` và số confirmations.
 - [ ] Nếu Solidity không expose proof-of-inclusion, ghi rõ `verifyBatch` **chỉ so root được cung cấp với root lưu**, không verify từng telemetry.
+- [ ] Regression ID mapping: shipment có `code=SHIP-001` vẫn anchor bằng `keccak256(UTF8(UUID))`; nhiều device cùng shipment tạo batch riêng, đổi assignment không sửa batch/policy đã neo. Sample bị NTK từ chối vì chưa đăng ký/gán/cấp key không được có trong fixture batch hợp lệ.
 
 **Definition of Done**
 
 - [ ] NTK và NTD tạo **cùng 32-byte root** trên cùng fixture; có bằng chứng test.
 - [ ] Anchor + readback + decoded event khớp; mismatch trả false hoặc custom error đúng contract.
 - [ ] `blockchain/INTEGRATION.md` đủ thông tin cho Backend tích hợp batch anchoring.
+- [ ] Đường đi đăng ký mới không đòi hỏi thay đổi calldata/ABI/events; on-chain không có PEM/private key/từng telemetry, chỉ giữ commitment và metadata tối thiểu như cũ.
 
 ### Phase 3 — Insurance Contract, Policy Funding & Demo Payout
 
@@ -471,6 +521,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [ ] Xác định số confirmations và explorer URL nếu có; ghi giới hạn local/testnet.
 - [ ] Tạo `blockchain/INTEGRATION.md` có ví dụ end-to-end: `shipmentKey`, `batchKey`, one anchor, `getBatch/verifyBatch`, policy creation, Oracle violation, payout receipt.
 - [ ] NTK thử import ABI qua adapter và báo back compatibility issue; NTD sửa đúng thư mục `blockchain/`.
+- [ ] Cập nhật ví dụ seed/handoff để nhận UUID từ shipment do Admin tạo; `code` chỉ để hiển thị. Không tạo policy bằng `keccak256("SHIP-001")` trong khi Backend dùng UUID; hướng dẫn rõ tạo shipment MySQL chưa đồng nghĩa token đã fund.
 
 **Definition of Done**
 
@@ -491,6 +542,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [ ] Tạo policy test đúng `shipmentKey`, cấp quỹ token; Backend chỉ báo violation sau **15 phút liên tục** và bằng chứng integrity đủ theo policy.
 - [ ] Xác minh `reportViolation` do Oracle authorized gọi, receipt status, beneficiary token balance và `InsurancePaid` event; API không đánh dấu thành công khi tx pending/reverted.
 - [ ] Test wrong Oracle/contract address/chain ID, expired policy, insufficient funding và double request với NTK.
+- [ ] Chạy đầu luồng mới cùng NTK/TTDK: đăng ký device ID/tên → tạo shipment → gán → cấp key local/USB/API public key → signed ingest; NTD chỉ nhận batch/evidence đã được Backend chấp nhận. Thiếu assignment/key phải dừng trước bước anchor/payout, không tạo workaround on-chain.
 - [ ] Không sửa Backend để "chữa cháy"; nếu muốn thay payload/ABI, đề xuất PR, cập nhật `INTEGRATION.md` và thông báo Member 3.
 
 **Definition of Done**
@@ -498,6 +550,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [ ] Có 1 flow signed telemetry → MySQL → Merkle Root → on-chain anchor → verify root → đủ điều kiện vi phạm → Insurance payout demo.
 - [ ] Lỗi Blockchain không làm mất accepted telemetry; pending không hiển thị như thành công.
 - [ ] Mọi tx dùng chain đúng, receipt/state/event khớp; không double anchor hoặc payout ngoài mong đợi.
+- [ ] Policy, anchor và evidence dùng cùng UUID shipment; không thêm transaction đăng ký device hay upload ESP32 key và không đổi logic bảo hiểm do đổi form Admin.
 
 ### Phase 7 — End-to-End Blockchain Demo, Documentation & Safety Review
 
@@ -514,6 +567,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [ ] Đối chiếu UI với Backend: `DATA_VERIFIED`, `DATA_ANCHORED`, `DATA_INTEGRITY_FAILED`, `DATA_INCOMPLETE`, `BLOCKCHAIN_PENDING`, `BLOCKCHAIN_FAILED` và payout status không bị gộp.
 - [ ] Ghi giới hạn bảo mật: Blockchain không chứng minh nhiệt độ thực, không bù được sensor tampering/compromised private key/Oracle sai, không thay thế hệ thống bảo hiểm thật.
 - [ ] Chốt changelog, quyết định kỹ thuật đã duyệt, vấn đề còn pending và rollback/redeploy hướng dẫn.
+- [ ] Trong `blockchain/INTEGRATION.md`/README ghi ranh giới MySQL registry/provisioning, phân biệt `deviceKey` với P-256 key, API thực tế `/keys`/`assignments` và ví dụ `code`/UUID; chỉ cập nhật mục tích hợp bị ảnh hưởng.
 
 **Definition of Done**
 
@@ -530,6 +584,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 | Mốc/phần việc | NTD cần nhận | NTD phải bàn giao | Người dùng đầu ra |
 |---|---|---|---|
 | Phase 0 → 1 | Canonical hash proposal, batch IDs, telemetry/sequence policy | `INTEGRATION.md` bản đề xuất, ABI draft, role model | NTK, TTDK qua NTK |
+| Đăng ký demo | UUID trả về từ shipment, registry/key/assignment chỉ ở MySQL | Xác nhận ID mapping và không cần ABI/contract registry mới | NTK, TTDK |
 | Phase 1 → 2 | `MERKLE-v1` fixtures từ NTK | Root cross-language tests + Data Integrity ABI | NTK |
 | Phase 0 → 3 | `shipmentKey`, evidence/policy requirements | Insurance ABI + Oracle/payout semantics | NTK |
 | Phase 4 → 5 | Contracts/test passing | Artifacts, deployed addresses, chain ID, RPC info | NTK |
@@ -557,6 +612,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [ ] One unauthorized/reverted payout response.
 - [ ] Oracle/anchorer role grant/revoke scripts and documented confirmation count.
 - [ ] Hardhat tests và command chạy được từ môi trường sạch.
+- [ ] Ví dụ `code=SHIP-001` → UUID → `shipmentKey`, xác nhận registry/key/assignment không lên chain; request/response quản trị dẫn chiếu NTK §3.6, không chốt API riêng ở Blockchain.
 
 ---
 
@@ -589,10 +645,15 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [ ] `E18` RPC down + Backend restart/Render cold start → telemetry/outbox still persisted, chain status retry safe.
 - [ ] `E19` Tampered signature/record but unchanged `batchKey` → Backend recomputed root mismatches; chain root remains immutable.
 - [ ] `E20` Chain ID/contract address mismatch → Adapter must reject or flag error, no fabricated success.
+- [ ] `E21` Admin tạo device trước key/chuyến → chỉ có dòng MySQL, chưa có transaction/registry ESP32 on-chain.
+- [ ] `E22` Device chưa gán/gán sai/thiếu public key → Backend reject, không có accepted leaf/batch/evidence/payout từ mẫu đó.
+- [ ] `E23` `SHIP-001` là code, UUID từ response làm ID → policy và batch dùng đúng một `shipmentKey`; đổi tên device không đổi `deviceKey`.
+- [ ] `E24` Gán nhiều device vào cùng shipment → các batch riêng theo device và cùng shipment UUID; ràng buộc một active shipment/device do NTK kiểm thử, không do Solidity thực thi.
+- [ ] `E25` Quy trình mới chạy hết → anchoring/readback/insurance vẫn theo ABI/event/evidence gate cũ, không key ESP32 hoặc telemetry thô trong on-chain storage/calldata.
 
 ### 8.2. Kịch bản demo blockchain theo đúng thứ tự
 
-1. **Xem policy:** NTK tạo shipment, NTD seed policy ERC-20 demo, UI đọc qua API; ghi rõ token không có giá trị thực.
+1. **Chuẩn bị Admin/provisioning:** TTDK UI đăng ký device ID/tên → tạo mã chuyến `SHIP-001` → nhận UUID và gán device; NTK chạy script trên máy tin cậy, nạp `config.h` qua USB, đăng ký public key qua `/keys`. NTD seed policy ERC-20 demo bằng `shipmentKey` từ **UUID vừa tạo**, UI đọc qua API; ghi rõ token không có giá trị thực và các bước registry không tạo giao dịch chain.
 2. **Ký và nhận telemetry:** ESP32/simulator gửi sample, Backend verify chữ ký/sequence, ghi MySQL; chain chưa có từng sample.
 3. **Kiểm tra tính toàn vẹn đầu vào:** chữ ký sai, duplicate, gap, offline được gắn trạng thái đúng; không kích hoạt bảo hiểm giả.
 4. **Seal batch:** Backend dựng Merkle root bằng `MERKLE-v1`, hiển thị root/batch ID/record count/first-last seq.
@@ -623,6 +684,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [ ] Dùng exact contract address + chain ID từ environment; không reuse manifest môi trường khác.
 - [ ] Secrets trong local `.env` đã gitignore, Render Environment Variables/secret manager ở Backend; `.env.example` không có key.
 - [ ] Hạn chế on-chain metadata; không đưa raw telemetry, private key, PII, GPS giả/real vào transaction.
+- [ ] Không public key ESP32, PEM, `config.h` hoặc giao dịch đăng ký device trên chain. Public key chỉ ở Backend/MySQL, private key chỉ trong file local tin cậy/firmware ESP32; `deviceKey` là hash định danh.
 - [ ] `evidenceHash` và Merkle root đều versioned/documented, không dùng JSON serialize mặc định không ổn định.
 - [ ] Review role revocation và key rotation; nếu Oracle/anchorer bị lộ, có quy trình tắt/revoke ngay.
 - [ ] Đánh giá ảnh hưởng event forgery, chain reorg, RPC lỗi, gas failure, deadline bypass và policy expiry.
@@ -665,20 +727,22 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 | 11 | `blockchain/README.md` | Run/test/deploy/demo/error handling | `PLANNED` |
 | 12 | Hardhat test results + demo evidence | Receipt + root + token balance + edge cases | `PLANNED` |
 
-`PLANNED` không ngụ ý đã có source code. Khi triển khai, thay status thành `IN_PROGRESS / TESTED / DEPLOYED / BLOCKED` kèm link PR, commit hash hoặc log chứng minh.
+Các giá trị `PLANNED` trong cột **trạng thái ban đầu** được giữ như lịch sử roadmap, không phải bản kiểm kê code hiện tại: repo đã có contracts/tests/ABI/INTEGRATION. Lượt sửa tài liệu này không chạy lại test hoặc thay trạng thái; khi nghiệm thu cập nhật trạng thái bằng PR/commit/log tương ứng, không suy ra `DEPLOYED` từ sự tồn tại của file.
+
+**Deliverable bổ sung cho yêu cầu đăng ký (chưa thực hiện):** ghi chú impact/API/ID mapping trong INTEGRATION và regression E21–E25, owner **NTD**; script/key/schema/API do **NTK**, form Admin/key status/dropdown/QA do **TTDK**. Không phát sinh smart contract mới.
 
 ### 10.2. Những quyết định kỹ thuật cần xác nhận với NTK và TTDK
 
-1. **`batchKey`/`deviceKey`:** có áp dụng `keccak256(UTF8(ID))` như §4.3, cần có input vectors và namespace/version chính thức.
+1. **ID mapping:** giữ `keccak256(UTF8(ID))` trong INTEGRATION; xác nhận seed/adapter dùng UUID shipment vừa tạo, không dùng `code`. Registry mới không đổi batch/device keys.
 2. **`MERKLE-v1`:** NTK xác nhận danh sách canonical fields, timestamps, hash prefixes, odd-leaf rule và golden fixtures; NTD xác nhận `bytes32` root truyền on-chain nguyên 32 bytes.
-3. **`evidenceHash`:** evidence schema, canonicalization và domain/version; có gắn `violation_evidence_id`, anchored batch references không?
+3. **`evidenceHash`:** giữ `keccak256(UTF8(event_id))` hiện có; NTK tiếp tục lưu evidence/batch references ở Backend. Không cần protocol mới cho đăng ký device.
 4. **Role:** NTD/NTK xác nhận địa chỉ `ANCHORER` và `ORACLE` có dùng chung signer hay tách, rotate/revoke protocol.
 5. **Network:** local/testnet nào, chain ID, gas/confirmation threshold, RPC provider, explorer và budget demo; addresses thực chưa biết cho tới khi deploy.
 6. **Funding:** token demo standard, decimals, policy escrow/funding method, mapping từ giá trị bảo hiểm nghiệp vụ sang số token demo (nếu muốn hiển thị).
-7. **Policy & anchoring:** có chốt `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`? Khi data incomplete/pending/mismatch phải chặn theo ngữ nghĩa nào?
+7. **Policy & anchoring:** giữ mặc định `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`; xác nhận E2E không bỏ qua evidence gate khi thêm flow đăng ký, thiếu assignment/key vẫn bị chặn trước khi tạo evidence.
 8. **Expiry & reporting delay:** nếu temperature breach kết thúc trước expiry nhưng receipt anchor chậm, policy có cho `reportViolation` sau expiry không? Chốt chống backdating và grace period.
 9. **Integration:** repo actual structure và Hardhat version, giao diện Backend `blockchain_adapter.py`/API contract, public Render URL và DB provider do NTK đảm nhận.
-10. **Deployment status:** chưa có bằng chứng test/deploy trong hồ sơ hiện tại; không tự nhận có contract address, receipt, ABI hoặc production URL thật.
+10. **Deployment status:** có source/ABI/tài liệu trong repo và checkbox lịch sử, nhưng lượt sửa này không xác minh runtime/testnet/Render; không tự nhận address/receipt/URL thật hoặc tăng trạng thái hoàn thành.
 
 ### 10.3. Các bước thực hiện đầu tiên (để nhóm làm song song)
 
@@ -698,4 +762,4 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - **Không báo payout thành công trước khi** tx receipt success, state/event khớp và beneficiary nhận token demo thật trên local/testnet.
 - Một Phase chỉ kết thúc khi hoàn tất DoD và có bằng chứng test/deployment; mọi trường đang `TBD` phải được chốt trước khi tăng integration dependency.
 
-**Bản cập nhật này là tài liệu roadmap, chưa sửa source code hoặc repository ngoài file Markdown được yêu cầu.**
+**Bản cập nhật này chỉnh sửa đồng bộ ba roadmap; chưa sửa source code, ABI, API thực thi hoặc deploy. Giữ nguyên tiến độ/checkbox; phần đăng ký demo mới vẫn cần triển khai và kiểm thử theo owner.**
