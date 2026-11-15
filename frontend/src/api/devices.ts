@@ -7,11 +7,13 @@ import {
   DeviceMissingSequencesOut,
   ShipmentDevicesOut,
   DeviceRegisterPayload,
+  DeviceAssignmentPayload,
   AdminDeviceViewOut,
 } from '../types/api';
 
 /**
- * Admin: Register a new ESP32 device with its SPKI public key and assign to a shipment.
+ * Admin: Register a new ESP32 device with minimal fields (device_id and device_name).
+ * Cryptographic keys are provisioned outside browser via trusted Python script via USB.
  * Endpoint: POST /api/v1/devices
  * Requires header: X-Admin-Key
  */
@@ -35,6 +37,42 @@ export async function registerDevice(
   return apiClient.post<AdminDeviceViewOut>('/api/v1/devices', payload, undefined, {
     'X-Admin-Key': key,
   });
+}
+
+/**
+ * Admin: Assign or unassign a device to a shipment.
+ * Each device can only have ONE active assignment. Multiple devices can share the same shipment.
+ * To change shipment: first unassign old (active=false), then assign new (active=true).
+ * Backend enforces constraint; returns 409 DEVICE_ALREADY_ASSIGNED if active assignment exists.
+ * Endpoint: POST /api/v1/devices/{device_id}/assignments
+ * Requires header: X-Admin-Key
+ */
+export async function assignDevice(
+  deviceId: string,
+  payload: DeviceAssignmentPayload,
+  adminKey?: string
+): Promise<AdminDeviceViewOut> {
+  const key = adminKey || apiClient.getAdminKey();
+  if (!key) {
+    throw new ApiError(
+      'Chưa cấu hình X-Admin-Key. Vui lòng cung cấp Admin API Key để thực hiện.',
+      401,
+      'UNAUTHORIZED'
+    );
+  }
+
+  if (apiClient.isMockEnabled()) {
+    return mockAdapter.assignDevice(deviceId, payload);
+  }
+
+  return apiClient.post<AdminDeviceViewOut>(
+    `/api/v1/devices/${deviceId}/assignments`,
+    payload,
+    undefined,
+    {
+      'X-Admin-Key': key,
+    }
+  );
 }
 
 /**

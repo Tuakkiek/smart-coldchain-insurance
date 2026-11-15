@@ -52,9 +52,12 @@ export interface ShipmentDevicesOut {
 
 export interface DeviceRegisterPayload {
   device_id: string;
-  key_id: string;
-  public_key_pem: string;
+  device_name: string;
+}
+
+export interface DeviceAssignmentPayload {
   shipment_id: string;
+  active: boolean;
 }
 
 export interface AdminDeviceKeyView {
@@ -69,7 +72,11 @@ export interface AdminDeviceAssignmentView {
 
 export interface AdminDeviceViewOut {
   device_id: string;
+  device_name?: string;
   status: 'active' | 'revoked';
+  has_public_key: boolean;
+  current_shipment_id: string | null;
+  current_shipment_code?: string | null;
   last_sequence_number: number;
   last_seen_at: string | null;
   keys: AdminDeviceKeyView[];
@@ -79,7 +86,9 @@ export interface AdminDeviceViewOut {
 export interface DeviceItemOut {
   id: string;
   device_id: string;
+  device_name?: string;
   key_id: string;
+  has_public_key?: boolean;
   public_key_pem?: string;
   firmware_version: string;
   assigned_shipment_id: string | null;
