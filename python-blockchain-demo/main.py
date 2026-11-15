@@ -1,60 +1,70 @@
-import os
 
+import os
 from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from web3 import Web3
 
-# 1. Đọc cấu hình từ file .env
 load_dotenv()
 
-RPC_URL = os.getenv("SEPOLIA_RPC_URL")
-PRIVATE_KEY = os.getenv("PRIVATE_KEY")
-CONTRACT_ADDRESS = os.getenv("CONTRACT_ADDRESS")
+w3 = Web3(Web3.HTTPProvider(os.getenv("SEPOLIA_RPC_URL")))
 
-# 2. Kiểm tra cấu hình
-if not all([RPC_URL, PRIVATE_KEY, CONTRACT_ADDRESS]):
-    raise ValueError("Thiếu thông tin trong file .env")
+private_key = os.getenv("PRIVATE_KEY")
+account = w3.eth.account.from_key(private_key)
 
-# 3. Kết nối Ethereum Sepolia
-w3 = Web3(Web3.HTTPProvider(RPC_URL))
+abi = [
+    {
+        "type": "function",
+        "name": "setMessage",
+        "inputs": [{"name": "newMessage", "type": "string"}],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "getMessage",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "string"}],
+        "stateMutability": "view"
+    }
+]
 
-if not w3.is_connected():
-    raise ConnectionError("Không thể kết nối Ethereum Sepolia")
-
-print("Kết nối Ethereum thành công!")
-
-# 4. Kiểm tra đúng mạng Sepolia
-chain_id = w3.eth.chain_id
-
-if chain_id != 11155111:
-    raise ValueError(f"Sai mạng Blockchain. Chain ID: {chain_id}")
-
-print("Đang sử dụng Ethereum Sepolia!")
-
-# 5. Khởi tạo tài khoản từ Private Key
-account = w3.eth.account.from_key(PRIVATE_KEY)
-
-print("Địa chỉ ví:", account.address)
-
-# 6. Kiểm tra số dư ví
-balance = w3.eth.get_balance(account.address)
-
-print(
-    "Số dư Sepolia ETH:",
-    w3.from_wei(balance, "ether")
+contract = w3.eth.contract(
+    address=Web3.to_checksum_address(os.getenv("CONTRACT_ADDRESS")),
+    abi=abi
 )
 
-# 7. Kiểm tra địa chỉ Smart Contract
-if not Web3.is_address(CONTRACT_ADDRESS):
-    raise ValueError("Contract Address không hợp lệ")
+app = FastAPI()
 
-contract_address = Web3.to_checksum_address(CONTRACT_ADDRESS)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"]
+)
 
-contract_code = w3.eth.get_code(contract_address)
+class Message(BaseModel):
+    message: str
 
-if len(contract_code) == 0:
-    raise ValueError("Không tìm thấy Smart Contract tại địa chỉ này")
+@app.get("/get-message")
+def get_message():
+    message = contract.functions.getMessage().call()
+    return {"message": message}
 
-print("Đã tìm thấy Smart Contract!")
-print("Contract Address:", contract_address)
+@app.post("/set-message")
+def set_message(data: Message):
+    transaction = contract.functions.setMessage(data.message).build_transaction({
+        "from": account.address,
+        "nonce": w3.eth.get_transaction_count(account.address),
+        "chainId": w3.eth.chain_id
+    })
 
-print("\nHOÀN THÀNH KIỂM TRA!")
+    signed = w3.eth.account.sign_transaction(transaction, private_key)
+    tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+
+    return {
+        "status": receipt.status,
+        "tx_hash": tx_hash.hex()
+    }
