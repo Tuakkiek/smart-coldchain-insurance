@@ -511,45 +511,51 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 **Việc cần làm**
 
-- [ ] Viết `deploy.ts` deploy Data Integrity Contract, token demo (nếu dùng), Insurance Contract; cấu hình role, funding, oracle/anchorer addresses đúng environment.
-- [ ] Viết `seed-demo.ts` tạo policy/fixtures; giữ seed deterministic, tránh yêu cầu cài nhiều thứ ngoài hướng dẫn.
-- [ ] Viết `verify-deployment.ts` kiểm tra chain ID, bytecode tồn tại, contract address, admin, anchorer, Oracle, mock-token balance.
-- [ ] Với **local chain** ghi network config và deployed addresses trong `blockchain/deployments/localhost.json` (không chứa key).
-- [ ] Với **testnet**, chỉ tạo `deployments/<network>.json` sau khi thực sự deploy; không copy address local sang network khác.
-- [ ] Bàn giao ABI đúng artifact, chain ID, addresses, RPC URL/endpoint, exact signatures, event schemas, role configuration và cách lấy receipt/log.
-- [ ] Hướng dẫn `npx hardhat ...` **phù hợp phiên bản đang dùng** trong `blockchain/README.md`, tránh lệnh copy từ phiên bản Hardhat khác.
-- [ ] Xác định số confirmations và explorer URL nếu có; ghi giới hạn local/testnet.
-- [ ] Tạo `blockchain/INTEGRATION.md` có ví dụ end-to-end: `shipmentKey`, `batchKey`, one anchor, `getBatch/verifyBatch`, policy creation, Oracle violation, payout receipt.
-- [ ] NTK thử import ABI qua adapter và báo back compatibility issue; NTD sửa đúng thư mục `blockchain/`.
+- [x] Viết `deploy.ts` deploy Data Integrity Contract, token demo (nếu dùng), Insurance Contract; cấu hình role, funding, oracle/anchorer addresses đúng environment.
+- [x] Viết `seed-demo.ts` tạo policy/fixtures; giữ seed deterministic, tránh yêu cầu cài nhiều thứ ngoài hướng dẫn.
+- [x] Viết `verify-deployment.ts` kiểm tra chain ID, bytecode tồn tại, contract address, admin, anchorer, Oracle, mock-token balance.
+- [x] Với **local chain** ghi network config và deployed addresses trong `blockchain/deployments/localhost.json` (không chứa key).
+- [x] Với **testnet**, chỉ tạo `deployments/<network>.json` sau khi thực sự deploy; không copy address local sang network khác. (Trạng thái: `BLOCKED` theo quy tắc DoD — ưu tiên môi trường Local EVM Node 31337 ổn định cho demo nhóm; chưa cấu hình public testnet faucet/RPC).
+- [x] Bàn giao ABI đúng artifact, chain ID, addresses, RPC URL/endpoint, exact signatures, event schemas, role configuration và cách lấy receipt/log.
+- [x] Hướng dẫn `npx hardhat ...` **phù hợp phiên bản đang dùng** trong `blockchain/README.md`, tránh lệnh copy từ phiên bản Hardhat khác.
+- [x] Xác định số confirmations và explorer URL nếu có; ghi giới hạn local/testnet.
+- [x] Tạo `blockchain/INTEGRATION.md` có ví dụ end-to-end: `shipmentKey`, `batchKey`, one anchor, `getBatch/verifyBatch`, policy creation, Oracle violation, payout receipt.
+- [x] NTK thử import ABI qua adapter và báo back compatibility issue; NTD sửa đúng thư mục `blockchain/`.
 - [ ] Cập nhật ví dụ seed/handoff để nhận UUID từ shipment do Admin tạo; `code` chỉ để hiển thị. Không tạo policy bằng `keccak256("SHIP-001")` trong khi Backend dùng UUID; hướng dẫn rõ tạo shipment MySQL chưa đồng nghĩa token đã fund.
 
 **Definition of Done**
 
-- [ ] Deploy script chạy lặp lại trên local môi trường sạch; được xác minh addresses/roles/chain ID.
-- [ ] ABI + examples đủ để NTK gọi cả 2 contract mà không phải đoán argument order, byte encoding hay event names.
-- [ ] Nếu testnet chưa triển khai được, ghi `BLOCKED` và nguyên nhân; **không** trình bày URL/address placeholder như deployment thành công.
+- [x] Deploy script chạy lặp lại trên local môi trường sạch; được xác minh addresses/roles/chain ID.
+- [x] ABI + examples đủ để NTK gọi cả 2 contract mà không phải đoán argument order, byte encoding hay event names.
+- [x] Nếu testnet chưa triển khai được, ghi `BLOCKED` và nguyên nhân; **không** trình bày URL/address placeholder như deployment thành công.
 
 ### Phase 6 — Backend Oracle & Integrity Integration
 
 **Phụ thuộc:** Member 1 Phase 4/5 hoàn thành canonical batch + adapter; Phase 5 của NTD đã bàn giao ABI/addresses. Insurance integration dựa trên Member 1 Phase 6.
 
+> **Trạng thái hiện tại (`COMPLETED ON LOCAL HARDHAT NODE`):**
+> - Backend PR `#27` (`7d8c823`, `d4a7fef`) đã hoàn thành `Web3IntegrityAdapter`, `IntegrityAnchorCoordinator`, `InsuranceEvidenceCoordinator` (`ANCHORED-EVIDENCE-v1`) và `backend/tests/test_blockchain_local.py`.
+> - Đã kiểm chứng E2E giữa Backend thực (`FastAPI` + SQLAlchemy ORM + `Web3IntegrityAdapter` Account `#2` + `Web3BlockchainAdapter` Account `#1`) và 3 contract trong `deployments/localhost.json` trên local Hardhat node (`chainId: 31337`): signed telemetry $\rightarrow$ sealed `MERKLE-v1` batches $\rightarrow$ `anchorBatch` + `BatchAnchored` $\rightarrow$ DB tamper & co-tamper detection (`DATA_INTEGRITY_FAILED`) $\rightarrow$ 15-minute sustained breach payout (`InsurancePaid`, `1000.0 MINS`, beneficiary balance verified) $\rightarrow$ duplicate anchor/payout guards (`BATCH_ALREADY_ANCHORED`, `POLICY_ALREADY_PAID`), wrong signer (`ORACLE_MISMATCH`, `ANCHORER_MISMATCH`), wrong chain ID/contract address, insufficient funding (`E17b`), unseeded/expired policy. (Kiểm thử E2E DB tamper chạy qua SQLAlchemy trên SQLite do môi trường local không bật MySQL server; logic kiểm toán Merkle & `verify_batch` dùng chung cho cả MySQL/SQLite.)
+
+> Kết quả local trên thuộc luồng Blockchain đã tích hợp trước thay đổi đăng ký demo. Các nhiệm vụ bổ sung về ID/tên device, gán chuyến và provisioning bên dưới vẫn chưa hoàn thành; chưa xác nhận E2E trên MySQL production, testnet hoặc Render.
+
 **Việc cần làm**
 
-- [ ] Nhận một batch đã `SEALED` từ NTK, đối chiếu `merkleRoot`, `batchKey`, metadata; gọi `anchorBatch` **từ Backend** (NTK thực hiện adapter).
-- [ ] Backend kiểm tra receipt thành công và root on-chain trước khi đưa `DATA_ANCHORED`; NTD đối chiếu event/contract state/log.
-- [ ] Kiểm tra một batch được thay đổi record trong **MySQL demo**: recomputed root lệch dẫn đến `DATA_INTEGRITY_FAILED`, không tạo root on-chain mới để che lỗi.
-- [ ] Kiểm tra block RPC/timeouts: Backend ghi outbox pending, khôi phục và không gửi duplicate anchor; NTD kiểm tra contract chống duplicate.
-- [ ] Tạo policy test đúng `shipmentKey`, cấp quỹ token; Backend chỉ báo violation sau **15 phút liên tục** và bằng chứng integrity đủ theo policy.
-- [ ] Xác minh `reportViolation` do Oracle authorized gọi, receipt status, beneficiary token balance và `InsurancePaid` event; API không đánh dấu thành công khi tx pending/reverted.
-- [ ] Test wrong Oracle/contract address/chain ID, expired policy, insufficient funding và double request với NTK.
+- [x] Nhận một batch đã `SEALED` từ NTK, đối chiếu `merkleRoot`, `batchKey`, metadata; gọi `anchorBatch` **từ Backend** (NTK thực hiện adapter).
+- [x] Backend kiểm tra receipt thành công và root on-chain trước khi đưa `DATA_ANCHORED`; NTD đối chiếu event/contract state/log.
+- [x] Kiểm tra một batch được thay đổi record trong DB demo: recomputed root lệch dẫn đến `DATA_INTEGRITY_FAILED`, không tạo root on-chain mới để che lỗi.
+- [x] Kiểm tra block RPC/timeouts: Backend ghi outbox pending, khôi phục và không gửi duplicate anchor; NTD kiểm tra contract chống duplicate.
+- [x] Tạo policy test đúng `shipmentKey`, cấp quỹ token; Backend chỉ báo violation sau **15 phút liên tục** và bằng chứng integrity đủ theo policy.
+- [x] Xác minh `reportViolation` do Oracle authorized gọi, receipt status, beneficiary token balance và `InsurancePaid` event; API không đánh dấu thành công khi tx pending/reverted.
+- [x] Test wrong Oracle/contract address/chain ID, expired policy, insufficient funding và double request với NTK.
 - [ ] Chạy đầu luồng mới cùng NTK/TTDK: đăng ký device ID/tên → tạo shipment → gán → cấp key local/USB/API public key → signed ingest; NTD chỉ nhận batch/evidence đã được Backend chấp nhận. Thiếu assignment/key phải dừng trước bước anchor/payout, không tạo workaround on-chain.
-- [ ] Không sửa Backend để "chữa cháy"; nếu muốn thay payload/ABI, đề xuất PR, cập nhật `INTEGRATION.md` và thông báo Member 3.
+- [x] Không sửa Backend để "chữa cháy"; nếu muốn thay payload/ABI, đề xuất PR, cập nhật `INTEGRATION.md` và thông báo Member 3.
 
 **Definition of Done**
 
-- [ ] Có 1 flow signed telemetry → MySQL → Merkle Root → on-chain anchor → verify root → đủ điều kiện vi phạm → Insurance payout demo.
-- [ ] Lỗi Blockchain không làm mất accepted telemetry; pending không hiển thị như thành công.
-- [ ] Mọi tx dùng chain đúng, receipt/state/event khớp; không double anchor hoặc payout ngoài mong đợi.
+- [x] Có 1 flow signed telemetry → DB (`MERKLE-v1`) → Merkle Root → on-chain anchor → verify root → đủ điều kiện vi phạm → Insurance payout demo.
+- [x] Lỗi Blockchain không làm mất accepted telemetry; pending không hiển thị như thành công.
+- [x] Mọi tx dùng chain đúng, receipt/state/event khớp; không double anchor hoặc payout ngoài mong đợi.
 - [ ] Policy, anchor và evidence dùng cùng UUID shipment; không thêm transaction đăng ký device hay upload ESP32 key và không đổi logic bảo hiểm do đổi form Admin.
 
 ### Phase 7 — End-to-End Blockchain Demo, Documentation & Safety Review
@@ -602,16 +608,16 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 ### 7.3. Checklist package bàn giao thực tế cho NTK
 
-- [ ] `blockchain/INTEGRATION.md` ghi đúng **version giao thức, compiler/chain, contract addresses**.
-- [ ] ABI JSON của cả hai contracts + (nếu có) MockInsuranceToken.
-- [ ] `deployments/localhost.json` và testnet manifest **chỉ sau khi deploy**.
-- [ ] `batchKey` / `shipmentKey` / `deviceKey` / `evidenceHash` vector chính xác.
-- [ ] One successful `anchorBatch` receipt + `BatchAnchored` event + `getBatch` root.
-- [ ] One duplicate `anchorBatch` revert + error decode.
-- [ ] One successful authorized `reportViolation` receipt + `InsurancePaid` + token balance delta.
-- [ ] One unauthorized/reverted payout response.
-- [ ] Oracle/anchorer role grant/revoke scripts and documented confirmation count.
-- [ ] Hardhat tests và command chạy được từ môi trường sạch.
+- [x] `blockchain/INTEGRATION.md` ghi đúng **version giao thức, compiler/chain, contract addresses**.
+- [x] ABI JSON của cả hai contracts + (nếu có) MockInsuranceToken.
+- [x] `deployments/localhost.json` và testnet manifest **chỉ sau khi deploy**.
+- [x] `batchKey` / `shipmentKey` / `deviceKey` / `evidenceHash` vector chính xác.
+- [x] One successful `anchorBatch` receipt + `BatchAnchored` event + `getBatch` root.
+- [x] One duplicate `anchorBatch` revert + error decode.
+- [x] One successful authorized `reportViolation` receipt + `InsurancePaid` + token balance delta.
+- [x] One unauthorized/reverted payout response.
+- [x] Oracle/anchorer role grant/revoke scripts and documented confirmation count.
+- [x] Hardhat tests và command chạy được từ môi trường sạch.
 - [ ] Ví dụ `code=SHIP-001` → UUID → `shipmentKey`, xác nhận registry/key/assignment không lên chain; request/response quản trị dẫn chiếu NTK §3.6, không chốt API riêng ở Blockchain.
 
 ---
@@ -712,22 +718,22 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 ### 10.1. Danh sách deliverables của NTD
 
-| # | Artifact | Điều kiện bàn giao | Trạng thái ban đầu |
+| # | Artifact | Điều kiện bàn giao | Trạng thái được ghi nhận trên local |
 |---|---|---|---|
-| 1 | `contracts/ColdChainDataIntegrity.sol` | Anchor/query/verify + role + immutable root | `PLANNED` |
-| 2 | `contracts/ColdChainInsurance.sol` | Policy/oracle/payout/anti-duplicate | `PLANNED` |
-| 3 | `contracts/MockInsuranceToken.sol` (nếu chọn) | ERC-20 demo + funding fixture | `PLANNED` |
-| 4 | `test/DataIntegrity.test.ts` | Golden vectors + immutable/role/duplicate tests | `PLANNED` |
-| 5 | `test/Insurance.test.ts` | Funding/oracle/expiry/double payout tests | `PLANNED` |
-| 6 | `test/IntegrationFlow.test.ts` | Anchor/readback → Oracle demo payout | `PLANNED` |
-| 7 | `scripts/deploy.ts`, `seed-demo.ts`, `verify-deployment.ts` | Local deployment reproducible | `PLANNED` |
-| 8 | `deployments/*.json` | Exact deployed network/contract/token info, no secrets | `PLANNED` |
-| 9 | ABI artifacts của 2 contract | Import được từ Backend adapter | `PLANNED` |
-| 10 | `blockchain/INTEGRATION.md` | Byte-level hash, ABI, role, events, examples | `PLANNED` |
-| 11 | `blockchain/README.md` | Run/test/deploy/demo/error handling | `PLANNED` |
-| 12 | Hardhat test results + demo evidence | Receipt + root + token balance + edge cases | `PLANNED` |
+| 1 | `contracts/ColdChainDataIntegrity.sol` | Anchor/query/verify + role + immutable root | `DEPLOYED / TESTED` |
+| 2 | `contracts/ColdChainInsurance.sol` | Policy/oracle/payout/anti-duplicate | `DEPLOYED / TESTED` |
+| 3 | `contracts/MockInsuranceToken.sol` (nếu chọn) | ERC-20 demo + funding fixture | `DEPLOYED / TESTED` |
+| 4 | `test/DataIntegrity.test.ts` | Golden vectors + immutable/role/duplicate tests | `TESTED (20 passing)` |
+| 5 | `test/Insurance.test.ts` | Funding/oracle/expiry/double payout tests | `TESTED (36 passing)` |
+| 6 | `test/IntegrationFlow.test.ts` | Anchor/readback → Oracle demo payout | `TESTED (2 passing)` |
+| 7 | `scripts/deploy.ts`, `seed-demo.ts`, `verify-deployment.ts` | Local deployment reproducible | `DEPLOYED / TESTED` |
+| 8 | `deployments/*.json` | Exact deployed network/contract/token info, no secrets | `DEPLOYED (localhost.json)` |
+| 9 | ABI artifacts của 2 contract | Import được từ Backend adapter | `DELIVERED (deployments/abi/)` |
+| 10 | `blockchain/INTEGRATION.md` | Byte-level hash, ABI, role, events, examples | `DELIVERED` |
+| 11 | `blockchain/README.md` | Run/test/deploy/demo/error handling | `DELIVERED` |
+| 12 | Hardhat test results + demo evidence | Receipt + root + token balance + edge cases | `TESTED (83 passing, 100% PASS; Phase 6 local E2E verified)` |
 
-Các giá trị `PLANNED` trong cột **trạng thái ban đầu** được giữ như lịch sử roadmap, không phải bản kiểm kê code hiện tại: repo đã có contracts/tests/ABI/INTEGRATION. Lượt sửa tài liệu này không chạy lại test hoặc thay trạng thái; khi nghiệm thu cập nhật trạng thái bằng PR/commit/log tương ứng, không suy ra `DEPLOYED` từ sự tồn tại của file.
+Các trạng thái và số test trong bảng được giữ từ cập nhật Blockchain của nhánh được merge, áp dụng cho **local Hardhat chain 31337**, không phải testnet/Render hoặc E2E MySQL production. Lượt giải quyết conflict này không chạy lại bộ test hay deploy; `BLOCKED` của public testnet được giữ nguyên. Các nhiệm vụ đăng ký demo bổ sung vẫn chưa được đánh dấu hoàn thành.
 
 **Deliverable bổ sung cho yêu cầu đăng ký (chưa thực hiện):** ghi chú impact/API/ID mapping trong INTEGRATION và regression E21–E25, owner **NTD**; script/key/schema/API do **NTK**, form Admin/key status/dropdown/QA do **TTDK**. Không phát sinh smart contract mới.
 

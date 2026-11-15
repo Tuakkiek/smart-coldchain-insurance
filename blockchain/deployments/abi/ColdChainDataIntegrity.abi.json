@@ -1,0 +1,329 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_anchorer",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "batchKey",
+        "type": "bytes32"
+      }
+    ],
+    "name": "ColdChain__BatchAlreadyExists",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "batchKey",
+        "type": "bytes32"
+      }
+    ],
+    "name": "ColdChain__BatchNotFound",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ColdChain__CallerNotAnchorer",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ColdChain__CallerNotOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ColdChain__InvalidBatchKey",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ColdChain__InvalidMerkleRoot",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ColdChain__InvalidRecordCount",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint64",
+        "name": "firstSequence",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint64",
+        "name": "lastSequence",
+        "type": "uint64"
+      }
+    ],
+    "name": "ColdChain__InvalidSequenceRange",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ColdChain__ZeroAddress",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousAnchorer",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newAnchorer",
+        "type": "address"
+      }
+    ],
+    "name": "AnchorerUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "batchKey",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "shipmentKey",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "deviceKey",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "merkleRoot",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint32",
+        "name": "recordCount",
+        "type": "uint32"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "anchoredBy",
+        "type": "address"
+      }
+    ],
+    "name": "BatchAnchored",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "_batchKey",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_shipmentKey",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_deviceKey",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_merkleRoot",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint64",
+        "name": "_firstSequence",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint64",
+        "name": "_lastSequence",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint32",
+        "name": "_recordCount",
+        "type": "uint32"
+      }
+    ],
+    "name": "anchorBatch",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "anchorer",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "_batchKey",
+        "type": "bytes32"
+      }
+    ],
+    "name": "batchExists",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "exists",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "_batchKey",
+        "type": "bytes32"
+      }
+    ],
+    "name": "getBatch",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "bytes32",
+            "name": "shipmentKey",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "deviceKey",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "merkleRoot",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "uint64",
+            "name": "firstSequence",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint64",
+            "name": "lastSequence",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint32",
+            "name": "recordCount",
+            "type": "uint32"
+          },
+          {
+            "internalType": "uint64",
+            "name": "anchoredAt",
+            "type": "uint64"
+          },
+          {
+            "internalType": "address",
+            "name": "anchoredBy",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct ColdChainDataIntegrity.Batch",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_newAnchorer",
+        "type": "address"
+      }
+    ],
+    "name": "setAnchorer",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "_batchKey",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_candidateRoot",
+        "type": "bytes32"
+      }
+    ],
+    "name": "verifyBatch",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "matchResult",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]
