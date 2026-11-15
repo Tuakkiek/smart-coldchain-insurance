@@ -38,7 +38,19 @@ interface FormState {
 
 const PRESETS = [
   {
+    name: 'Quy trình Chuẩn: SHIP-001 (Vaccine 2°C - 8°C)',
+    code: 'SHIP-001',
+    cargo_type: 'Vaccine Tiêu Chuẩn Cold-Chain',
+    tempMin: '2.0',
+    tempMax: '8.0',
+    duration: '15',
+    amount: '50000000',
+    origin: { name: 'Kho Trung Ương 1, Hà Nội', lat: '21.0285', lng: '105.8542' },
+    dest: { name: 'Trung Tâm Tiêm Chủng CDC Đà Nẵng', lat: '16.0544', lng: '108.2022' },
+  },
+  {
     name: 'Vaccine Tiêu Chuẩn (2°C - 8°C)',
+    code: 'SHIP-002',
     cargo_type: 'Vaccine Chống Lao & Viêm Gan B',
     tempMin: '2.0',
     tempMax: '8.0',
@@ -81,14 +93,14 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
   };
 
   const [form, setForm] = useState<FormState>({
-    code: generateRandomCode(),
-    cargo_type: 'Vaccine MRNA Cold-Chain',
-    originName: 'Kho Dược Trung Tâm A - TP.HCM',
-    originLat: '10.7769',
-    originLng: '106.7009',
-    destName: 'Bệnh Viện Nhi Đồng 1 - TP.HCM',
-    destLat: '10.7674',
-    destLng: '106.6669',
+    code: 'SHIP-001',
+    cargo_type: 'Vaccine Tiêu Chuẩn Cold-Chain',
+    originName: 'Kho Trung Ương 1, Hà Nội',
+    originLat: '21.0285',
+    originLng: '105.8542',
+    destName: 'Trung Tâm Tiêm Chủng CDC Đà Nẵng',
+    destLat: '16.0544',
+    destLng: '108.2022',
     tempMin: '2.0',
     tempMax: '8.0',
     violationDuration: '15',
@@ -104,7 +116,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
   const handleApplyPreset = (preset: (typeof PRESETS)[0]) => {
     setForm((prev) => ({
       ...prev,
-      code: generateRandomCode(),
+      code: ('code' in preset && preset.code) ? (preset as { code?: string }).code || generateRandomCode() : generateRandomCode(),
       cargo_type: preset.cargo_type,
       tempMin: preset.tempMin,
       tempMax: preset.tempMax,
@@ -464,6 +476,9 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
                   >
                     <RefreshCw size={14} />
                   </button>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+                  Backend tạo <strong>ID UUID v4 chữ thường</strong>. Giao diện hiển thị mã <code>SHIP-001</code> để dễ đọc, nhưng hệ thống và ESP32 ký dùng UUID cho route, phân công và telemetry.
                 </div>
                 {errors.code && (
                   <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger)' }}>

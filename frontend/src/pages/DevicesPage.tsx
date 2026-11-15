@@ -24,6 +24,7 @@ import {
 } from '../types/api';
 import { ApiError } from '../api/client';
 import { RegisterDeviceModal } from '../components/devices/RegisterDeviceModal';
+import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { AdminDeviceDetailModal } from '../components/devices/AdminDeviceDetailModal';
 import {
   Cpu,
@@ -43,6 +44,8 @@ import {
   ExternalLink,
   Plus,
   CheckCircle2,
+  Link2,
+  Unlink,
 } from 'lucide-react';
 
 export const DevicesPage: React.FC = () => {
@@ -61,6 +64,8 @@ export const DevicesPage: React.FC = () => {
 
   // Admin modals
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [assignModalDeviceId, setAssignModalDeviceId] = useState<string | null>(null);
   const [isAdminDetailModalOpen, setIsAdminDetailModalOpen] = useState(false);
   const [adminModalDeviceId, setAdminModalDeviceId] = useState<string | null>(null);
   const [adminSuccessMsg, setAdminSuccessMsg] = useState<string | null>(null);
@@ -260,6 +265,17 @@ export const DevicesPage: React.FC = () => {
               Làm mới
             </Button>
             <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setAssignModalDeviceId(selectedDeviceId || null);
+                setIsAssignModalOpen(true);
+              }}
+              icon={<Link2 size={14} />}
+            >
+              Liên kết chuyến hàng
+            </Button>
+            <Button
               variant="primary"
               size="sm"
               onClick={() => setIsRegisterModalOpen(true)}
@@ -318,6 +334,49 @@ export const DevicesPage: React.FC = () => {
 
       {/* Mandatory principle notice from Roadmap §3.3 */}
       <IntegrityPrincipleNotice />
+
+      {/* Banner Quy trình Admin tối giản dùng chung */}
+      <div
+        style={{
+          marginBottom: 'var(--space-5)',
+          padding: 'var(--space-4) var(--space-5)',
+          backgroundColor: 'var(--color-surface)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--color-border)',
+          boxShadow: 'var(--shadow-sm)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: 'var(--space-2)',
+          }}
+        >
+          <ShieldCheck size={18} style={{ color: 'var(--color-accent)' }} />
+          <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+            Quy trình Admin tối giản dùng chung:
+          </span>
+        </div>
+        <div
+          style={{
+            fontSize: 'var(--text-xs)',
+            color: 'var(--color-text-secondary)',
+            lineHeight: 1.7,
+          }}
+        >
+          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>1. Admin đăng ký thiết bị</span> (chỉ cần device_id & device_name) →{' '}
+          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>2. Admin đăng ký chuyến hàng</span> (nhập mã SHIP-001 vào code, Backend sinh ID UUID v4) →{' '}
+          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>3. Liên kết thiết bị với chuyến hàng</span> (1 assignment active/device, đổi chuyến bằng bỏ gán cũ rồi gán mới) →{' '}
+          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>4. Cấp khóa cho ESP32 ngoài browser</span> (Script Python NTK tạo cặp P-256 trên máy tin cậy → nạp USB → nạp SPKI public key qua API Admin) →{' '}
+          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>5. ESP32 ký ECDSA P-256 & gửi telemetry</span> →{' '}
+          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>6. Backend xác minh Public Key & sequence</span> →{' '}
+          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>7. Lưu MySQL</span> →{' '}
+          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>8. Bằng chứng Merkle & Neo Blockchain</span> →{' '}
+          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>9. Oracle xử lý bảo hiểm tự động</span>
+        </div>
+      </div>
 
       {/* KPI Cards Grid */}
       <div
@@ -519,20 +578,24 @@ export const DevicesPage: React.FC = () => {
                       fontSize: 'var(--text-xs)',
                     }}
                   >
-                    <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Mã Thiết bị (Device ID)</th>
-                    <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Firmware</th>
-                    <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Public Key ID</th>
+                    <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Thiết Bị (ID / Tên)</th>
+                    <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Trạng thái Public Key</th>
+                    <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Chuyến hiện gán</th>
                     <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Chữ ký số</th>
                     <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Trạng thái ESP32</th>
                     <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Sequence</th>
                     <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Độ đầy đủ</th>
-                    <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Lô hàng gán</th>
-                    <th style={{ padding: 'var(--space-3) var(--space-4)' }}></th>
+                    <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredDevices.map((dev) => {
                     const isSelected = selectedDeviceId === dev.device_id;
+                    const hasKey =
+                      dev.has_public_key ||
+                      Boolean(dev.public_key_pem) ||
+                      Boolean(dev.key_id && dev.key_id.length > 0);
+
                     return (
                       <tr
                         key={dev.id}
@@ -546,7 +609,7 @@ export const DevicesPage: React.FC = () => {
                           transition: 'background-color 0.15s ease',
                         }}
                       >
-                        {/* Device ID */}
+                        {/* Device ID and Device Name */}
                         <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                           <div
                             style={{
@@ -558,59 +621,80 @@ export const DevicesPage: React.FC = () => {
                             }}
                           >
                             <Cpu size={14} style={{ color: 'var(--color-accent)' }} />
-                            {dev.device_id}
+                            <span>{dev.device_id}</span>
                           </div>
-                        </td>
-
-                        {/* Firmware Version */}
-                        <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                          <Badge variant="neutral" style={{ fontFamily: 'monospace' }}>
-                            {dev.firmware_version}
-                          </Badge>
-                        </td>
-
-                        {/* Public Key ID */}
-                        <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                           <div
                             style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
+                              fontSize: '11px',
+                              color: 'var(--color-text-secondary)',
+                              marginLeft: '20px',
+                              marginTop: '1px',
                             }}
                           >
+                            {dev.device_name || 'Cold Chain Sensor'}
+                          </div>
+                        </td>
+
+                        {/* Public Key Status */}
+                        <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                          {hasKey ? (
+                            <div title="has_public_key=true: Đã cấp public key trên MySQL. Lưu ý: Không đồng nghĩa đã flash thành công vào ESP32 hoặc đã có dữ liệu hợp lệ.">
+                              <Badge
+                                variant="success"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                <Check size={11} /> Đã có Public Key
+                              </Badge>
+                            </div>
+                          ) : (
+                            <div title="Chưa cấp Public Key SPKI PEM. Cần nạp USB bằng script Python của NTK trên máy tin cậy.">
+                              <Badge
+                                variant="warning"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                <AlertTriangle size={11} /> Chưa cấp Public Key
+                              </Badge>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Assigned Shipment */}
+                        <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                          {dev.assigned_shipment_code ? (
+                            <Link
+                              to={`/shipments/${dev.assigned_shipment_id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                fontSize: 'var(--text-xs)',
+                                fontWeight: 500,
+                              }}
+                            >
+                              <Badge variant="info">{dev.assigned_shipment_code}</Badge>
+                            </Link>
+                          ) : (
                             <span
                               style={{
-                                fontFamily: 'monospace',
-                                fontSize: '11px',
-                                color: 'var(--color-text-secondary)',
+                                color: 'var(--color-text-tertiary)',
+                                fontSize: 'var(--text-xs)',
+                                fontStyle: 'italic',
                               }}
-                              title={dev.key_id}
                             >
-                              {dev.key_id.length > 18
-                                ? `${dev.key_id.slice(0, 16)}...`
-                                : dev.key_id}
+                              Chưa gán
                             </span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyKeyId(dev.key_id);
-                              }}
-                              style={{
-                                color:
-                                  copiedKeyId === dev.key_id
-                                    ? 'var(--color-success)'
-                                    : 'var(--color-text-tertiary)',
-                                padding: '2px',
-                              }}
-                              title="Sao chép Key ID"
-                            >
-                              {copiedKeyId === dev.key_id ? (
-                                <Check size={12} />
-                              ) : (
-                                <Copy size={12} />
-                              )}
-                            </button>
-                          </div>
+                          )}
                         </td>
 
                         {/* Signature Status */}
@@ -618,7 +702,7 @@ export const DevicesPage: React.FC = () => {
                           <SignatureStatusBadge status={dev.signature_status} />
                         </td>
 
-                        {/* Device Online Status (Differentiated with Backend Cold Start) */}
+                        {/* Device Online Status */}
                         <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                           <DeviceOnlineBadge
                             status={dev.health.online_status}
@@ -648,43 +732,44 @@ export const DevicesPage: React.FC = () => {
                           />
                         </td>
 
-                        {/* Assigned Shipment */}
+                        {/* Action buttons */}
                         <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                          {dev.assigned_shipment_code ? (
-                            <Link
-                              to={`/shipments/${dev.assigned_shipment_id}`}
-                              onClick={(e) => e.stopPropagation()}
+                          <div
+                            className="flex-row items-center gap-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              onClick={() => {
+                                setAssignModalDeviceId(dev.device_id);
+                                setIsAssignModalOpen(true);
+                              }}
                               style={{
+                                background: 'var(--color-surface)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-sm)',
+                                padding: '3px 8px',
+                                cursor: 'pointer',
+                                fontSize: '11px',
+                                color: 'var(--color-accent)',
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '3px',
-                                fontSize: 'var(--text-xs)',
-                                fontWeight: 500,
+                                gap: '4px',
+                                whiteSpace: 'nowrap',
                               }}
+                              title="Liên kết hoặc đổi chuyến hàng cho thiết bị này"
                             >
-                              <Badge variant="info">{dev.assigned_shipment_code}</Badge>
-                            </Link>
-                          ) : (
-                            <span
+                              <Link2 size={12} />
+                              <span>{dev.assigned_shipment_id ? 'Đổi chuyến' : 'Gán chuyến'}</span>
+                            </button>
+                            <ChevronRight
+                              size={16}
                               style={{
-                                color: 'var(--color-text-tertiary)',
-                                fontSize: 'var(--text-xs)',
+                                color: isSelected
+                                  ? 'var(--color-accent)'
+                                  : 'var(--color-text-tertiary)',
                               }}
-                            >
-                              Chưa gán
-                            </span>
-                          )}
-                        </td>
-
-                        <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                          <ChevronRight
-                            size={16}
-                            style={{
-                              color: isSelected
-                                ? 'var(--color-accent)'
-                                : 'var(--color-text-tertiary)',
-                            }}
-                          />
+                            />
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1230,9 +1315,22 @@ export const DevicesPage: React.FC = () => {
         onClose={() => setIsRegisterModalOpen(false)}
         onSuccess={(res) => {
           setAdminSuccessMsg(
-            `Đã đăng ký thành công thiết bị ${res.device_id} kèm Key '${res.keys[0]?.key_id || ''}'.`
+            `Đã đăng ký thành công thiết bị ${res.device_id} (${res.device_name || 'Cold Chain Sensor'}).`
           );
           fetchDevicesList(false);
+        }}
+      />
+
+      <AssignDeviceModal
+        isOpen={isAssignModalOpen}
+        onClose={() => {
+          setIsAssignModalOpen(false);
+          setAssignModalDeviceId(null);
+        }}
+        initialDeviceId={assignModalDeviceId}
+        onSuccess={(_res, msg) => {
+          setAdminSuccessMsg(msg);
+          fetchDevicesList(true);
         }}
       />
 

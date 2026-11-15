@@ -259,6 +259,11 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
                     <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
                       {deviceDetail.device_id}
                     </span>
+                    {deviceDetail.device_name && (
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+                        ({deviceDetail.device_name})
+                      </span>
+                    )}
                   </div>
                   <Badge variant={deviceDetail.status === 'active' ? 'success' : 'danger'}>
                     TRẠNG THÁI: {deviceDetail.status.toUpperCase()}
@@ -273,6 +278,29 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
                     fontSize: 'var(--text-xs)',
                   }}
                 >
+                  <div>
+                    <div style={{ color: 'var(--color-text-tertiary)' }}>Trạng thái Public Key</div>
+                    <div style={{ marginTop: 2 }}>
+                      <Badge variant={deviceDetail.has_public_key ? 'success' : 'warning'}>
+                        {deviceDetail.has_public_key ? 'ĐÃ CẤP PUBLIC KEY' : 'CHƯA CẤP PUBLIC KEY'}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ color: 'var(--color-text-tertiary)' }}>Chuyến hiện gán</div>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginTop: 2 }}>
+                      {deviceDetail.current_shipment_id ? (
+                        <Link
+                          to={`/shipments/${deviceDetail.current_shipment_id}`}
+                          style={{ color: 'var(--color-accent)' }}
+                        >
+                          {deviceDetail.current_shipment_code || `${deviceDetail.current_shipment_id.slice(0, 8)}...`}
+                        </Link>
+                      ) : (
+                        <span style={{ color: 'var(--color-text-tertiary)' }}>Chưa gán</span>
+                      )}
+                    </div>
+                  </div>
                   <div>
                     <div style={{ color: 'var(--color-text-tertiary)' }}>Sequence đã nhận</div>
                     <div style={{ fontSize: 'var(--text-md)', fontWeight: 600, marginTop: 2 }}>

@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { DeviceRegisterPayload, AdminDeviceViewOut, ShipmentOut } from '../../types/api';
+import { DeviceRegisterPayload, AdminDeviceViewOut } from '../../types/api';
 import { registerDevice } from '../../api/devices';
-import { getShipments } from '../../api/shipments';
 import { apiClient, ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
 import {
   Cpu,
-  KeyRound,
   X,
-  Shield,
-  Sparkles,
+  Lock,
   AlertCircle,
   RefreshCw,
-  Lock,
+  Info,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface RegisterDeviceModalProps {
@@ -20,11 +18,6 @@ interface RegisterDeviceModalProps {
   onClose: () => void;
   onSuccess: (result: AdminDeviceViewOut) => void;
 }
-
-const SAMPLE_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5t7UC5yvLKt2IJrVkRdPrt79is9A
-3EXEhvhpxBYZBGUy13uCA5bJMjbAHlge0SQ30n1qb6ubPtNlWTZcdkDXaw==
------END PUBLIC KEY-----`;
 
 export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
   isOpen,
@@ -34,68 +27,40 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
   const [adminKey, setAdminKey] = useState(apiClient.getAdminKey() || '');
   const [saveAdminKey, setSaveAdminKey] = useState(true);
 
-  const [deviceId, setDeviceId] = useState('');
-  const [keyId, setKeyId] = useState('wokwi-key-v1');
-  const [publicKeyPem, setPublicKeyPem] = useState('');
-  const [shipmentId, setShipmentId] = useState('');
+  const [deviceId, setDeviceId] = useState('ESP32-001');
+  const [deviceName, setDeviceName] = useState('Cold Chain Sensor 01');
 
-  const [shipments, setShipments] = useState<ShipmentOut[]>([]);
-  const [loadingShipments, setLoadingShipments] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const generateRandomDeviceId = () => {
-    const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const rand = Math.floor(1 + Math.random() * 999).toString().padStart(3, '0');
     return `ESP32-${rand}`;
   };
 
   useEffect(() => {
     if (isOpen) {
-      setDeviceId(generateRandomDeviceId());
+      setDeviceId('ESP32-001');
+      setDeviceName('Cold Chain Sensor 01');
       setAdminKey(apiClient.getAdminKey() || '');
       setError(null);
-
-      // Load danh sách shipment để chọn gán
-      setLoadingShipments(true);
-      getShipments()
-        .then((res) => {
-          setShipments(res.items);
-          if (res.items.length > 0 && !shipmentId) {
-            setShipmentId(res.items[0].id);
-          }
-        })
-        .catch(() => {})
-        .finally(() => setLoadingShipments(false));
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleUseSampleKey = () => {
-    setPublicKeyPem(SAMPLE_PUBLIC_KEY_PEM);
-    setKeyId('wokwi-key-v1');
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminKey.trim()) {
-      setError('Vui lòng nhập X-Admin-Key (Khóa bí mật Admin của máy chủ Backend)');
+      setError('Vui lòng nhập X-Admin-Key (Khóa quản trị của máy chủ Backend)');
       return;
     }
     if (!deviceId.trim()) {
       setError('Mã thiết bị (Device ID) không được để trống');
       return;
     }
-    if (!keyId.trim()) {
-      setError('Mã khóa (Key ID) không được để trống');
-      return;
-    }
-    if (!publicKeyPem.trim()) {
-      setError('Khóa công khai (Public Key PEM) không được để trống');
-      return;
-    }
-    if (!shipmentId.trim()) {
-      setError('Vui lòng chọn hoặc nhập Shipment ID để gán thiết bị');
+    if (!deviceName.trim()) {
+      setError('Tên thiết bị (Device Name) không được để trống');
       return;
     }
 
@@ -108,9 +73,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
 
     const payload: DeviceRegisterPayload = {
       device_id: deviceId.trim(),
-      key_id: keyId.trim(),
-      public_key_pem: publicKeyPem.trim(),
-      shipment_id: shipmentId.trim(),
+      device_name: deviceName.trim(),
     };
 
     try {
@@ -123,10 +86,10 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
           setError('Xác thực thất bại: X-Admin-Key không chính xác hoặc không có quyền quản trị.');
         } else if (err.status === 503 || err.code === 'ADMIN_UNAVAILABLE') {
           setError('Máy chủ Backend chưa bật ADMIN_API_KEY (ADMIN_UNAVAILABLE).');
-        } else if (err.status === 409) {
-          setError(`Mã thiết bị '${deviceId}' hoặc Key ID '${keyId}' đã tồn tại.`);
+        } else if (err.status === 409 || err.code === 'DEVICE_EXISTS') {
+          setError(`Mã thiết bị '${deviceId.trim()}' đã tồn tại trên hệ thống.`);
         } else if (err.status === 422) {
-          setError(err.message || 'Dữ liệu không hợp lệ (Public Key PEM phải có độ dài <= 512 bytes).');
+          setError(err.message || 'Dữ liệu đăng ký không hợp lệ (Mã ID 1-100 ký tự).');
         } else {
           setError(err.message || 'Lỗi khi đăng ký thiết bị');
         }
@@ -157,7 +120,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
       <div
         style={{
           width: '100%',
-          maxWidth: 640,
+          maxWidth: 540,
           backgroundColor: 'var(--color-surface)',
           borderRadius: 'var(--radius-lg)',
           boxShadow: 'var(--shadow-popover)',
@@ -213,7 +176,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
                   margin: 0,
                 }}
               >
-                Xác thực bằng X-Admin-Key • Đăng ký khóa công khai SPKI ECDSA P-256
+                Quy trình tối giản: Đăng ký ID & Tên thiết bị • Cấp khóa P-256 qua USB ngoài browser
               </p>
             </div>
           </div>
@@ -320,81 +283,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
             />
           </div>
 
-          {/* Device ID and Key ID */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  color: 'var(--color-text-secondary)',
-                  marginBottom: 4,
-                }}
-              >
-                Mã Thiết Bị (Device ID) *
-              </label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input
-                  type="text"
-                  value={deviceId}
-                  onChange={(e) => setDeviceId(e.target.value)}
-                  placeholder="VD: ESP32-02"
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border)',
-                    fontSize: 'var(--text-sm)',
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setDeviceId(generateRandomDeviceId())}
-                  title="Tạo mã ngẫu nhiên"
-                  style={{
-                    padding: '8px 10px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border)',
-                    backgroundColor: 'var(--color-surface-secondary)',
-                    cursor: 'pointer',
-                    color: 'var(--color-text-secondary)',
-                  }}
-                >
-                  <RefreshCw size={14} />
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  color: 'var(--color-text-secondary)',
-                  marginBottom: 4,
-                }}
-              >
-                Mã Khóa (Key ID) *
-              </label>
-              <input
-                type="text"
-                value={keyId}
-                onChange={(e) => setKeyId(e.target.value)}
-                placeholder="VD: wokwi-key-v1"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                  fontSize: 'var(--text-sm)',
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Assigned Shipment */}
+          {/* Device ID Input */}
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <label
               style={{
@@ -405,89 +294,113 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
                 marginBottom: 4,
               }}
             >
-              Lô hàng phân công (Shipment Assignment) *
+              Mã Thiết Bị (Device ID) *
             </label>
-            <select
-              value={shipmentId}
-              onChange={(e) => setShipmentId(e.target.value)}
-              disabled={loadingShipments}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="text"
+                value={deviceId}
+                onChange={(e) => setDeviceId(e.target.value)}
+                placeholder="VD: ESP32-001"
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border)',
+                  fontSize: 'var(--text-sm)',
+                  fontFamily: 'monospace',
+                  fontWeight: 600,
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setDeviceId(generateRandomDeviceId())}
+                title="Tạo mã ngẫu nhiên"
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border)',
+                  backgroundColor: 'var(--color-surface-secondary)',
+                  cursor: 'pointer',
+                  color: 'var(--color-text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 'var(--text-xs)',
+                }}
+              >
+                <RefreshCw size={13} />
+                <span>Sinh mã</span>
+              </button>
+            </div>
+            <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
+              Định dạng chuỗi: chữ cái, số, gạch nối (VD: ESP32-001, ESP32-002).
+            </span>
+          </div>
+
+          {/* Device Name Input */}
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+                color: 'var(--color-text-secondary)',
+                marginBottom: 4,
+              }}
+            >
+              Tên Thiết Bị (Device Name) *
+            </label>
+            <input
+              type="text"
+              value={deviceName}
+              onChange={(e) => setDeviceName(e.target.value)}
+              placeholder="VD: Cold Chain Sensor 01"
               style={{
                 width: '100%',
                 padding: '8px 12px',
                 borderRadius: 'var(--radius-md)',
                 border: '1px solid var(--color-border)',
                 fontSize: 'var(--text-sm)',
-                backgroundColor: 'var(--color-surface)',
-              }}
-            >
-              <option value="">-- Chọn lô hàng gán thiết bị --</option>
-              {shipments.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.code} ({s.cargo_type}) — {s.id.slice(0, 8)}...
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Public Key PEM */}
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 4,
-              }}
-            >
-              <label
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  color: 'var(--color-text-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                <KeyRound size={12} /> Khóa công khai SPKI PEM (Public Key) *
-              </label>
-              <button
-                type="button"
-                onClick={handleUseSampleKey}
-                style={{
-                  fontSize: '11px',
-                  color: 'var(--color-accent)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontWeight: 500,
-                }}
-              >
-                <Sparkles size={12} /> Dùng Public Key mẫu Wokwi ESP32
-              </button>
-            </div>
-            <textarea
-              rows={5}
-              value={publicKeyPem}
-              onChange={(e) => setPublicKeyPem(e.target.value)}
-              placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border)',
-                fontFamily: 'monospace',
-                fontSize: '11px',
-                lineHeight: '16px',
-                backgroundColor: 'var(--color-surface-secondary)',
               }}
             />
             <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
-              Lưu ý: Chỉ nhập Public Key (khóa công khai). Tuyệt đối không bao giờ nhập Private Key!
+              Tên mô tả vị trí hoặc mục đích sử dụng (tối đa 100 ký tự).
             </span>
+          </div>
+
+          {/* Info Card: Key Provisioning Notice */}
+          <div
+            style={{
+              padding: 'var(--space-3) var(--space-4)',
+              backgroundColor: 'var(--color-surface-secondary)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border-subtle)',
+              marginBottom: 'var(--space-4)',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--color-text-secondary)',
+              lineHeight: 1.5,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontWeight: 600,
+                color: 'var(--color-text-primary)',
+                marginBottom: 4,
+              }}
+            >
+              <Info size={14} style={{ color: 'var(--color-accent)' }} />
+              Cấp khóa mật mã ngoài trình duyệt (An toàn tuyệt đối)
+            </div>
+            <p style={{ margin: 0 }}>
+              Sau khi đăng ký thiết bị, kỹ thuật viên chạy script Python của NTK trên máy tính tin cậy để tạo cặp khóa <strong>ECDSA P-256</strong> riêng cho thiết bị. Private key được nạp trực tiếp vào firmware ESP32 qua cổng USB và chỉ có public key SPKI PEM được gửi lên API Backend.
+            </p>
+            <p style={{ margin: '4px 0 0 0', color: 'var(--color-text-tertiary)' }}>
+              Trình duyệt không sinh/nhập/hiển thị private key. Trạng thái public key sẽ tự động hiển thị sau khi nạp xong.
+            </p>
           </div>
 
           {/* Footer Actions */}
@@ -505,7 +418,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
               Hủy
             </Button>
             <Button type="submit" variant="primary" disabled={submitting}>
-              {submitting ? 'Đang xác thực & đăng ký...' : 'Đăng Ký Thiết Bị'}
+              {submitting ? 'Đang đăng ký...' : 'Đăng Ký Thiết Bị'}
             </Button>
           </div>
         </form>
@@ -513,4 +426,3 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
     </div>
   );
 };
-
