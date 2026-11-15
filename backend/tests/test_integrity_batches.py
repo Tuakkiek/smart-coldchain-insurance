@@ -71,14 +71,16 @@ def integrity_api(tmp_path):
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("ascii")
     with TestClient(app) as client:
-        shipment_id = client.post("/api/v1/shipments", json=SHIPMENT).json()["id"]
+        shipment_id = client.post("/api/v1/shipments", headers=ADMIN, json=SHIPMENT).json()["id"]
         registered = client.post("/api/v1/devices", headers=ADMIN, json={
             "device_id": "ESP32-INTEGRITY",
-            "key_id": "key-v1",
-            "public_key_pem": pem,
-            "shipment_id": shipment_id,
+            "device_name": "Integrity sensor",
         })
         assert registered.status_code == 201
+        assert client.post("/api/v1/devices/ESP32-INTEGRITY/assignments", headers=ADMIN,
+                           json={"shipment_id": shipment_id, "active": True}).status_code == 200
+        assert client.post("/api/v1/devices/ESP32-INTEGRITY/keys", headers=ADMIN,
+                           json={"key_id": "key-v1", "public_key_pem": pem}).status_code == 201
         yield client, app, key, shipment_id
     app.state.engine.dispose()
 
@@ -120,7 +122,7 @@ def test_auto_seal_persists_membership_root_and_outbox(integrity_api):
         assert outbox.idempotency_key == f"anchor:{batch['batch_id']}"
         assert outbox.payload["merkle_root"] == batch["merkle_root"]
 
-    verified = client.post(f"/api/v1/batches/{batch['batch_id']}/verify")
+    verified = client.post(f"/api/v1/batches/{batch['batch_id']}/verify", headers=ADMIN)
     assert verified.status_code == 200
     assert verified.json()["verification_status"] == "MATCHED"
     assert verified.json()["calculated_root"] == batch["merkle_root"]
@@ -155,13 +157,13 @@ def test_membership_is_immutable_and_tamper_creates_one_alert(integrity_api):
         sample.temperature_c = 6.0
         session.commit()
 
-    failed = client.post(f"/api/v1/batches/{first['batch_id']}/verify")
+    failed = client.post(f"/api/v1/batches/{first['batch_id']}/verify", headers=ADMIN)
     assert failed.status_code == 200
     assert failed.json()["verification_status"] == "DATA_INTEGRITY_FAILED"
     assert client.get(f"/api/v1/shipments/{shipment_id}/integrity").json()[
         "verification_status"
     ] == "DATA_INTEGRITY_FAILED"
-    client.post(f"/api/v1/batches/{first['batch_id']}/verify")
+    client.post(f"/api/v1/batches/{first['batch_id']}/verify", headers=ADMIN)
     with app.state.session_factory() as session:
         alerts = session.scalar(select(func.count()).select_from(ShipmentEvent).where(
             ShipmentEvent.type == "INTEGRITY_MISMATCH",

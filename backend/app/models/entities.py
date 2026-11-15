@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, Double, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import BigInteger, Computed, DateTime, Double, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -76,6 +76,7 @@ class Device(Base):
     __tablename__ = "devices"
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    device_name: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     last_sequence_number: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     last_seen_at: Mapped[datetime | None] = mapped_column(UTC_DATETIME)
@@ -97,10 +98,15 @@ class DeviceKey(Base):
 
 class DeviceAssignment(Base):
     __tablename__ = "device_assignments"
+    __table_args__ = (Index("uq_device_assignment_active", "active_device_id", unique=True),)
 
     device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), primary_key=True)
     shipment_id: Mapped[str] = mapped_column(ForeignKey("shipments.id"), primary_key=True)
     active: Mapped[bool] = mapped_column(nullable=False, default=True)
+    # NULLs may repeat in a unique index, retaining inactive shipment history.
+    active_device_id: Mapped[str | None] = mapped_column(
+        String(100), Computed("CASE WHEN active THEN device_id ELSE NULL END", persisted=False),
+    )
 
 
 class SignedTelemetryReceipt(Base):

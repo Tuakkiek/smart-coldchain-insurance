@@ -654,9 +654,9 @@ BLOCKCHAIN_ENABLED=false
 BLOCKCHAIN_RPC_URL=<testnet-rpc-url>
 BLOCKCHAIN_CHAIN_ID=<chain-id>
 DATA_INTEGRITY_CONTRACT_ADDRESS=<data-integrity-address>
-INSURANCE_CONTRACT_ADDRESS=<insurance-contract-address>
+BLOCKCHAIN_CONTRACT_ADDRESS=<insurance-contract-address>
 BACKEND_ANCHORER_PRIVATE_KEY=<set-as-secret-in-environment>
-BACKEND_ORACLE_PRIVATE_KEY=<set-as-secret-in-environment>
+BLOCKCHAIN_ORACLE_PRIVATE_KEY=<set-as-secret-in-environment>
 ADMIN_API_KEY=<set-as-secret-in-environment>
 PUBLIC_API_BASE_URL=https://<your-render-service>.onrender.com/api/v1
 ```

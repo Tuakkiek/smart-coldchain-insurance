@@ -64,20 +64,15 @@ def _shipment_id(value: str) -> str:
     return value
 
 
-def register_device(session: Session, device_id: str, key_id: str, public_key_pem: str, shipment_id: str) -> Device:
+def register_device(session: Session, device_id: str, device_name: str) -> Device:
     _identity(device_id, "device_id")
-    _identity(key_id, "key_id")
-    _shipment_id(shipment_id)
-    pem = _public_key(public_key_pem)
-    shipments.get_shipment(session, shipment_id)
+    device_name = device_name.strip()
+    if not 1 <= len(device_name) <= 100:
+        raise IngestionError(422, "VALIDATION_ERROR", "Device name must contain 1-100 characters")
     if session.get(Device, device_id):
         raise IngestionError(409, "DEVICE_EXISTS", "Device already exists")
-    device = Device(id=device_id, status="active", last_sequence_number=0)
-    session.add_all([
-        device,
-        DeviceKey(device_id=device_id, key_id=key_id, public_key_pem=pem, status="active"),
-        DeviceAssignment(device_id=device_id, shipment_id=shipment_id, active=True),
-    ])
+    device = Device(id=device_id, device_name=device_name, status="active", last_sequence_number=0)
+    session.add(device)
     try:
         session.commit()
     except IntegrityError as exc:
@@ -86,40 +81,64 @@ def register_device(session: Session, device_id: str, key_id: str, public_key_pe
     return device
 
 
-def get_device(session: Session, device_id: str) -> Device:
-    device = session.get(Device, device_id)
+def get_device(session: Session, device_id: str, *, lock: bool = False) -> Device:
+    device = (
+        session.scalar(select(Device).where(Device.id == device_id).with_for_update()
+                       .execution_options(populate_existing=True))
+        if lock else session.get(Device, device_id)
+    )
     if device is None:
         raise IngestionError(404, "DEVICE_NOT_FOUND", "Device not found")
     return device
 
 
 def device_view(session: Session, device: Device) -> dict:
+    keys = list(session.scalars(
+        select(DeviceKey).where(DeviceKey.device_id == device.id).order_by(DeviceKey.key_id)
+    ))
+    assignments = list(session.scalars(
+        select(DeviceAssignment).where(DeviceAssignment.device_id == device.id)
+        .order_by(DeviceAssignment.shipment_id)
+    ))
+    active_shipments = [item.shipment_id for item in assignments if item.active]
+    if len(active_shipments) > 1:
+        raise IngestionError(409, "DEVICE_ALREADY_ASSIGNED", "Device has conflicting active assignments")
     return {
-        "device_id": device.id, "status": device.status,
+        "device_id": device.id, "device_name": device.device_name, "status": device.status,
+        "has_public_key": any(key.status == "active" for key in keys),
+        "current_shipment_id": active_shipments[0] if active_shipments else None,
         "last_sequence_number": device.last_sequence_number,
         "last_seen_at": shipments.ensure_utc(device.last_seen_at),
-        "keys": [{"key_id": key.key_id, "status": key.status} for key in session.scalars(
-            select(DeviceKey).where(DeviceKey.device_id == device.id).order_by(DeviceKey.key_id)
-        )],
+        "keys": [{"key_id": key.key_id, "status": key.status} for key in keys],
         "assignments": [{"shipment_id": assignment.shipment_id, "active": assignment.active}
-                        for assignment in session.scalars(select(DeviceAssignment).where(
-                            DeviceAssignment.device_id == device.id).order_by(DeviceAssignment.shipment_id)
-                        )],
+                        for assignment in assignments],
     }
 
 
+def list_devices(session: Session) -> dict:
+    items = [device_view(session, device) for device in session.scalars(select(Device).order_by(Device.id))]
+    return {"items": items, "total": len(items)}
+
+
 def add_key(session: Session, device_id: str, key_id: str, public_key_pem: str) -> None:
-    get_device(session, device_id)
+    get_device(session, device_id, lock=True)
     _identity(key_id, "key_id")
     pem = _public_key(public_key_pem)
     if session.get(DeviceKey, (device_id, key_id)):
         raise IngestionError(409, "KEY_EXISTS", "Key ID already exists")
     session.add(DeviceKey(device_id=device_id, key_id=key_id, public_key_pem=pem, status="active"))
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise IngestionError(409, "KEY_EXISTS", "Key ID already exists") from exc
 
 
 def set_key_status(session: Session, device_id: str, key_id: str, status: str) -> None:
-    key = session.get(DeviceKey, (device_id, key_id))
+    get_device(session, device_id, lock=True)
+    key = session.scalar(select(DeviceKey).where(
+        DeviceKey.device_id == device_id, DeviceKey.key_id == key_id,
+    ).with_for_update().execution_options(populate_existing=True))
     if key is None:
         raise IngestionError(404, "KEY_NOT_FOUND", "Key not found")
     key.status = status
@@ -127,15 +146,38 @@ def set_key_status(session: Session, device_id: str, key_id: str, status: str) -
 
 
 def set_assignment(session: Session, device_id: str, shipment_id: str, active: bool) -> None:
-    get_device(session, device_id)
+    # Serialize with signed ingestion and other assignment/key changes on MySQL.
+    device = get_device(session, device_id, lock=True)
     _shipment_id(shipment_id)
     shipments.get_shipment(session, shipment_id)
-    assignment = session.get(DeviceAssignment, (device_id, shipment_id))
+    if active:
+        if device.status != "active":
+            raise IngestionError(403, "DEVICE_NOT_ACTIVE", "Device is not active")
+        other = session.scalar(select(DeviceAssignment).where(
+            DeviceAssignment.device_id == device_id,
+            DeviceAssignment.active.is_(True),
+            DeviceAssignment.shipment_id != shipment_id,
+        ).with_for_update())
+        if other is not None:
+            raise IngestionError(409, "DEVICE_ALREADY_ASSIGNED", "Unassign the current shipment first")
+    assignment = session.scalar(select(DeviceAssignment).where(
+        DeviceAssignment.device_id == device_id, DeviceAssignment.shipment_id == shipment_id,
+    ).with_for_update().execution_options(populate_existing=True))
     if assignment is None:
         session.add(DeviceAssignment(device_id=device_id, shipment_id=shipment_id, active=active))
     else:
         assignment.active = active
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        # The unique generated-column index also protects direct/concurrent writes.
+        assignment = session.get(DeviceAssignment, (device_id, shipment_id))
+        if assignment is not None and assignment.active == active:
+            return
+        if "uq_device_assignment_active" in str(exc.orig) or "device_assignments.active_device_id" in str(exc.orig):
+            raise IngestionError(409, "DEVICE_ALREADY_ASSIGNED", "Unassign the current shipment first") from exc
+        raise
 
 
 def _reject(session: Session, payload: SignedTelemetryCreate, code: str, status: int, message: str) -> None:
@@ -163,13 +205,22 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
     if payload.shipment_id != shipment_id:
         _reject(session, payload, "SHIPMENT_MISMATCH", 422, "Body shipment_id does not match path")
     shipments.get_shipment(session, shipment_id)
-    device = session.scalars(select(Device).where(Device.id == payload.device_id).with_for_update()).one_or_none()
+    device = session.scalar(
+        select(Device).where(Device.id == payload.device_id).with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if device is None or device.status != "active":
         _reject(session, payload, "DEVICE_NOT_ACTIVE", 403, "Device is not active")
-    assignment = session.get(DeviceAssignment, (device.id, shipment_id))
+    # Locking reads see current committed rows on MySQL REPEATABLE READ even if
+    # the earlier shipment lookup established an older consistent snapshot.
+    assignment = session.scalar(select(DeviceAssignment).where(
+        DeviceAssignment.device_id == device.id, DeviceAssignment.shipment_id == shipment_id,
+    ).with_for_update().execution_options(populate_existing=True))
     if assignment is None or not assignment.active:
         _reject(session, payload, "DEVICE_NOT_ASSIGNED", 403, "Device is not assigned to shipment")
-    key = session.get(DeviceKey, (device.id, payload.key_id))
+    key = session.scalar(select(DeviceKey).where(
+        DeviceKey.device_id == device.id, DeviceKey.key_id == payload.key_id,
+    ).with_for_update().execution_options(populate_existing=True))
     if key is None or key.status != "active":
         _reject(session, payload, "UNKNOWN_KEY", 401, "Key is unknown or revoked")
     value = payload.model_dump()
@@ -183,11 +234,11 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
     existing = session.scalar(select(SignedTelemetryReceipt).where(
         SignedTelemetryReceipt.device_id == device.id,
         SignedTelemetryReceipt.sequence_number == payload.sequence_number,
-    ))
+    ).with_for_update())
     if existing:
         if existing.canonical_sha256 != digest:
             _reject(session, payload, "SEQUENCE_CONFLICT", 409, "Sequence already has different content")
-        sample = session.get(Telemetry, existing.telemetry_id)
+        sample = session.scalar(select(Telemetry).where(Telemetry.id == existing.telemetry_id).with_for_update())
         return _response(sample, existing, True)
     if payload.sequence_number <= device.last_sequence_number:
         _reject(session, payload, "SEQUENCE_REPLAY", 409, "Sequence is older than last accepted sequence")

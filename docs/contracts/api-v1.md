@@ -1,6 +1,6 @@
 # Hợp đồng REST API v1 — Smart Cold Chain Insurance
 
-Tài liệu này mô tả **API hiện đang chạy** và bản mở rộng Signed Telemetry v1 đang ở Phase 0. Phần mở rộng cần Member 2/3 rà soát trước khi xem là contract liên nhóm. Mọi thay đổi tên field hoặc trạng thái sau khi cả nhóm xác nhận cần được cập nhật ở đây trước khi sửa code.
+Tài liệu này mô tả API đã triển khai trong Backend, gồm Signed Telemetry v1, Merkle/anchoring và quy trình đăng ký thiết bị độc lập cập nhật 2026-11-15. Sự tồn tại của route không phải bằng chứng đã deploy lên Render/testnet. Thay đổi DTO đăng ký và quyền tạo shipment cần được Frontend/các caller cập nhật đồng thời.
 
 ## Quy ước chung
 
@@ -10,11 +10,12 @@ Tài liệu này mô tả **API hiện đang chạy** và bản mở rộng Sign
 - Mọi timestamp trong REST API là ISO 8601 UTC, dạng `YYYY-MM-DDTHH:mm:ssZ` (có thể có phần giây thập phân). Input timestamp phải có múi giờ; Backend chuẩn hóa về UTC. `received_at`/`occurred_at` do Backend tạo. `recorded_at` là thời gian tùy chọn từ thiết bị, chỉ để đối chiếu, không dùng tính thời gian vi phạm.
 - Tọa độ trong response là **mô phỏng ở Backend**, nội suy đường thẳng từ `origin` đến `destination` theo số mẫu telemetry đã nhận: mẫu đầu tiên ở 5%, mẫu thứ 20 ở 100%, các mẫu sau giữ vị trí đích. Đây không phải GPS hoặc đường giao thông thực. Mọi vị trí telemetry có `location_source: "backend_simulated"`. Khi chưa có telemetry, `status` là `created`, `latest_telemetry` và `location` là `null`.
 - `insured_amount_vnd` là số tiền mô tả chính sách demo bằng VND, **không phải** số token được chuyển trên chain. Việc cấu hình token demo do Member 2 thống nhất riêng.
-- Các endpoint shipment/telemetry/event bên dưới vẫn hỗ trợ payload cũ chỉ trong `APP_ENV=development`. Trong production, POST telemetry bắt buộc payload signed v1. Mẫu cũ không được gọi là `DATA_VERIFIED` hoặc làm bằng chứng integrity. Các API integrity/anchoring ở cuối tài liệu vẫn chưa triển khai.
+- POST telemetry hỗ trợ payload cũ chỉ trong `APP_ENV=development`; production bắt buộc signed v1. Mẫu cũ không được gọi là `DATA_VERIFIED` hoặc làm bằng chứng integrity. Các API integrity/anchoring ở cuối tài liệu đã có trong code.
+- Các thao tác admin dùng header `X-Admin-Key` khớp `ADMIN_API_KEY`: đăng ký/list/detail/status thiết bị, cấp/revoke key, assignment, tạo shipment, seal/anchor/verify batch và reconcile insurance. Thiếu/sai credential trả `401 UNAUTHORIZED`; Backend chưa cấu hình admin key trả `503 ADMIN_NOT_CONFIGURED`. CORS không thay auth. Không nhúng credential vào `VITE_*`, firmware hoặc log.
 
 ## Tạo lô hàng
 
-`POST /api/v1/shipments` → `201 Created`, body là **ShipmentDetail** bên dưới.
+`POST /api/v1/shipments` → `201 Created`, yêu cầu `X-Admin-Key`; body response là **ShipmentDetail** bên dưới. `SHIP-001` được nhập vào `code`; UUID `id` trả về mới là `shipment_id` dùng cho assignment, firmware, signed payload và Blockchain. Tạo shipment lưu policy nghiệp vụ trong MySQL, không tự tạo/fund policy trên chain.
 
 ```json
 {
@@ -262,13 +263,75 @@ Backend giữ telemetry và event đầy đủ off-chain. Adapter đọc ABI t�
 
 **Điểm cần hai thành viên xác nhận để đóng Phase 0:** Member 2 xác nhận quy tắc `shipmentKey`, `evidenceHash`, timestamp và policy ở bảng trên, rồi ghi lại trong `blockchain/INTEGRATION.md`. Member 3 xác nhận các field response/trạng thái cần cho Dashboard. Sau đó các thay đổi API phải được báo cả nhóm trước khi sửa code.
 
+## Đăng ký thiết bị, liên kết chuyến và cấp public key
+
+Luồng: **Admin đăng ký ID/tên device → tạo shipment/code → lấy UUID và gán → cấp khóa local/USB → đăng ký public key → ESP32/simulator ký/gửi**. Không có endpoint nhận private key hoặc đăng ký ESP32 trên Blockchain.
+
+### Đăng ký và danh sách
+
+`POST /api/v1/devices`, auth admin, request:
+
+```json
+{"device_id":"ESP32-001","device_name":"Cold Chain Sensor 01"}
+```
+
+Device ID phân biệt hoa/thường ở giao thức, pattern `[A-Za-z0-9_-]{1,100}`; tên được trim, không rỗng, tối đa 100 ký tự. Không yêu cầu shipment/key khi tạo. DTO gộp cũ có `key_id`, `public_key_pem`, `shipment_id` **không còn được nhận** (`422`); chuyển sang các route riêng bên dưới. Trùng device trả `409 DEVICE_EXISTS`, không ghi đè tên/key/sequence cũ.
+
+`201` trả DeviceView:
+
+```json
+{
+  "device_id": "ESP32-001",
+  "device_name": "Cold Chain Sensor 01",
+  "status": "active",
+  "has_public_key": false,
+  "current_shipment_id": null,
+  "last_sequence_number": 0,
+  "last_seen_at": null,
+  "keys": [],
+  "assignments": []
+}
+```
+
+`GET /api/v1/devices` (admin) → `200 {items: DeviceView[], total}`; gồm cả thiết bị chưa key/chưa gán, sắp theo `device_id`. Danh sách rỗng là `{"items":[],"total":0}`, chưa phân trang. `GET /api/v1/devices/{device_id}` (admin) trả cùng view, không tồn tại trả `404 DEVICE_NOT_FOUND`.
+
+`has_public_key` được suy ra từ key active; `current_shipment_id` suy ra từ assignment active hoặc `null`. Chúng không phải trạng thái UI tự ghi. `status=active` chưa có nghĩa device đủ điều kiện gửi. View chỉ trả metadata `keys=[{key_id,status}]`, `assignments=[{shipment_id,active}]`; không trả PEM/private key. Có public key trong DB chưa chứng minh board đã flash đúng khóa; cần mẫu ký thật được Backend chấp nhận.
+
+### Liên kết hoặc bỏ liên kết
+
+`POST /api/v1/devices/{device_id}/assignments`, auth admin:
+
+```json
+{"shipment_id":"8b4fb8a2-2996-4da2-90b9-35019517f56f","active":true}
+```
+
+`200` trả DeviceView cập nhật. `shipment_id` phải là UUID v4 chữ thường chuẩn và tồn tại; không dùng code `SHIP-001` thay UUID. Có thể gán trước khi cấp key. Device bị revoke không được gán active (`403 DEVICE_NOT_ACTIVE`); admin vẫn có thể bỏ gán để giải phóng quan hệ cũ.
+
+Mỗi device tối đa một assignment active, nhiều device có thể cùng shipment. Gán lại cùng cặp idempotent; gán sang chuyến khác khi còn active trả `409 DEVICE_ALREADY_ASSIGNED`. Bỏ gán bằng cùng request với `active=false`, rồi gán mới; không ngầm chuyển chuyến. Device không tồn tại trả `404 DEVICE_NOT_FOUND`; shipment không tồn tại trả `404 SHIPMENT_NOT_FOUND`.
+
+Service khóa dòng device và database có unique generated-column index `uq_device_assignment_active`. Giữ các quan hệ inactive làm lịch sử; đổi assignment không sửa shipment của telemetry/batch cũ, không reset sequence. Cập nhật UUID trong firmware bằng USB khi đổi chuyến; không đổi ngữ cảnh/ký lại queue chuyến cũ để đưa vào chuyến mới.
+
+### Cấp public key và thu hồi
+
+`POST /api/v1/devices/{device_id}/keys`, auth admin; script trên máy tin cậy gửi **chỉ public key**:
+
+```json
+{"key_id":"key-v1","public_key_pem":"<public key P-256 SPKI PEM thật>"}
+```
+
+`key_id` cùng pattern ID; `public_key_pem` tối đa 512 ký tự, chuẩn hóa SPKI PEM P-256. Private PEM, curve khác hoặc PEM hỏng trả `422 INVALID_PUBLIC_KEY`; device chưa đăng ký trả `404 DEVICE_NOT_FOUND`. Key ID đã có trả `409 KEY_EXISTS`, không ghi đè khi retry. `201` trả DeviceView với `has_public_key=true` và metadata key mới; assignment/sequence giữ nguyên. Không tự tạo device/key khi ingestion thất bại; không thêm alias `/public-key` hoặc `/assign`.
+
+Giữ `PATCH /api/v1/devices/{device_id}` và `PATCH /api/v1/devices/{device_id}/keys/{key_id}`, auth admin, body `{"status":"active"}` hoặc `{"status":"revoked"}`. Key cuối bị revoke làm `has_public_key=false`; revoke device vẫn chặn gửi dù public key còn trong DB. Demo vận hành một key active/device; khi đổi khóa, revoke key cũ và thêm key ID mới, counter tiếp tục. Private key giữ local/ESP32, không qua React, HTTP API, database hoặc Blockchain.
+
+Migration bắt buộc: revision `20261115_03`, sau `20261109_02`, thêm tên device (backfill ID cho dòng cũ) và constraint assignment. Nếu dữ liệu cũ có nhiều active/device, migration dừng **trước DDL**, báo Device ID để admin chọn/bỏ các assignment sai rồi chạy lại; không tự xóa/chọn lịch sử.
+
 ## Signed Telemetry v1 và Integrity
 
 **Signed telemetry, API quản trị thiết bị, integrity batch và local-chain anchoring đã có trong OpenAPI.** Khi Blockchain chưa cấu hình, batch mới seal ở trạng thái `NOT_READY`; khi adapter được bật, durable outbox chuyển qua `BLOCKCHAIN_PENDING` và chỉ thành `DATA_ANCHORED` sau receipt đủ confirmations cùng on-chain readback khớp.
 
 `POST /api/v1/shipments/{shipment_id}/telemetry` nhận `payload_version=1`, `shipment_id`, `device_id`, `key_id`, `sequence_number`, `temperature_c`, `humidity_pct`, `temperature_milli_c`, `humidity_milli_pct`, `recorded_at`, `firmware_version`, `signature`. Hai số hiển thị phải bằng chính xác integer đã scale ÷1000, tối đa ba chữ số thập phân. `shipment_id` body phải khớp path. Chữ ký ECDSA P-256/SHA-256 trên projection cố định trong [data-integrity.md](../architecture/data-integrity.md), truyền DER/Base64. Backend gán `received_at`, không chấp nhận client gửi tọa độ hoặc `received_at`. Mẫu hợp lệ trả `201` và `signature_status: "VALID"`, `sequence_number`, `completeness_status`, `missing_sequences`, `duplicate: false`; retry cùng canonical content trả `200`, `duplicate: true` và cùng telemetry ID.
 
-API quản trị hiện có: `POST /api/v1/devices`, `GET/PATCH /api/v1/devices/{device_id}`, `POST /api/v1/devices/{device_id}/keys`, `PATCH /api/v1/devices/{device_id}/keys/{key_id}`, `POST /api/v1/devices/{device_id}/assignments`. Tất cả yêu cầu `X-Admin-Key` khớp `ADMIN_API_KEY` của Backend; nếu chưa cấu hình, trả `503`. Thiết bị không tự đăng ký key khi gửi telemetry. Response thành công có `signature_status: VALID`, `completeness_status: COMPLETE/DATA_INCOMPLETE`; `last_seen_at` và sequence cuối hiện có ở admin device view. Payload bị từ chối có error code và audit riêng, không vào accepted telemetry.
+Trước khi nhận signed telemetry, Backend kiểm tra device đăng ký/active, assignment đúng shipment, key active trong MySQL, chữ ký rồi sequence. Giữ lỗi `403 DEVICE_NOT_ACTIVE`/`DEVICE_NOT_ASSIGNED`, `401 UNKNOWN_KEY`/`INVALID_SIGNATURE`, `422 SHIPMENT_MISMATCH`, `409 SEQUENCE_CONFLICT`/`SEQUENCE_REPLAY`. Key ID vẫn bắt buộc và protocol/canonical fields giữ nguyên; device không tự đăng ký key. Response telemetry thành công có `signature_status: VALID`, `completeness_status: COMPLETE/DATA_INCOMPLETE`; last seen/sequence có ở DeviceView. Payload bị từ chối chỉ audit, không vào accepted telemetry/Merkle/evidence.
 `GET /api/v1/shipments/{shipment_id}/devices` trả danh sách thiết bị đang được assignment, gồm `device_id`, `registration_status`, `last_sequence_number`, `last_seen_at` và `telemetry_status: UNKNOWN/ONLINE/OFFLINE`. Trạng thái này được tính từ mẫu signed hợp lệ cuối cùng và `SENSOR_GAP_MINUTES`; retry một mẫu cũ không cập nhật `last_seen_at`. Signed heartbeat riêng vẫn chưa triển khai. Mỗi response có header `X-Request-ID` để đối chiếu log. `data_status` tổng hợp vẫn là kế hoạch.
 
 Idempotency hiện có: cùng `(device_id, sequence_number)` và cùng canonical signed content trả mẫu cũ với `duplicate=true`; cùng sequence nhưng content khác trả `409` và audit. Gap cắt chuỗi vi phạm 15 phút. `recorded_at` chỉ là metadata; thời lượng vi phạm dựa trên `received_at` của Backend. `BODY_TOO_LARGE` trả `413`, `RATE_LIMITED` trả `429` cho thiết bị đã đăng ký. Public history/detail hiển thị `signature_status`, `sequence_number`, `completeness_status` và `missing_sequences` ở mẫu đã ký; mẫu cũ không có các field này.
@@ -280,7 +343,7 @@ API integrity hiện có:
 - `POST /api/v1/shipments/{shipment_id}/batches/seal`: đóng phần telemetry ký số chưa được batch; yêu cầu `X-Admin-Key`, body `{"device_id":"ESP32-001","force":true}`.
 - `GET /api/v1/batches/{batch_id}`: metadata và Merkle root bất biến.
 - `POST /api/v1/batches/{batch_id}/anchor`: yêu cầu `X-Admin-Key`; dispatch/retry đúng outbox và signed transaction đã lưu.
-- `POST /api/v1/batches/{batch_id}/verify`: tính lại leaf/root từ dữ liệu đang lưu; mismatch chuyển `verification_status` thành `DATA_INTEGRITY_FAILED` và tạo một event `INTEGRITY_MISMATCH`.
+- `POST /api/v1/batches/{batch_id}/verify`: yêu cầu `X-Admin-Key`; tính lại leaf/root từ dữ liệu đang lưu; mismatch chuyển `verification_status` thành `DATA_INTEGRITY_FAILED` và tạo một event `INTEGRITY_MISMATCH`.
 - `POST /api/v1/shipments/{shipment_id}/insurance/reconcile`: yêu cầu `X-Admin-Key`; tính lại evidence state và chỉ dispatch/retry payout khi toàn bộ gate đạt.
 
 Backend tự seal khi một cặp shipment/device đạt `INTEGRITY_BATCH_MAX_RECORDS` (mặc định 100) hoặc khi có mẫu mới sau `INTEGRITY_BATCH_MAX_AGE_MINUTES` (mặc định 5 phút). Batch nhỏ có thể seal thủ công khi kết thúc chuyến/mất kết nối. Mỗi telemetry chỉ thuộc một batch; membership, leaf index, leaf hash và root được ghi trong cùng transaction. Cùng transaction đó tạo `integration_outbox` loại `ANCHOR_BATCH` với idempotency key `anchor:{batch_id}`.

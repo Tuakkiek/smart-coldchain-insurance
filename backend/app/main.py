@@ -124,6 +124,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_credentials=False,
             allow_methods=["GET", "POST", "PATCH"],
             allow_headers=["Content-Type", "X-Admin-Key"],
+            expose_headers=["X-Request-ID"],
         )
 
     @app.exception_handler(RequestValidationError)

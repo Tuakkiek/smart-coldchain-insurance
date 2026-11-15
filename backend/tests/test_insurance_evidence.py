@@ -112,7 +112,7 @@ def _setup(tmp_path):
         serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("ascii")
     client = TestClient(app)
-    shipment_id = client.post("/api/v1/shipments", json={
+    shipment_id = client.post("/api/v1/shipments", headers=ADMIN, json={
         "code": "PHASE6-EVIDENCE",
         "cargo_type": "vaccine",
         "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
@@ -124,10 +124,12 @@ def _setup(tmp_path):
     }).json()["id"]
     assert client.post("/api/v1/devices", headers=ADMIN, json={
         "device_id": "PHASE6-DEVICE",
-        "key_id": "key-v1",
-        "public_key_pem": pem,
-        "shipment_id": shipment_id,
+        "device_name": "Evidence sensor",
     }).status_code == 201
+    assert client.post("/api/v1/devices/PHASE6-DEVICE/assignments", headers=ADMIN,
+                       json={"shipment_id": shipment_id, "active": True}).status_code == 200
+    assert client.post("/api/v1/devices/PHASE6-DEVICE/keys", headers=ADMIN,
+                       json={"key_id": "key-v1", "public_key_pem": pem}).status_code == 201
     return app, client, key, shipment_id, payout_gateway, integrity
 
 

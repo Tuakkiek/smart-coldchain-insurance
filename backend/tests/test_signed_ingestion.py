@@ -41,16 +41,22 @@ def setup_api(tmp_path):
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("ascii")
     with TestClient(app) as client:
-        shipment_id = client.post("/api/v1/shipments", json=SHIPMENT).json()["id"]
+        shipment_id = client.post("/api/v1/shipments", headers=ADMIN, json=SHIPMENT).json()["id"]
         yield client, app, key, pem, shipment_id
     app.state.engine.dispose()
 
 
 def register(client, pem, shipment_id, device_id="ESP32-001"):
-    return client.post("/api/v1/devices", headers=ADMIN, json={
-        "device_id": device_id, "key_id": "key-v1",
-        "public_key_pem": pem, "shipment_id": shipment_id,
+    registered = client.post("/api/v1/devices", headers=ADMIN, json={
+        "device_id": device_id, "device_name": "Test sensor",
     })
+    if registered.status_code != 201:
+        return registered
+    assigned = client.post(f"/api/v1/devices/{device_id}/assignments", headers=ADMIN,
+                           json={"shipment_id": shipment_id, "active": True})
+    assert assigned.status_code == 200, assigned.text
+    return client.post(f"/api/v1/devices/{device_id}/keys", headers=ADMIN,
+                       json={"key_id": "key-v1", "public_key_pem": pem})
 
 
 def signed(key, shipment_id, sequence, *, temperature=5.0, device_id="ESP32-001", key_id="key-v1"):
@@ -159,10 +165,11 @@ def test_sequence_gap_breaks_breach_and_never_dispatches_payout(setup_api):
 def test_production_requires_signed_payload(tmp_path):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'prod.db').as_posix()}", app_env="production",
+        admin_api_key=ADMIN["X-Admin-Key"],
     ))
     Base.metadata.create_all(app.state.engine)
     with TestClient(app) as client:
-        shipment_id = client.post("/api/v1/shipments", json=SHIPMENT).json()["id"]
+        shipment_id = client.post("/api/v1/shipments", headers=ADMIN, json=SHIPMENT).json()["id"]
         response = client.post(f"/api/v1/shipments/{shipment_id}/telemetry", json={
             "device_id": "ESP32-001", "temperature_c": 5.0, "humidity_pct": 80.0,
         })

@@ -21,7 +21,18 @@ print(key.public_key().public_bytes(serialization.Encoding.PEM, serialization.Pu
 '@ | .\backend\.venv\Scripts\python.exe -
 ```
 
-Đăng ký public key vừa in qua `POST /api/v1/devices` với `X-Admin-Key`, `device_id`, `key_id` và UUID của shipment đã tạo. Chỉ public key được gửi lên Backend. Dùng `--sequence` là số **chưa sử dụng** của thiết bị; simulator không tự lưu counter.
+Trước khi tạo khóa, Admin đăng ký device bằng `POST /api/v1/devices` với
+`{"device_id":"SIM-001","device_name":"Simulator 01"}`, tạo shipment bằng `code`
+và lấy **UUID** `id` trả về, rồi gán qua `POST /api/v1/devices/SIM-001/assignments`
+với `{"shipment_id":"<UUID-v4>","active":true}`. Tạo shipment và các thao tác admin
+đều cần `X-Admin-Key`. Một device chỉ có một assignment active, nhiều device có thể cùng shipment.
+
+Đăng ký **public key** vừa in qua `POST /api/v1/devices/SIM-001/keys`, auth `X-Admin-Key`,
+body `{"key_id":"sim-v1","public_key_pem":"<public PEM vừa tạo>"}`.
+Không gửi private PEM tới Backend; API đăng ký device không nhận DTO gộp khóa/chuyến nữa.
+`GET /api/v1/devices` admin trả `has_public_key`/`current_shipment_id` để kiểm tra setup.
+Dùng `--sequence` là số **chưa sử dụng** của thiết bị; simulator không tự lưu counter và
+không tự đăng ký/gán/cấp khóa nếu Backend từ chối dữ liệu.
 
 ```powershell
 .\backend\.venv\Scripts\python.exe device/simulator/send_telemetry.py `
@@ -35,8 +46,14 @@ Chạy từ gốc repo; venv trong ví dụ là `backend/.venv`. `--scenario` c�
 ## Cấu hình ESP32
 
 1. Sao chép `cold_chain_device/config.example.h` thành `cold_chain_device/config.h`. File đích đã bị Git bỏ qua.
-2. Cấp một khóa P-256 **mới** cho board, đăng ký public key tương ứng bằng API admin. Điền Wi-Fi, URL, shipment/device/key ID, private key và PEM của CA xác thực chứng chỉ HTTPS của API. `WiFiClientSecure` sẽ kiểm tra chứng chỉ; CA thiếu hoặc sai khiến lần gửi thất bại.
-3. Nạp sketch bằng Arduino IDE/ESP32 core có thư viện `DHTesp`; đặt DHT22 DATA vào GPIO 27. Đồng bộ NTP phải thành công trước khi ký mẫu.
+2. Đăng ký device ID/tên, tạo chuyến và gán UUID như trên, dùng identity riêng cho board
+   (không dùng chung `SIM-001`/key với simulator). Cấp khóa P-256 mới trên máy tin cậy,
+   điền Wi-Fi, URL, `SHIPMENT_ID` UUID, device/key ID, private key và CA vào `config.h`.
+   `WiFiClientSecure` kiểm tra chứng chỉ; CA thiếu hoặc sai khiến gửi thất bại.
+3. Nạp sketch bằng USB với Arduino IDE/ESP32 core có thư viện `DHTesp`; DHT22 DATA ở GPIO 27.
+   Chỉ đăng ký public key tương ứng qua `/devices/{device_id}/keys` trên API admin, không đưa
+   private key qua React/API/DB. NTP phải thành công trước khi ký; gửi mẫu signed đầu tiên
+   để xác minh private/public key đã cấu hình khớp nhau.
 4. Khi thay device ID hoặc xóa NVS, cấp identity/key mới hoặc đồng bộ số sequence với Backend trước khi gửi. Counter không được quay về số đã dùng. Khi mất mạng, sketch hiện giữ counter nhưng **không giữ mẫu**; Backend có thể phát hiện gap khi có mẫu tiếp theo.
 
 Private key và mật khẩu từng có trong lịch sử Git của sketch. Hãy đổi mật khẩu Wi-Fi cũ, revoke public key thiết bị cũ qua API admin và cấp khóa mới trước khi dùng môi trường triển khai. Việc xóa chúng khỏi phiên bản hiện tại không xóa lịch sử Git.

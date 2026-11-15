@@ -79,7 +79,7 @@ def setup_app(tmp_path):
             payout_status="not_requested",
             created_at=now,
         ))
-        session.add(Device(id="ANCHOR-DEVICE", status="active", created_at=now))
+        session.add(Device(id="ANCHOR-DEVICE", device_name="Anchor sensor", status="active", created_at=now))
         session.commit()
         session.add(IntegrityBatch(
             id=batch_id,
