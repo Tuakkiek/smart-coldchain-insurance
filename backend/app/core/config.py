@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy.engine import URL
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import ArgumentError
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -41,10 +42,58 @@ class Settings:
     data_integrity_abi_path: Path = DEFAULT_INTEGRITY_ABI_PATH
     blockchain_confirmations: int = 1
     blockchain_receipt_timeout_seconds: int = 15
+    public_api_base_url: str = ""
+
+
+def _mysql_url() -> URL:
+    """Build one PyMySQL URL, preferring the provider-supplied DATABASE_URL."""
+    raw_url = os.getenv("DATABASE_URL", "").strip()
+    if raw_url:
+        try:
+            url = make_url(raw_url)
+        except ArgumentError as exc:
+            raise ValueError("DATABASE_URL is not a valid SQLAlchemy URL") from exc
+        if url.get_backend_name() != "mysql":
+            raise ValueError("DATABASE_URL must use MySQL")
+        if not url.host or not url.database:
+            raise ValueError("DATABASE_URL must include a host and database name")
+        url = url.set(drivername="mysql+pymysql")
+    else:
+        url = URL.create(
+            "mysql+pymysql",
+            username=os.getenv("MYSQL_USER", "coldchain_app"),
+            password=os.getenv("MYSQL_PASSWORD", ""),
+            host=os.getenv("MYSQL_HOST", "127.0.0.1"),
+            port=int(os.getenv("MYSQL_PORT", "3306")),
+            database=os.getenv("MYSQL_DATABASE", "smart_coldchain"),
+        )
+
+    query = {
+        key: value for key, value in url.query.items()
+        if key.lower() not in {"ssl-mode", "sslmode"}
+    }
+    query.setdefault("charset", "utf8mb4")
+    if ca_path := os.getenv("MYSQL_SSL_CA"):
+        query["ssl_ca"] = ca_path
+    return url.set(query=query)
 
 
 def load_settings() -> Settings:
     load_dotenv(BACKEND_DIR / ".env")
+    app_env = os.getenv("APP_ENV", "development").strip().lower()
+    if app_env not in {"development", "test", "production"}:
+        raise ValueError("APP_ENV must be development, test or production")
+    admin_api_key = os.getenv("ADMIN_API_KEY", "")
+    cors_origins = tuple(
+        origin.strip().rstrip("/")
+        for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+        if origin.strip()
+    )
+    if app_env == "production":
+        if len(admin_api_key) < 32:
+            raise ValueError("ADMIN_API_KEY must contain at least 32 characters in production")
+        if not cors_origins or "*" in cors_origins:
+            raise ValueError("CORS_ORIGINS must be an explicit allowlist in production")
     enabled_text = os.getenv("BLOCKCHAIN_ENABLED", "false").lower()
     if enabled_text not in {"true", "false"}:
         raise ValueError("BLOCKCHAIN_ENABLED must be true or false")
@@ -106,28 +155,13 @@ def load_settings() -> Settings:
     integrity_batch_max_age_minutes = int(os.getenv("INTEGRITY_BATCH_MAX_AGE_MINUTES", "5"))
     if integrity_batch_max_age_minutes <= 0:
         raise ValueError("INTEGRITY_BATCH_MAX_AGE_MINUTES must be positive")
-    query = {"charset": "utf8mb4"}
-    if ca_path := os.getenv("MYSQL_SSL_CA"):
-        query["ssl_ca"] = ca_path
     return Settings(
-        database_url=URL.create(
-            "mysql+pymysql",
-            username=os.getenv("MYSQL_USER", "coldchain_app"),
-            password=os.getenv("MYSQL_PASSWORD", ""),
-            host=os.getenv("MYSQL_HOST", "127.0.0.1"),
-            port=int(os.getenv("MYSQL_PORT", "3306")),
-            database=os.getenv("MYSQL_DATABASE", "smart_coldchain"),
-            query=query,
-        ),
-        app_env=os.getenv("APP_ENV", "development"),
+        database_url=_mysql_url(),
+        app_env=app_env,
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
-        cors_origins=tuple(
-            origin.strip()
-            for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
-            if origin.strip()
-        ),
+        cors_origins=cors_origins,
         sensor_gap_minutes=sensor_gap_minutes,
-        admin_api_key=os.getenv("ADMIN_API_KEY", ""),
+        admin_api_key=admin_api_key,
         max_request_body_bytes=max_request_body_bytes,
         signed_rate_limit_per_minute=signed_rate_limit_per_minute,
         max_sample_gap_seconds=max_sample_gap_seconds,
@@ -146,4 +180,5 @@ def load_settings() -> Settings:
         data_integrity_abi_path=integrity_abi_path,
         blockchain_confirmations=confirmations,
         blockchain_receipt_timeout_seconds=receipt_timeout,
+        public_api_base_url=os.getenv("PUBLIC_API_BASE_URL", "").strip().rstrip("/"),
     )

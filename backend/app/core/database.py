@@ -33,12 +33,14 @@ def make_engine(database_url: str | URL) -> Engine:
         }
         if ca_path:
             url = url.set(query={key: value for key, value in url.query.items() if key != "ssl_ca"})
-    engine = create_engine(
-        url,
-        connect_args=connect_args,
-        pool_pre_ping=dialect == "mysql",
-        pool_recycle=1800 if dialect == "mysql" else -1,
-    )
+    engine_options = {
+        "connect_args": connect_args,
+        "pool_pre_ping": dialect == "mysql",
+        "pool_recycle": 1800 if dialect == "mysql" else -1,
+    }
+    if dialect == "mysql":
+        engine_options.update(pool_size=5, max_overflow=2, pool_timeout=10)
+    engine = create_engine(url, **engine_options)
     if dialect == "sqlite":
         @event.listens_for(engine, "connect")
         def enable_foreign_keys(dbapi_connection, _connection_record):

@@ -96,7 +96,8 @@ Nếu không chuyển dữ liệu cũ mà bắt đầu database mới:
 ./.venv/Scripts/python.exe -m uvicorn app.main:app --reload
 ```
 
-- Health: <http://127.0.0.1:8000/api/v1/health>
+- Liveness: <http://127.0.0.1:8000/api/v1/health>
+- DB readiness: <http://127.0.0.1:8000/api/v1/ready>
 - Swagger: <http://127.0.0.1:8000/docs>
 - OpenAPI JSON: <http://127.0.0.1:8000/openapi.json>
 
@@ -118,7 +119,7 @@ Với `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true` (mặc định), `INSURANCE_TRIGG
 
 Để cấu hình ESP32, sao chép `device/cold_chain_device/config.example.h` thành `config.h` cùng thư mục và xem `device/README.md`. Sketch yêu cầu HTTPS với CA hợp lệ. Để thử Backend local qua HTTP, dùng Python simulator trên localhost; không đưa dịch vụ HTTP phát triển trực tiếp ra Internet.
 
-Endpoint hiện có: `GET /api/v1/health`, `POST/GET /api/v1/shipments`, `GET /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, các endpoint integrity bên dưới và endpoint demo trong development. Tọa độ vẫn là mô phỏng ở Backend.
+Endpoint hiện có: `GET /api/v1/health`, `GET /api/v1/ready`, `POST/GET /api/v1/shipments`, `GET /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, các endpoint integrity bên dưới và endpoint demo trong development. Tọa độ vẫn là mô phỏng ở Backend.
 
 ## Integrity batch (Phase 4)
 

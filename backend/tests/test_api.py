@@ -44,10 +44,23 @@ def create_shipment(client: TestClient) -> dict:
 
 def test_health_and_openapi(api):
     client, _app = api
-    assert client.get("/api/v1/health").json() == {"status": "ok"}
+    expected = {"status": "ok", "database": "ok", "blockchain": "unavailable"}
+    assert client.get("/api/v1/health").json() == expected
+    assert client.get("/api/v1/ready").json() == expected
     paths = client.get("/openapi.json").json()["paths"]
     assert "/api/v1/shipments/{shipment_id}/telemetry" in paths
+    assert "/api/v1/ready" in paths
     assert client.get("/docs").status_code == 200
+
+
+def test_health_is_live_but_readiness_fails_when_database_is_unavailable(api):
+    client, _app = api
+    result = {"status": "degraded", "database": "unavailable", "blockchain": "unavailable"}
+    with patch("app.api.routes.service_health", return_value=result):
+        assert client.get("/api/v1/health").status_code == 200
+        ready = client.get("/api/v1/ready")
+        assert ready.status_code == 503
+        assert ready.json() == result
 
 
 def test_create_list_detail_and_persistence(api):

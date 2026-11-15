@@ -13,6 +13,7 @@ from app.models import Shipment, ShipmentEvent, Telemetry
 
 
 def test_runtime_settings_use_mysql_and_keep_special_password(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("MYSQL_HOST", "127.0.0.1")
     monkeypatch.setenv("MYSQL_PORT", "3306")
     monkeypatch.setenv("MYSQL_DATABASE", "smart_coldchain")
@@ -50,6 +51,39 @@ def test_runtime_settings_use_mysql_and_keep_special_password(monkeypatch):
     monkeypatch.setenv("SENSOR_GAP_MINUTES", "0")
     with pytest.raises(ValueError, match="SENSOR_GAP_MINUTES"):
         load_settings()
+
+
+def test_database_url_takes_precedence_and_uses_pymysql(monkeypatch):
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "mysql://provider:p%40ss%2Fword@mysql.example.com:25060/coldchain?ssl-mode=REQUIRED",
+    )
+    monkeypatch.setenv("MYSQL_HOST", "ignored.example.com")
+    settings = load_settings()
+    assert settings.database_url.drivername == "mysql+pymysql"
+    assert settings.database_url.host == "mysql.example.com"
+    assert settings.database_url.port == 25060
+    assert settings.database_url.database == "coldchain"
+    assert settings.database_url.password == "p@ss/word"
+    assert settings.database_url.query == {"charset": "utf8mb4"}
+
+
+def test_production_requires_admin_secret_and_explicit_cors(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("ADMIN_API_KEY", "short")
+    monkeypatch.setenv("CORS_ORIGINS", "https://frontend.example.com")
+    with pytest.raises(ValueError, match="ADMIN_API_KEY"):
+        load_settings()
+
+    monkeypatch.setenv("ADMIN_API_KEY", "a" * 32)
+    monkeypatch.setenv("CORS_ORIGINS", "*")
+    with pytest.raises(ValueError, match="CORS_ORIGINS"):
+        load_settings()
+
+    monkeypatch.setenv("CORS_ORIGINS", "https://frontend.example.com/")
+    settings = load_settings()
+    assert settings.app_env == "production"
+    assert settings.cors_origins == ("https://frontend.example.com",)
 
 
 def test_mysql_schema_keeps_double_and_microsecond_precision():

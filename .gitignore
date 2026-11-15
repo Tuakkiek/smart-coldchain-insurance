@@ -28,3 +28,5 @@ blockchain/cache/
 blockchain/typechain-types/
 blockchain/coverage/
 blockchain/coverage.json
+
+python-blockchain-demo

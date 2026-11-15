@@ -219,7 +219,13 @@ Mỗi mẫu được so với ngưỡng **bao gồm hai đầu mút** `[temp_min
 
 ## Health và demo
 
-`GET /api/v1/health` → `200 OK`: `{"status":"ok"}`.
+`GET /api/v1/health` là **liveness** và luôn trả `200` khi process API còn phục vụ được. Endpoint kiểm tra `SELECT 1` trên database và RPC/chain ID khi Blockchain được bật, nhưng không trả URL, credential hay lỗi nội bộ:
+
+```json
+{"status":"ok","database":"ok","blockchain":"unavailable"}
+```
+
+`blockchain: "unavailable"` là trạng thái bình thường khi `BLOCKCHAIN_ENABLED=false`; khi Blockchain đã bật mà RPC lỗi, `status` chuyển thành `degraded`. `GET /api/v1/ready` trả cùng schema, nhưng trả `503` nếu database không sẵn sàng. RPC lỗi không làm readiness thất bại vì telemetry vẫn phải được ghi MySQL trước và giao dịch Blockchain được retry qua outbox.
 
 `POST /api/v1/demo/shipments/{id}/scenario` chỉ tồn tại trong môi trường development, nhận `{"scenario":"normal"}` hoặc `{"scenario":"temperature_breach"}`. Trả `200 OK`:
 

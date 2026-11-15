@@ -12,6 +12,36 @@
 > **Cập nhật 2026-11-09 — Phase 4 IN_PROGRESS/LOCAL_TESTED:** Đã thêm Alembic `20261109_02`, bảng batch/item/outbox, auto/manual sealing theo cặp shipment/device, membership bất biến, API summary/list/detail/verify và tamper alert `INTEGRITY_MISMATCH`. Bộ Backend pass `63`, Hardhat pass `66` gồm golden vector/E2E contract. Chưa áp dụng migration lên MySQL production và chưa dispatch outbox tới `ColdChainDataIntegrity`; anchoring/readback thuộc Phase 5 nên chưa đánh dấu Phase 4/5 hoàn tất trên môi trường deploy.
 > **Cập nhật 2026-11-11 — Phase 5 LOCAL_TESTED:** Backend đã có adapter `ColdChainDataIntegrity`, signer anchorer riêng, dispatcher outbox idempotent, persist signed transaction trước broadcast, receipt/confirmation handling, on-chain metadata readback và API admin retry. E2E local Hardhat `signed telemetry → sealed batch → anchorBatch → receipt → getBatch/verify` pass; RPC-timeout reconciliation và mismatch fail-closed có test. Chưa deploy contract/address/signer lên testnet/Render và chưa chạy migration Phase 4 trên MySQL production, nên Phase 5 chưa `DEPLOYED`.
 > **Cập nhật 2026-11-13 — Phase 6 LOCAL_TESTED:** Đã nối evidence gate mặc định `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`: signed telemetry liên tục theo `received_at`, không gap, đủ thời lượng, toàn bộ batch `MATCHED + DATA_ANCHORED` và on-chain readback khớp mới được gọi Insurance Oracle. Event lưu evidence ID, telemetry IDs, batch/root/anchor tx, policy/gap/status; có admin/CLI reconcile idempotent. Unit test chặn payout ở 14 phút, anchor pending và tamper; E2E Hardhat `signed telemetry → multi-batch anchors → evidence verify → reportViolation → paid` pass. Chưa chạy testnet/Render/MySQL production và chưa có worker định kỳ cho offline/retry, nên Phase 6 chưa `DEPLOYED`.
+> **Cập nhật 2026-11-15 — Phase 7 DEPLOYMENT_READY/LOCAL_TESTED:** Backend đã hỗ trợ `DATABASE_URL` MySQL ưu tiên, pool/timeout/TLS, production guard cho admin secret và CORS, tắt demo theo `APP_ENV`, liveness `/health` và DB-readiness `/ready` không lộ cấu hình. Dependency trực tiếp đã khóa phiên bản; Blueprint chạy migration idempotent trước Uvicorn và runbook Render đã được cập nhật theo giới hạn Free service. Bộ Backend pass `71`, skip `3` trên Python 3.13 với đúng requirements đã khóa. Chưa có external MySQL credential, URL Render thật, public HTTPS/simulator smoke test, restart-persistence/CORS test hoặc testnet contract, nên Phase 7 chưa `DEPLOYED`.
+
+> **Điều chỉnh thiết kế demo 2026-11-15:** Đồng bộ với [roadmap NTD](ROADMAP_NTD_BLOCKCHAIN_SMART_CONTRACT.md) và [roadmap TTDK](ROADMAP_TTDK_FRONTEND_QA.md). Tách đăng ký thiết bị, tạo chuyến hàng, gán chuyến và cấp khóa thành các bước độc lập. Đây là **công việc đề xuất bổ sung**, chưa triển khai trong lượt sửa tài liệu; giữ nguyên tiến độ và checkbox đã có. Các kết quả test ở trên là lịch sử được giữ lại, không phải kết quả chạy lại lần này.
+
+### Quy trình demo thống nhất giữa ba thành viên
+
+**Admin đăng ký thiết bị → Admin đăng ký chuyến hàng → Liên kết thiết bị với chuyến hàng → Cấp khóa cho ESP32 → ESP32 ký và gửi dữ liệu → Backend xác minh bằng Public Key → Lưu MySQL → Tạo bằng chứng Blockchain → Xử lý bảo hiểm.**
+
+- **Device ID:** `device_id = "ESP32-001"`; thêm `device_name = "Cold Chain Sensor 01"`. Đăng ký chỉ cần hai trường này, chưa cần khóa hoặc chuyến hàng.
+- **Shipment ID trên giao diện:** mã người dùng nhập `SHIP-001` ánh xạ vào trường **`code`** hiện có. Backend tiếp tục tạo **`id` UUID v4 chữ thường**; UUID này là `shipment_id` trong path, assignment, firmware, signed payload và `shipmentKey`. Không đổi giao thức ký để đưa `SHIP-001` vào trường UUID.
+- **Quan hệ:** mỗi thiết bị có tối đa **một assignment `active=true`**, một chuyến được gán nhiều thiết bị. Muốn đổi chuyến, bỏ gán cũ (`active=false`) rồi gán mới; không tự sửa dữ liệu lịch sử hay reset sequence.
+- **Cấp khóa:** script Python trên máy tin cậy tạo một cặp **ECDSA P-256 + SHA-256** riêng cho mỗi thiết bị, ghi private key vào `device/cold_chain_device/config.h`, nạp USB; chỉ gửi public key SPKI PEM và `key_id` tới API admin. Không có PKI, chứng chỉ thiết bị, OTA hay cấp khóa từ xa trong demo.
+- **Điều kiện gửi hợp lệ:** device đã đăng ký và `active`, shipment tồn tại, assignment tương ứng đang active, `key_id` thuộc device và còn active, chữ ký/format đúng, sequence hợp lệ. Có public key trong DB chưa chứng minh ESP32 đã được nạp đúng khóa; cần một mẫu ký thật được Backend xác minh.
+- **Giữ nguyên:** DHT22 → HTTPS → FastAPI → MySQL → `MERKLE-v1` → Data Integrity Contract; Backend là Oracle/Blockchain Adapter và Insurance Contract xử lý bảo hiểm. Khóa ESP32 và từng mẫu cảm biến không lên Blockchain.
+
+### Đối chiếu code hiện có và phần cần làm
+
+Kiểm tra tĩnh tại `backend/app/api/routes.py`, `schemas/api.py`, `models/entities.py`, `services/signed_ingestion.py`, `services/telemetry_protocol.py` và `device/`; **không xác nhận môi trường deploy bằng việc đọc code**.
+
+| Hạng mục | Code hiện có | Thay đổi đề xuất trong roadmap |
+|---|---|---|
+| Đăng ký device | `POST /devices` bắt buộc `device_id`, `key_id`, `public_key_pem`, `shipment_id` cùng lúc | Đổi cùng endpoint thành đăng ký `device_id` + `device_name`; key/assignment đăng ký riêng |
+| Danh sách device | Chưa có `GET /devices` ở Backend; client/mock Frontend đã tham chiếu | Bổ sung một endpoint danh sách admin, gồm cả device chưa có key/chưa gán |
+| Cấp public key | Có `POST /devices/{device_id}/keys`, body `key_id`, `public_key_pem`, auth `X-Admin-Key` | Tái sử dụng; không thêm alias `/public-key` hoặc `/keys/rotate` |
+| Liên kết | Có `POST /devices/{device_id}/assignments`, body `shipment_id`, `active`; chưa chặn nhiều assignment active | Tái sử dụng; bổ sung kiểm tra một chuyến đang gán, transaction/khóa chống race; không thêm `/assign` |
+| Shipment | Có create/list/detail, `code` unique và `id` UUID do server tạo; create chưa dùng `AdminSession` | Giữ DTO/ID; bảo vệ thao tác tạo bằng auth admin hiện có |
+| MySQL | Có `devices`, `device_keys`, `device_assignments`, `signed_telemetry_receipts`, `ingestion_audit` | Thêm tên thiết bị và ràng buộc một assignment active, không dựng bảng registry mới |
+| Firmware/simulator | Có `config.example.h`, `.gitignore` cho `config.h`, P-256 signed simulator; README tạo khóa bằng đoạn Python thủ công | Bổ sung script provisioning tái sử dụng và hướng dẫn theo trình tự mới; board cross-test vẫn chưa được xác nhận |
+
+Request/response và lỗi mục tiêu nằm ở **§3**; migration nằm ở **Phase 3**. Tài liệu `api-v1.md` hiện có một số đoạn tiến độ cũ, nên khi triển khai phải cập nhật cùng OpenAPI theo code thực tế, không coi mọi endpoint trong roadmap đã chạy.
 
 ---
 
@@ -20,7 +50,7 @@
 ### 1.1. Bạn chịu trách nhiệm
 
 - **ESP32:** đọc nhiệt độ/độ ẩm, định danh thiết bị, quản lý khóa ký, đánh số thứ tự mẫu, ký telemetry, gửi HTTPS, retry/reconnect và bộ đệm khi offline.
-- **FastAPI:** API quản lý lô hàng và thiết bị; đăng ký public key; xác minh chữ ký; phát hiện replay/duplicate, sequence gap, mất tín hiệu; lưu dữ liệu hợp lệ và audit sự kiện bị từ chối.
+- **FastAPI:** API admin đăng ký thiết bị bằng ID/tên, tạo chuyến bằng mã nghiệp vụ, gán thiết bị và đăng ký public key riêng; xác minh chữ ký và quan hệ Device–Shipment; phát hiện replay/duplicate, sequence gap, mất tín hiệu; lưu dữ liệu hợp lệ và audit sự kiện bị từ chối.
 - **MySQL:** là **nguồn lưu trữ chính** cho telemetry, thiết bị, lô hàng, integrity batch, sự kiện vi phạm, bảo hiểm, giao dịch Blockchain; có migration, index và backup theo khả năng nhà cung cấp.
 - **Data Integrity Service:** chuẩn hóa bản ghi, tạo batch, tính hash/Merkle root, lưu bằng chứng, đối chiếu dữ liệu với root trên Blockchain.
 - **Blockchain Adapter:** tích hợp cả **Data Integrity Contract** và **Insurance Contract** do Member 2 sở hữu; Backend là Oracle và tác nhân gửi transaction được ủy quyền.
@@ -43,10 +73,11 @@
 ```text
 smart-coldchain-insurance/
 ├── device/                           # Member 1
-│   ├── esp32/
+│   ├── cold_chain_device/
 │   │   ├── cold_chain_device.ino
-│   │   ├── config.example.h
-│   │   └── README.md
+│   │   └── config.example.h
+│   ├── provisioning/
+│   │   └── provision_device.py       # Đề xuất mới: sinh khóa local + đăng ký public key
 │   ├── simulator/
 │   │   ├── send_telemetry.py
 │   │   └── fixtures/
@@ -94,19 +125,23 @@ smart-coldchain-insurance/
 └── README.md
 ```
 
-**Nguyên tắc:** dùng cấu trúc hiện có của repository nếu đã được triển khai hợp lý. Tài liệu cấu trúc ở trên **không phải** kết quả kiểm tra repository: hiện chỉ có Roadmap NTK và prompt nâng cấp được cung cấp để sửa.
+**Nguyên tắc:** dùng cấu trúc hiện có, không tách lại các module Backend chỉ để giống cây tham chiếu. Sketch thực tế ở `device/cold_chain_device/`; `provisioning/provision_device.py` là deliverable đề xuất chưa có trong repo. Cây trên không phải danh sách tính năng đã triển khai.
 
 ## 2. Kiến trúc và quy ước kỹ thuật bắt buộc
 
 ### 2.1. Luồng dữ liệu mục tiêu
 
 ```text
-ESP32 + Temperature/Humidity Sensors
-  └─ HTTPS + Signed Telemetry + device_id + sequence_number + recorded_at
+Admin → register device (ID/name) → create shipment (code → UUID)
+  → assign device to shipment → trusted Python provisioning → USB flash ESP32
+  → register public key only in MySQL via admin API
+
+ESP32 + DHT22
+  └─ HTTPS + Signed Telemetry + device_id + shipment_id (UUID) + key_id + sequence_number + recorded_at
       ↓
 Public FastAPI Backend (Render)
-  ├─ Authenticate device / lookup registered public key
-  ├─ Verify ECDSA signature + payload + shipment assignment
+  ├─ Find registered active device / check active shipment assignment
+  ├─ Lookup active public key / verify ECDSA signature + payload
   ├─ Detect duplicate / replay / sequence gap / offline
   ├─ Store received_at (authoritative) and accepted telemetry
   └─ Audit rejected attempts separately
@@ -170,7 +205,7 @@ Nếu thuật toán/thư viện ký số không phù hợp với ESP32 thật, p
 ```json
 {
   "payload_version": 1,
-  "shipment_id": "SHIP-001",
+  "shipment_id": "8b4fb8a2-2996-4da2-90b9-35019517f56f",
   "device_id": "ESP32-001",
   "key_id": "key-v1",
   "sequence_number": 1524,
@@ -200,7 +235,7 @@ Nếu thuật toán/thư viện ký số không phù hợp với ESP32 thật, p
 Canonical JSON projection minh họa:
 
 ```json
-{"device_id":"ESP32-001","firmware_version":"1.0.0","humidity_milli_pct":80000,"key_id":"key-v1","payload_version":1,"recorded_at":"2026-11-04T10:30:00Z","sequence_number":1524,"shipment_id":"SHIP-001","temperature_milli_c":12500}
+{"device_id":"ESP32-001","firmware_version":"1.0.0","humidity_milli_pct":80000,"key_id":"key-v1","payload_version":1,"recorded_at":"2026-11-04T10:30:00Z","sequence_number":1524,"shipment_id":"8b4fb8a2-2996-4da2-90b9-35019517f56f","temperature_milli_c":12500}
 ```
 
 > **Ghi chú triển khai:** profile canonical này là giao thức v1 của dự án (object cố định, không số thực), **không** tuyên bố là triển khai đầy đủ RFC 8785/JCS. Nếu muốn thay bằng JCS, phải chốt lại và cập nhật tất cả golden fixtures trước khi triển khai. Không được dùng `json.dumps()` mặc định trên mọi object tùy ý rồi cho là canonical.
@@ -215,7 +250,7 @@ Canonical JSON projection minh họa:
 - Offline được xác định theo thời gian từ **lần cuối Backend nhận telemetry/heartbeat hợp lệ** với ngưỡng cấu hình. Heartbeat dùng chữ ký/nonce hoặc bộ đếm **riêng**; không sử dụng cùng sequence telemetry khiến báo gap giả.
 - Trạng thái offline khi service Render Free đang ngủ không đủ để suy luận chắc chắn thiết bị lỗi. UI cần phân biệt `last_seen_at`, `telemetry_gap`, và `backend_availability` khi đủ dữ liệu.
 - **Không dùng `recorded_at` của gói đến trễ để tự bù thời lượng vi phạm 15 phút**; những gói đó có thể hữu ích cho phân tích/audit nhưng không tạo bằng chứng quan sát liên tục bởi Backend.
-- Key rotation gắn `key_id`, ngày hiệu lực/thu hồi và audit. Khóa private ESP32 đặt trong vùng bảo vệ có thể có trên board; nếu chỉ lưu flash/NVS thông thường phải ghi nhận rủi ro trích xuất khi bị truy cập vật lý.
+- Giữ `key_id` bắt buộc như protocol hiện có; demo chỉ cần một key active cho mỗi thiết bị. Tái sử dụng API revoke/add key hiện có khi khóa lộ, không cần màn hình rotation hoặc dịch vụ quản lý vòng đời khóa. Private key được nạp qua `config.h`/USB; flash/NVS thông thường vẫn có rủi ro bị trích xuất khi truy cập vật lý.
 
 ### 2.6. Data Integrity Batch / Merkle Tree v1
 
@@ -244,11 +279,13 @@ Metadata tối thiểu của `IntegrityBatch`: `batch_id`, `shipment_id`, `devic
 
 Các nhóm trạng thái có thể tồn tại đồng thời: batch **đã anchor** nhưng vẫn có **sequence gap** ở dữ liệu gốc. Frontend không được tự suy ra chữ ký hợp lệ, bằng chứng bất biến, hay payout từ một field đơn lẻ.
 
+Đây là nhóm ý nghĩa/nhãn UI, không yêu cầu đổi enum API hiện có. `completeness_status` trên telemetry hiện chỉ `COMPLETE/DATA_INCOMPLETE`; `UNKNOWN/ONLINE/OFFLINE` lấy từ `telemetry_status` ở health theo shipment. `DATA_VERIFIED` là nhãn cho mẫu được Backend chấp nhận với chữ ký hợp lệ, không phải field bắt buộc mới. Payout wire enum/mapping và nguồn transaction hiện có xem §3.3.
+
 ---
 
 ## 3. Hợp đồng REST API và dữ liệu dùng chung — khóa từ Phase 0
 
-Member 1 cập nhật `docs/contracts/api-v1.md` với OpenAPI, request/response, lỗi và fixture. Các endpoint dưới đây là **contract đề xuất v1** cần thống nhất rồi mới implementation; giữ endpoint gốc khi còn cần.
+Member 1 cập nhật `docs/contracts/api-v1.md` và OpenAPI khi triển khai. Bảng dưới phân biệt **route đã có trong code** với **thay đổi đề xuất**, chưa xác nhận deploy. API dùng prefix `/api/v1`; request/response tối thiểu cho quy trình mới ở §3.6 là contract mục tiêu chung cho ba roadmap.
 
 ### 3.1. Nhóm quản lý lô hàng và vị trí mô phỏng (giữ từ Roadmap cũ)
 
@@ -267,97 +304,72 @@ Member 1 cập nhật `docs/contracts/api-v1.md` với OpenAPI, request/response
 }
 ```
 
-Backend validate min/max, thời lượng và số tiền; vị trí được nội suy xác định dựa trên tuyến điểm đầu/cuối, thời gian hoặc số mẫu hợp lệ. Chỉ sử dụng `location_source: "backend_simulated"`; nếu chưa có telemetry thì trả trạng thái chưa khởi hành, không tạo tọa độ cập nhật giả.
+Admin nhập **mã chuyến `SHIP-001` vào `code`**, không truyền `id`. Backend trả `201` cùng ShipmentDetail với `id` UUID v4; ví dụ `8b4fb8a2-2996-4da2-90b9-35019517f56f`. Dùng UUID trả về cho mọi path/assignment/firmware/telemetry và `shipmentKey`; UI luôn hiển thị `code` dễ đọc. Tạo shipment chỉ lưu policy nghiệp vụ trong MySQL, **không tự tạo policy đã fund trên chain**; NTD/NTK tiếp tục dùng seed/quy trình `createPolicy` hiện có với cùng UUID.
+
+Backend validate min/max, thời lượng và số tiền; giữ `cargo_type` và origin/destination có tọa độ theo DTO hiện có. UI có thể cung cấp lựa chọn điểm đi/đến mẫu để giảm nhập liệu, vẫn gửi đủ DTO, không thêm dịch vụ bản đồ mới. Chỉ sử dụng `location_source: "backend_simulated"`; chưa có telemetry thì `latest_telemetry` và `location` là `null`.
 
 ### 3.2. Danh sách endpoint chuẩn
 
-| Method | Endpoint | Nguồn gọi / mục đích |
-|---|---|---|
-| `GET` | `/api/v1/health` | Liveness/API và dependency status an toàn; không lộ secret |
-| `GET` | `/api/v1/ready` | (Khuyến nghị) readiness kiểm tra DB với timeout ngắn |
-| `POST` | `/api/v1/shipments` | Admin tạo shipment + policy mẫu |
-| `GET` | `/api/v1/shipments` | Danh sách shipment |
-| `GET` | `/api/v1/shipments/{shipment_id}` | Chi tiết, tọa độ mô phỏng, trạng thái tổng hợp |
-| `GET` | `/api/v1/shipments/{shipment_id}/telemetry` | Dữ liệu đo, thời gian server, integrity status |
-| `POST` | `/api/v1/shipments/{shipment_id}/telemetry` | **ESP32:** gửi telemetry có chữ ký |
-| `GET` | `/api/v1/shipments/{shipment_id}/events` | Cảnh báo, vi phạm, sự kiện bảo hiểm |
-| `GET` | `/api/v1/shipments/{shipment_id}/insurance` | Policy, eligibility, payout status, tx receipt |
-| `GET` | `/api/v1/shipments/{shipment_id}/integrity` | Tổng quan verified/invalid/missing + anchor |
-| `GET` | `/api/v1/shipments/{shipment_id}/integrity/batches` | Danh sách batch và Merkle root/tx |
-| `POST` | `/api/v1/devices` | **Admin:** đăng ký `device_id` + public key + assignment |
-| `GET` | `/api/v1/devices` | Danh sách device/status |
-| `GET` | `/api/v1/devices/{device_id}` | Metadata, key_id hiện hành, firmware version (không lộ secret) |
-| `GET` | `/api/v1/devices/{device_id}/health` | Last seen, last seq, gap count, online/offline |
-| `GET` | `/api/v1/devices/{device_id}/missing-sequences` | Dải sequence thiếu được Backend phát hiện |
-| `POST` | `/api/v1/devices/{device_id}/heartbeat` | Device heartbeat có chữ ký/nonce riêng nếu triển khai |
-| `POST` | `/api/v1/devices/{device_id}/keys/rotate` | **Admin:** luân chuyển/revoke public key, ghi audit |
-| `GET` | `/api/v1/integrity/batches/{batch_id}` | Chi tiết metadata batch, on-chain status |
-| `POST` | `/api/v1/integrity/batches/{batch_id}/verify` | **Admin:** tính lại root, đối chiếu on-chain, audit |
-| `GET` | `/api/v1/integrity/audit` | **Admin:** nhật ký thay đổi và thất bại integrity |
-| `GET` | `/api/v1/blockchain/transactions/{transaction_id}` | Trạng thái submission/receipt/confirmed/failed |
-| `POST` | `/api/v1/demo/shipments/{shipment_id}/scenario` | **Dev/local only**; dùng service thật + virtual clock, tắt trên public production |
+| Method | Endpoint | Nguồn gọi / mục đích | Hiện trạng → công việc đề xuất |
+|---|---|---|---|
+| `POST` | `/api/v1/devices` | **Admin UI:** `device_id`, `device_name` | Có route; tách key/assignment khỏi DTO đăng ký |
+| `GET` | `/api/v1/devices` | **Admin UI:** mọi device, tên, trạng thái key và chuyến hiện gán | **Route mới cần bổ sung** |
+| `POST` | `/api/v1/shipments` | **Admin UI:** `code` + thông tin/policy, trả `id` UUID | Có; giữ DTO, thêm `AdminSession` cho thao tác tạo |
+| `GET` | `/api/v1/shipments` | Danh sách chuyến `{items, total}` | Có; giữ nguyên |
+| `POST` | `/api/v1/devices/{device_id}/assignments` | **Admin UI:** `{shipment_id, active}` | Có; chặn nhiều assignment active, bảo đảm idempotent |
+| `POST` | `/api/v1/devices/{device_id}/keys` | **Script trên máy tin cậy:** `{key_id, public_key_pem}` | Có; dùng cho cấp khóa ban đầu sau đăng ký |
+| `POST` | `/api/v1/shipments/{shipment_id}/telemetry` | **ESP32/simulator:** signed payload v1 | Có; giữ protocol và kiểm tra key/assignment/sequence |
+| `GET` | `/api/v1/devices/{device_id}` | **Admin:** metadata device, keys, assignments | Có; mở rộng cùng DeviceView §3.6 |
+| `PATCH` | `/api/v1/devices/{device_id}` | **Admin:** active/revoked | Có; giữ để xử lý sự cố, không bắt buộc thêm UI |
+| `PATCH` | `/api/v1/devices/{device_id}/keys/{key_id}` | **Admin:** active/revoked key | Có; giữ để thu hồi key, không tạo `/keys/rotate` |
+| `GET` | `/api/v1/shipments/{shipment_id}` | Chi tiết, vị trí mô phỏng, insurance/blockchain payout metadata | Có; dùng luôn thay endpoint `/insurance` riêng |
+| `GET` | `/api/v1/shipments/{shipment_id}/devices` | Device health theo chuyến: last seen, sequence, online/offline | Có; dùng thay các route `/health` theo device chưa có |
+| `GET` | `/api/v1/shipments/{shipment_id}/telemetry` | Nhiệt độ/độ ẩm, signed status và missing range khi có | Có |
+| `GET` | `/api/v1/shipments/{shipment_id}/events` | Timeline vi phạm, evidence, integrity alerts | Có; dùng cho audit nghiệp vụ hiện có |
+| `GET` | `/api/v1/shipments/{shipment_id}/integrity` | Tổng quan batch/root/anchor/verification | Có; không giả có counters chưa được DTO trả |
+| `GET` | `/api/v1/shipments/{shipment_id}/batches` | Danh sách Merkle batch | Có; giữ path, không thêm `/integrity/batches` |
+| `GET` | `/api/v1/batches/{batch_id}` | Chi tiết batch, anchor transaction | Có |
+| `POST` | `/api/v1/batches/{batch_id}/verify` | Tính lại root, đối chiếu on-chain | Có; chính sách bảo vệ admin cần rà soát, route hiện chưa dùng `AdminSession` |
+| `POST` | `/api/v1/shipments/{shipment_id}/batches/seal` | **Admin:** seal batch khi demo/reconcile | Có; giữ nguyên |
+| `POST` | `/api/v1/batches/{batch_id}/anchor` | **Admin:** dispatch/retry anchor | Có; giữ nguyên |
+| `POST` | `/api/v1/shipments/{shipment_id}/insurance/reconcile` | **Admin:** đối soát evidence/payout | Có; giữ nguyên |
+| `GET` | `/api/v1/health`, `/api/v1/ready` | Health/readiness không lộ secret | Có |
+| `POST` | `/api/v1/demo/shipments/{shipment_id}/scenario` | **Dev/local only** | Có `normal`, `temperature_breach`; mở rộng scenario chỉ khi triển khai thật |
 
-Với API public, các route ghi dữ liệu và route admin cần authentication, authorization, validation và rate limit thích hợp; **không coi CORS là cơ chế authentication**. Có phân trang và filter cho lịch sử telemetry/batches/audit.
+**Auth dùng lại:** `X-Admin-Key` và dependency `AdminSession` cho đăng ký/list/detail thiết bị, assignment, public key và tạo shipment theo thiết kế mục tiêu. Header này hiện có trên các route device admin; tạo shipment chưa được bảo vệ nên là nhiệm vụ chưa hoàn thành. Script lấy admin credential ở môi trường máy tin cậy, không ghi vào `config.h`. Admin UI nhận credential lúc sử dụng, không nhúng vào bundle/`VITE_*` hay log. CORS phải cho phép header cần dùng và không thay authentication. Read-only monitoring giữ phân quyền theo API hiện có.
+
+Không thêm alias `/assign`, `/public-key`, device registry contract hoặc dịch vụ provisioning riêng. Pagination/filter là mở rộng khi cần, không giả đã có trong v1; demo có thể dùng `{items, total}` hiện tại.
 
 ### 3.3. Response thống nhất để Member 3 triển khai
 
 ```json
 {
-  "id": "SHIP-001",
+  "id": "8b4fb8a2-2996-4da2-90b9-35019517f56f",
   "code": "SHIP-001",
   "cargo_type": "vaccine",
-  "status": "in_transit",
+  "status": "created",
+  "origin": {"name": "Kho A", "latitude": 10.03, "longitude": 105.77},
+  "destination": {"name": "Điểm nhận B", "latitude": 10.05, "longitude": 105.81},
   "temp_min_c": 2.0,
   "temp_max_c": 8.0,
   "violation_duration_minutes": 15,
-  "latest_telemetry": {
-    "device_id": "ESP32-001",
-    "sequence_number": 1524,
-    "temperature_c": 12.5,
-    "humidity_pct": 80.0,
-    "recorded_at": "2026-11-04T10:30:00Z",
-    "received_at": "2026-11-04T10:30:03Z",
-    "signature_status": "VALID",
-    "data_status": "DATA_VERIFIED"
-  },
-  "device_integrity": {
-    "last_sequence_number": 1524,
-    "missing_sequence_count": 0,
-    "last_heartbeat_at": null,
-    "online_status": "ONLINE",
-    "firmware_version": "1.0.0"
-  },
-  "location": {
-    "latitude": 10.03,
-    "longitude": 105.77,
-    "location_source": "backend_simulated",
-    "progress_pct": 25.0
-  },
-  "integrity": {
-    "verified_records": 1,
-    "invalid_records": 0,
-    "missing_records": 0,
-    "latest_batch_id": "<batch-id-or-null>",
-    "anchor_status": "BLOCKCHAIN_PENDING",
-    "verification_status": "NOT_CHECKED"
-  },
+  "latest_telemetry": null,
+  "location": null,
   "insurance": {
     "insured_amount_vnd": 10000000,
     "status": "active",
-    "payout_status": "NOT_ELIGIBLE"
+    "payout_status": "not_requested"
   },
-  "blockchain": {
-    "network": "<configured-testnet>",
-    "anchor_transaction_hash": null,
-    "insurance_transaction_hash": null,
-    "confirmation_status": "NOT_SUBMITTED"
-  }
+  "blockchain": null,
+  "created_at": "2026-11-15T03:00:00Z"
 }
 ```
 
-Đây là **fixture minh họa**, không phải kết quả từ hệ thống đang chạy. Field thực tế, nullable behavior và enum phải được khóa trong `api-v1.md`, sinh/kiểm tra bằng OpenAPI và cung cấp type cho Frontend. `anchor_transaction_hash` phải tách khỏi `insurance_transaction_hash`.
+Đây là **fixture theo ShipmentDetail hiện có khi vừa tạo chuyến**, không phải kết quả gọi API trong lượt sửa tài liệu. Sau khi có signed telemetry, giữ `latest_telemetry.signature_status`, `sequence_number`, `completeness_status`/missing range theo DTO thực; không cần thêm object `device_integrity` hoặc counters mới chỉ cho đăng ký demo. Device health lấy từ `/shipments/{shipment_id}/devices`, integrity từ `/shipments/{shipment_id}/integrity`.
 
-**Quy tắc HTTP tối thiểu:** `201` cho mẫu được nhận mới; `200` cho cùng mẫu retry idempotent; `401/403` cho thiết bị chưa được phép/chữ ký sai theo chính sách bảo mật thống nhất; `409` cho cùng sequence nhưng payload khác; `422` validation lỗi; `503` khi dependency cần thiết không sẵn sàng. Error body có `code`, `message`, `request_id` nhưng không lộ stack trace/secret.
+API hiện có trả `insurance.payout_status = not_requested / evidence_pending / pending / paid / failed`; UI ánh xạ lần lượt sang nhãn `NOT_ELIGIBLE / EVIDENCE_PENDING / PENDING / CONFIRMED / FAILED`. Anchor tx lấy từ `GET /batches/{batch_id}` → `anchor_transaction.transaction_hash`; insurance tx lấy từ ShipmentDetail → `blockchain.transaction_hash`. Giữ hai nguồn này tách biệt, không bắt buộc đổi field API thành `anchor_transaction_hash`/`insurance_transaction_hash`. Các counters/trường chưa có phải hiện `N/A` hoặc dùng fixture có nhãn mock.
+
+**Quy tắc HTTP tối thiểu:** `201` cho mẫu được nhận mới; `200` cho cùng mẫu retry idempotent; `401/403` cho thiết bị chưa được phép/chữ ký sai; `409` cho cùng sequence nhưng payload khác; `422` validation lỗi; `503` khi dependency cần thiết không sẵn sàng. Giữ error envelope hiện có `{"error":{"code":"...","message":"...","details":[]}}` và correlation header `X-Request-ID`; không yêu cầu `request_id` trong body khi code chưa trả.
 
 ### 3.4. API demo an toàn
 
@@ -372,6 +384,56 @@ Với API public, các route ghi dữ liệu và route admin cần authenticatio
 - `docs/architecture/data-integrity.md`: chi tiết chữ ký, canonicalization, leaf/Merkle, byte encoding, membership, sequence rules và golden test vectors.
 - `blockchain/INTEGRATION.md` thuộc Member 2: ABI, address, chain ID, RPC, `batch_key`/`shipment_key`, event, contract permissions và xác nhận batch root.
 
+### 3.6. Contract mục tiêu cho đăng ký, gán chuyến và cấp khóa — chưa triển khai
+
+**A. Đăng ký thiết bị độc lập:** `POST /api/v1/devices`, auth admin:
+
+```json
+{"device_id":"ESP32-001","device_name":"Cold Chain Sensor 01"}
+```
+
+`device_id` giữ pattern hiện có `[A-Za-z0-9_-]{1,100}`, phân biệt hoa/thường; tên được trim, không rỗng, tối đa 100 ký tự. Trùng ID trả `409 DEVICE_EXISTS`; không tự sửa device có sẵn. Không bắt buộc `key_id`, PEM hay shipment. Thay DTO cũ là thay đổi cần cập nhật đồng thời Backend, Frontend, simulator setup và tài liệu; không thêm endpoint đăng ký thứ hai. `201` trả **DeviceView mục tiêu**:
+
+```json
+{
+  "device_id": "ESP32-001",
+  "device_name": "Cold Chain Sensor 01",
+  "status": "active",
+  "has_public_key": false,
+  "current_shipment_id": null,
+  "last_sequence_number": 0,
+  "last_seen_at": null,
+  "keys": [],
+  "assignments": []
+}
+```
+
+`has_public_key` được Backend suy ra từ key active; không thêm cột boolean dễ lệch dữ liệu. `current_shipment_id` suy ra từ assignment active, `null` nếu chưa gán. Giữ `keys` metadata (`key_id`, `status`) và `assignments` (`shipment_id`, `active`) của view hiện có; không cần trả PEM cho UI. `GET /devices/{device_id}` và các thao tác key/assignment dùng cùng DeviceView; `GET /devices` trả `{"items":[DeviceView],"total":1}` (ký hiệu schema, không phải JSON chạy trực tiếp); danh sách rỗng là `{"items":[],"total":0}`. List phải thấy cả device chưa key/chưa gán. Tên và hai field tổng hợp là **phần mới cần thêm**, không phải view hiện có.
+
+**B. Tạo chuyến hàng:** request §3.1, response ShipmentDetail hiện có với `id` UUID, `code = "SHIP-001"`, policy tại `insurance`, trạng thái mới `created`, telemetry/location `null`. Trùng code trả `409 DUPLICATE_SHIPMENT_CODE`. UI lưu UUID từ response để gán/gửi, không dùng chuỗi `SHIP-001` thay UUID. Shipments list tiếp tục `{items, total}`.
+
+**C. Gán thiết bị:** giữ `POST /api/v1/devices/ESP32-001/assignments`, auth admin, body:
+
+```json
+{"shipment_id":"8b4fb8a2-2996-4da2-90b9-35019517f56f","active":true}
+```
+
+- `200` trả DeviceView với `current_shipment_id` bằng UUID trên và assignment tương ứng active. Gán lại cùng cặp là idempotent, không tạo dòng trùng.
+- Cho phép gán khi chưa có public key; telemetry vẫn bị chặn đến khi cấp key hợp lệ. Device phải tồn tại/active, shipment phải tồn tại; không tìm thấy trả `404 DEVICE_NOT_FOUND`/`SHIPMENT_NOT_FOUND`.
+- Nếu đã có assignment active tới UUID khác, trả **`409 DEVICE_ALREADY_ASSIGNED` (mã lỗi mới đề xuất)** và giữ nguyên quan hệ cũ. Bỏ gán bằng cùng endpoint với `active=false`, rồi gán mới; không ngầm chuyển chuyến trong một request gán.
+- Khóa dòng device trong transaction khi đổi assignment, cùng thứ tự khóa với ingestion; ràng buộc DB ở Phase 3 chặn race hai admin. Assignment active là quan hệ chuyến hiện tại, không thêm state machine chuyến hàng chỉ cho mục đích gán.
+- Một shipment nhận nhiều device. Telemetry/batch vẫn tách theo device, không trộn sequence giữa thiết bị; giữ logic evidence theo policy hiện có. Khi đổi chuyến cập nhật `SHIPMENT_ID` trong `config.h` rồi nạp USB; queue cũ không được đổi `shipment_id`/ký lại để đưa vào chuyến mới.
+
+**D. Cấp public key:** giữ `POST /api/v1/devices/ESP32-001/keys`, auth admin, do script gọi:
+
+```json
+{"key_id":"key-v1","public_key_pem":"<SPKI PEM của public key P-256 do script tạo>"}
+```
+
+PEM trên là placeholder, phải thay bằng public key thật khi gọi. `201` trả DeviceView với `has_public_key=true`, `keys=[{"key_id":"key-v1","status":"active"}]`; assignment giữ nguyên. Device chưa đăng ký trả `404 DEVICE_NOT_FOUND`; public key sai định dạng/curve hoặc PEM private key trả `422 INVALID_PUBLIC_KEY`; key ID đã có trả `409 KEY_EXISTS`. Không ghi đè key khi retry; kiểm tra key đã đăng ký trước khi chạy lại, không tự sinh key mới vì request upload bị timeout. Demo vận hành một key active mỗi device; thu hồi key cũ qua PATCH hiện có nếu thay khóa. Không thêm endpoint nhận private key.
+
+**E. Nhận telemetry:** request §2.4 giữ nguyên `key_id` bắt buộc, DER/Base64, integer scaling, canonical fields và UUID. Kiểm tra tuần tự: device đăng ký/active → assignment khớp shipment → key active từ MySQL → chữ ký → duplicate/replay/gap → lưu MySQL. Giữ mã lỗi hiện có: `403 DEVICE_NOT_ACTIVE`, `403 DEVICE_NOT_ASSIGNED`, `401 UNKNOWN_KEY`, `401 INVALID_SIGNATURE`, `422 SHIPMENT_MISMATCH`, `409 SEQUENCE_CONFLICT`/`SEQUENCE_REPLAY`. Unknown device không tự tạo registry/key/assignment. `201` lưu mẫu mới; cùng nội dung ký đã nhận trả `200 duplicate=true` khi các điều kiện ủy quyền vẫn hợp lệ. Không reset sequence khi cấp key, reboot hoặc đổi shipment; dữ liệu bị từ chối không vào Merkle batch/evidence.
+
 ---
 
 ## 4. Roadmap theo Phase (sắp xếp lại theo dependency)
@@ -381,9 +443,9 @@ Với API public, các route ghi dữ liệu và route admin cần authenticatio
 | Phase | Nội dung | Ước lượng | Điều kiện để bắt đầu | Bàn giao sớm |
 |---|---|---:|---|---|
 | 0 | Architecture, API contract, crypto/hash contract | 2–3 ngày | Roadmap + repo hiện có | API v1 draft, golden fixture spec |
-| 1 | ESP32 signed telemetry, simulator | 2–4 ngày | Phase 0 signed payload | Payload/firmware test vectors |
-| 2 | FastAPI device verification, anti-replay | 2–3 ngày | Phase 0, firmware có thể mock | Device API, signed ingest |
-| 3 | MySQL persistence + shipments + GPS mô phỏng | 2–3 ngày | Phase 2 baseline | OpenAPI + seed API cho Frontend |
+| 1 | ESP32/DHT22, provisioning local/USB, signed simulator | 2–4 ngày | Phase 0 protocol; dùng fixture trước khi API mới sẵn sàng | Script cấp khóa, config mẫu, payload/firmware vectors |
+| 2 | API đăng ký/gán/key độc lập, verification, anti-replay | 2–3 ngày | Phase 0; làm cùng migration Phase 3 | DeviceView, list, signed ingest |
+| 3 | MySQL migration device/assignment + shipments + GPS mô phỏng | 2–3 ngày | Phase 2 baseline; mở schema song song Phase 2 | Migration, OpenAPI + seed cho Frontend |
 | 4 | Integrity Service + Merkle batches | 2–4 ngày | Phase 3 dữ liệu ổn định | Batch hashing fixture cho Member 2 |
 | 5 | Blockchain adapter + anchoring | 2–3 ngày | Phase 4 + Member 2 ABI/address | Anchor/verify API |
 | 6 | Violation detection + Insurance integration | 2–3 ngày | Phase 3 + evidence/adapter; chuẩn ABI Member 2 | Event/payout state API |
@@ -396,6 +458,7 @@ Với API public, các route ghi dữ liệu và route admin cần authenticatio
 
 - [ ] Kiểm tra cấu trúc repo/những phần đã có trước khi sửa code. Tạo nhánh `feat/iot-backend`; giữ `device/`, `backend/`, `blockchain/`, `frontend/`, `docs/` và owner như cũ.
 - [ ] Chốt stack **FastAPI + ESP32 + external MySQL + Web3 adapter + Render**; chọn phiên bản Python/Arduino core/mbedTLS/driver MySQL để đảm bảo chạy được.
+- [ ] Chốt quy trình demo và contract §3.6 với NTD/TTDK: ID/tên device riêng, `code` chuyến ánh xạ UUID, một assignment active/device, cấp key bằng script; giữ `/keys` và `/assignments` đang có. Lập danh sách caller cần đổi DTO đăng ký.
 - [ ] Khóa `SIGNED-TELEMETRY-v1`: các field, scaled integer, ECDSA P-256 SHA-256, DER/Base64, public key PEM, UTC timestamp, signed canonical projection.
 - [ ] Khóa `MERKLE-v1`: canonical record, leaf/node prefixes, odd-node rule, root bytes32, batch membership, sort order, empty batch.
 - [ ] Làm 2–3 golden fixtures: một mẫu ký đúng, một mẫu sai chữ ký, một batch 1/2/3 leaf kèm expected root. Chia sẻ Member 2.
@@ -408,20 +471,24 @@ Với API public, các route ghi dữ liệu và route admin cần authenticatio
 - [ ] Member 2 xác nhận hash bytes/ABI kỳ vọng; Member 3 xác nhận OpenAPI/schema v1.
 - [ ] Golden fixture có expected canonical UTF-8/hex + SHA-256 + expected Merkle root; không còn chỗ mô tả mơ hồ về hash.
 - [ ] Phân công owner và quy trình đổi contract được đồng thuận; không suy đoán schema từ các phía.
+- [ ] Ba roadmap thống nhất request/DeviceView/lỗi §3.6, schema Phase 3, trách nhiệm script/UI và điều kiện device được gửi; phần thiết kế chưa có code được đánh dấu rõ.
 
-### Phase 1 — ESP32 Signed Telemetry & Simulator
+### Phase 1 — ESP32/DHT22, Provisioning bằng Python & Signed Simulator
 
 **Việc cần làm**
 
-- [ ] Xác nhận model ESP32 và cảm biến nhiệt độ/độ ẩm đang có; giữ chức năng đọc nhiệt độ/độ ẩm gốc, kiểm tra `NaN`, phạm vi, lỗi cảm biến.
-- [ ] Tạo `device_id` ổn định và quy trình **provision public key**: sinh/import khóa trong môi trường kiểm soát, giữ private key trên thiết bị; backend chỉ nhận public key qua API admin.
+- [ ] Giữ cảm biến **DHT22** và sketch thực tế `device/cold_chain_device/cold_chain_device.ino` (GPIO 27 theo cấu hình hiện có); kiểm tra `NaN`, phạm vi và lỗi cảm biến, không tạo sketch trùng ở đường dẫn khác.
+- [ ] Thêm script đề xuất `device/provisioning/provision_device.py`, dùng Python `cryptography` sẵn có trên máy tin cậy: chọn device đã đăng ký, sinh cặp P-256 riêng bằng secure RNG, xuất private key vào `device/cold_chain_device/config.h` và public key SPKI PEM local. Không ghi đè key/config đã có, không in private key ra terminal/log.
+- [ ] Script/hướng dẫn có bước đăng ký **public key đã sinh** qua `POST /devices/{device_id}/keys` với `X-Admin-Key` từ môi trường máy tin cậy, sau khi nạp `config.h` bằng USB. Có thể chạy bước tạo file và bước upload public key riêng; lỗi mạng không làm sinh lại cặp khóa. Private key không đi qua Frontend, HTTP API hoặc Backend/MySQL.
+- [ ] `config.example.h` chỉ placeholder cho `API_BASE_URL`, Wi-Fi, `DEVICE_ID`, `SHIPMENT_ID` (UUID lấy từ API), `KEY_ID`, `DEVICE_PRIVATE_KEY_PEM`, `TLS_ROOT_CA_PEM`; script giữ placeholder phần chưa cấu hình để admin điền local trước khi nạp. `.gitignore` tiếp tục loại `config.h`, `*.pem`, `*.key`; kiểm tra mọi file output local mới cũng bị bỏ qua.
 - [ ] Thực hiện ECDSA P-256/SHA-256 bằng thư viện mbedTLS được hỗ trợ; tự kiểm bằng golden fixture với Python.
 - [ ] Gắn `sequence_number` toàn cục theo device vào mẫu, lưu counter bền vững trước khi sử dụng; cấu hình `key_id`, `firmware_version`, `payload_version`.
 - [ ] Đồng bộ thời gian NTP khi có mạng và phát `recorded_at` UTC; xử lý clock chưa đồng bộ rõ ràng, không giả giờ chính xác.
 - [ ] Dựng signed canonical JSON từ scaled integers; gửi đúng payload đến REST API qua HTTPS/TLS với certificate validation (không dùng `setInsecure()` ở production).
 - [ ] Thiết lập HTTP timeout, exponential backoff có giới hạn và jitter, reconnect Wi-Fi; queue có giới hạn khi offline, retry không đổi signed payload hoặc sequence.
-- [ ] Viết `device/simulator/send_telemetry.py` có tạo chữ ký thật bằng **test key riêng**, hỗ trợ happy path, invalid signature, duplicate, replay, gap và reconnect; tuyệt đối không reuse private key production.
-- [ ] Viết `device/README.md`, `config.example.h` dùng placeholder, quy trình key rotation/provisioning và cách nạp firmware.
+- [ ] Tái sử dụng `device/simulator/send_telemetry.py`: đăng ký một device thử riêng (ví dụ `SIM-001`), tạo shipment, gán active, cấp public key tương ứng rồi dùng PEM private key local qua `--private-key`; hỗ trợ happy/invalid/duplicate/replay/gap/reconnect như hiện có. Simulator không tự đăng ký hoặc tự cấp key khi ingestion thất bại.
+- [ ] Bước tạo khóa cho simulator có thể xuất thêm PEM private key vào đường dẫn ngoài Git; chỉ dùng trên máy tin cậy và không dùng chung cặp khóa với ESP32 thật. Giữ `--sequence` là số chưa dùng vì simulator hiện chưa lưu counter; không chạy simulator và board cùng identity đồng thời.
+- [ ] Cập nhật `device/README.md`, `backend/README.md` theo thứ tự đăng ký device → tạo shipment → gán → script cấp khóa → USB → upload public key → kiểm chứng signed telemetry; hướng dẫn revoke/add key hiện có khi lộ khóa. Không thêm PKI, OTA hoặc remote provisioning.
 
 **Definition of Done**
 
@@ -429,16 +496,20 @@ Với API public, các route ghi dữ liệu và route admin cần authenticatio
 - [ ] Sự cố reboot/retry không tạo sequence trùng làm thất thoát dữ liệu; queue đầy có cảnh báo/gap rõ ràng.
 - [ ] Wi-Fi mật khẩu/private key không có trong Git; TLS/cert validation được kiểm tra.
 - [ ] Không gửi GPS, không tự gửi `received_at`, có firmware version.
+- [ ] Tạo hai thiết bị cho ra hai public key khác nhau; file private key/config thật không được Git theo dõi và không xuất hiện trong request/log/UI/DB. Upload nhầm PEM private key bị từ chối.
+- [ ] Simulator chuẩn giao thức đại diện cho device đã đăng ký/gán/cấp key; bỏ từng điều kiện sẽ bị từ chối. Hoàn tất bằng simulator không đồng nghĩa đã cross-test board ESP32/USB.
 
 ### Phase 2 — FastAPI Device Verification & Ingestion
 
 **Việc cần làm**
 
 - [ ] Dựng app FastAPI, dependency injection, settings, logging có request ID và `/api/v1/health`, OpenAPI `/docs` (quyền public docs theo policy).
-- [ ] Tạo `devices.py`, `telemetry.py`, `signature_verification_service.py`, `telemetry_service.py`, `device_health_service.py`.
-- [ ] Tạo API quản trị đăng ký thiết bị/public key, assignment, trạng thái active/revoked, key rotation; bảo vệ API admin bằng auth phù hợp.
+- [ ] Mở rộng `api/routes.py`, `schemas/api.py`, `services/signed_ingestion.py`, `device_health_service.py` hiện có; không tách/viết lại module chỉ theo tên cây tham chiếu.
+- [ ] Đổi `DeviceRegister` sang `device_id` + `device_name`; cho device chưa có key/assignment tồn tại. Bổ sung `GET /devices` admin và DeviceView §3.6 cho create/list/detail/assignment/key; cập nhật toàn bộ caller cũ trước khi bỏ DTO đăng ký gộp.
+- [ ] Tái sử dụng `/devices/{device_id}/keys`, `/assignments`, các PATCH revoke; bảo vệ bằng `X-Admin-Key`/`AdminSession`. Giữ schema shipment, bổ sung `AdminSession` cho `POST /shipments`; không tạo alias API.
+- [ ] Khi gán active, khóa dòng device trong transaction, từ chối active sang chuyến khác với `409 DEVICE_ALREADY_ASSIGNED`; cùng cặp retry idempotent. Bỏ gán bằng `active=false`, không reset sequence và không đổi telemetry/batch lịch sử. Hoàn tất cùng migration Phase 3 trước nghiệm thu API.
 - [ ] Triển khai validate payload/version/Decimal constraints/range và shipment association; xác minh DER/Base64 ECDSA trước khi accept.
-- [ ] Chống duplicate và replay bằng unique key và transaction, xử lý HTTP retry idempotent; phát hiện sequence gap, signed heartbeat và last seen.
+- [ ] Chống duplicate và replay bằng unique key và transaction, xử lý HTTP retry idempotent; phát hiện sequence gap và last seen từ telemetry hợp lệ. Signed heartbeat là mở rộng riêng nếu cần, không phải điều kiện thêm cho demo đăng ký/gửi dữ liệu.
 - [ ] Tách audit cho invalid signature, tampered payload, unknown/revoked device/key, timestamp sai lệch; không trộn vào accepted telemetry.
 - [ ] Thiết kế phản hồi chuẩn cho Member 3: signature_status, last seq, gap, last heartbeat, online/offline, error code.
 - [ ] Thêm API rate limit, giới hạn body size, request timeout; không log raw secret/khóa.
@@ -448,6 +519,8 @@ Với API public, các route ghi dữ liệu và route admin cần authenticatio
 - [ ] Test đúng signature được chấp nhận, sai signature bị từ chối, unknown device không thể tự tạo thiết bị.
 - [ ] Retry cùng payload idempotent; cùng sequence nhưng nội dung khác trả conflict; gap/offline có chỉ báo đúng.
 - [ ] `/docs` và `api-v1.md` phản ánh endpoint/enum thực tế; API trả 4xx/5xx có cấu trúc, không lộ stack trace.
+- [ ] Đăng ký được device trước shipment/key, list thấy `has_public_key=false`, `current_shipment_id=null`; không nhận telemetry khi thiếu assignment hoặc key. Sau cấp key đúng, cùng device gửi được mẫu signed v1.
+- [ ] Hai admin gán đồng thời một device sang hai chuyến chỉ có một request thành công, request còn lại `409`; nhiều device gán cùng shipment được phép. Auth thiếu/sai bị chặn ở Backend; không chỉ ẩn nút UI.
 
 ### Phase 3 — MySQL Persistence, Shipments & Backend GPS Simulation
 
@@ -455,40 +528,41 @@ Với API public, các route ghi dữ liệu và route admin cần authenticatio
 
 - [ ] Cấu hình SQLAlchemy/driver MySQL tương thích + Alembic; migration được quản lý theo phiên bản, không dựa `create_all()` để upgrade production.
 - [ ] Xây dựng schema tối thiểu theo bảng dưới đây; dùng `UTC`, index/filter theo shipment/device/time, transaction và khóa unique chống race condition.
+- [ ] Tạo **revision Alembic mới nối sau `20261109_02`** khi triển khai, không sửa revision đã áp dụng: thêm `devices.device_name` (backfill tên bằng `id` cho dòng cũ rồi đặt NOT NULL), giữ nguyên mọi ID/key/receipt/batch. Rà và báo các device có nhiều assignment active để admin chọn quan hệ đúng trước khi bật ràng buộc; không tự chọn/xóa lịch sử.
+- [ ] Trên MySQL thêm generated nullable column `active_device_id = CASE WHEN active THEN device_id ELSE NULL END` và UNIQUE cho cột này trong `device_assignments`, bảo đảm một dòng active/device nhưng nhiều dòng inactive hợp lệ. Kết hợp khóa dòng device trong service và map vi phạm unique thành `409 DEVICE_ALREADY_ASSIGNED`; test tương đương cho SQLite cô lập nếu cần. Không đặt UNIQUE trực tiếp lên `device_id` của bảng quan hệ vì sẽ cản lịch sử chuyến cũ.
 - [ ] Đảm bảo dữ liệu **accepted** được commit vào MySQL trước khi enqueue anchoring/insurance; không phụ thuộc RPC để ghi telemetry.
 - [ ] Implement đầy đủ API `shipments`, `telemetry history`, `events`, `insurance status`; seed 2–3 shipment phục vụ Frontend.
 - [ ] Giữ `route_simulator.py`: nội suy vị trí dự đoán được từ tọa độ gốc, gắn `backend_simulated` và `progress_pct`; không cho ESP32 ghi đè.
 - [ ] Làm migration up/down an toàn, test index và kết nối lại DB khi timeout; cấu hình connection pool (`pool_pre_ping`, pool size hợp lý), TLS theo nhà cung cấp.
 - [ ] Công bố API/seed trên local hoặc môi trường test cho Member 3; cập nhật README khởi tạo database một lệnh.
 
-**Schema MySQL đề xuất**
+**Schema MySQL dùng lại và phần bổ sung đề xuất**
 
 | Bảng | Mục đích / khóa quan trọng |
 |---|---|
-| `devices` | `device_id` PK, status, firmware, last seen, current sequence |
-| `device_keys` | `(device_id, key_id)` unique, **public key only**, effective/revoked time |
-| `device_shipments` | assignment thiết bị ↔ shipment và khoảng hiệu lực |
-| `shipments` | policy nhiệt độ, origin/destination, cargo, insured amount |
-| `telemetry` | sample ID, `(device_id, sequence_number)` unique, signature, scaled values, `recorded_at`, authoritative `received_at`, raw/normalized payload |
-| `telemetry_rejections` | audit lý do invalid, giới hạn PII/payload và retention |
-| `device_heartbeats` | thời điểm nhận, heartbeat counter/nonce, xác minh |
-| `sequence_gaps` | device, từ sequence nào đến sequence nào, detected/resolved status |
+| `devices` | PK **`id` hiện có** (API gọi `device_id`), status, last seen, last sequence; **thêm `device_name`**. Không có key/assignment vẫn tạo được device |
+| `device_keys` | PK `(device_id, key_id)`, FK `devices.id`, `public_key_pem` SPKI P-256, status, created_at; **public key only**, không tạo cột private key |
+| `device_assignments` | PK `(device_id, shipment_id)`, FK device và `shipments.id`, `active`; **thêm constraint một dòng active/device**. Dùng bảng hiện có, không thêm `device_shipments` |
+| `shipments` | PK `id` UUID, `code` unique (`SHIP-001`), origin/destination, cargo, ngưỡng/thời lượng, `insured_amount_vnd` và insurance/payout metadata hiện có |
+| `telemetry` | Sample ID, shipment UUID, device ID, nhiệt độ/độ ẩm, `recorded_at`, authoritative `received_at`, vị trí Backend mô phỏng; không di chuyển dữ liệu cũ |
+| `signed_telemetry_receipts` | FK telemetry, device/shipment/key IDs, signature/scaled values/canonical digest; UNIQUE `(device_id, sequence_number)`; missing range nằm ở `missing_from`/`missing_to` hiện có |
+| `ingestion_audit` | Lý do reject, device/shipment/sequence, timestamp; giữ bảng audit hiện có |
 | `integrity_batches` | batch metadata, membership sealed, root, anchor/verification status |
 | `integrity_batch_items` | `(batch_id, telemetry_id)` unique, `leaf_index`, `leaf_hash` |
-| `blockchain_transactions` | kind, idempotency key, tx hash, nonce, chain ID, receipt, retry count |
-| `shipment_events` | gap/violation/integrity/insurance events và audit timestamp |
-| `insurance_policies` | policy, beneficiary/reference, trạng thái và liên kết contract |
-| `insurance_triggers` | evidence ID unique, business event, payout status |
-| `integration_outbox` | tác vụ anchor/insurance bền vững, retry/backoff, trạng thái |
+| `shipment_events` | Gap/violation/integrity/insurance events, evidence references và audit timestamp hiện có |
+| `integration_outbox` | Tác vụ anchor/insurance bền vững, idempotency key unique, payload transaction, retry/backoff; giữ cách lưu hiện tại |
 
-**Index tối thiểu:** `(shipment_id, received_at)`, `(device_id, received_at)`, unique `(device_id, sequence_number)`, `(batch_id, leaf_index)`, `(anchor_status, created_at)`, `(kind, idempotency_key)`, `(shipment_id, event_type, created_at)`. Kiểu dữ liệu monetary/Decimal phải được xác định rõ; không dùng float cho số tiền.
+Schema mới chỉ cần thêm tên device và ràng buộc assignment; `has_public_key`/`current_shipment_id` được suy ra trong view. Heartbeat, gap lifecycle đầy đủ hoặc bảng insurance/transaction riêng chỉ bổ sung khi có nhu cầu đã chốt ở phase tương ứng; không dựng lại chúng cho yêu cầu đăng ký demo. Giữ monetary integer VND, không dùng float cho số tiền.
+
+**Index:** giữ UNIQUE sequence ở `signed_telemetry_receipts`, `shipments.code`, batch leaf/membership và outbox idempotency hiện có; bổ sung unique assignment active như trên. Tối ưu `(shipment_id, received_at)`, `(device_id, received_at)` theo query thực tế; dùng tên cột `sealed_at`/`occurred_at` đúng model thay vì đặt index vào cột không có.
 
 **Definition of Done**
 
 - [ ] MySQL local/test hoạt động với migration từ database rỗng; các bản ghi giữ nguyên khi restart Backend.
-- [ ] Tạo/truy vấn shipment; telemetry có `received_at`, chữ ký và key_id; query có phân trang.
+- [ ] Tạo/truy vấn shipment; telemetry có `received_at`, chữ ký và key_id; query/list đúng DTO hiện có, bổ sung phân trang khi dữ liệu demo thực sự cần.
 - [ ] GPS mô phỏng đi theo tuyến, không bị client override, có nhãn đúng nguồn dữ liệu.
 - [ ] Member 3 nhận được seed data + OpenAPI để dựng Dashboard mà không cần Blockchain hoàn tất.
+- [ ] Migration từ DB hiện có bảo toàn keys, sequence, telemetry, batch và evidence; từ DB nền sạch lên head chạy được. Trường hợp nhiều assignment active cũ được giải quyết có kiểm soát trước khi UNIQUE có hiệu lực; kiểm thử race trên MySQL, không chỉ SQLite.
 
 ### Phase 4 — Integrity Service & Data Batch Hashing
 
@@ -561,10 +635,10 @@ Với API public, các route ghi dữ liệu và route admin cần authenticatio
   ```
 
 - [ ] Khóa phiên bản Python/dependencies; kiểm thử bằng đúng build/start command; lưu hướng dẫn vào `docs/deployment/render.md`.
-- [ ] Tạo `/api/v1/health` trả `status`, `database`/`blockchain` ở mức `ok/degraded/unavailable` (không lộ connection string); cân nhắc `/api/v1/ready` cho DB-readiness. Cấu hình HTTP health check path thực tế trong Render.
+- [x] Tạo `/api/v1/health` trả `status`, `database`/`blockchain` ở mức `ok/degraded/unavailable` (không lộ connection string); có `/api/v1/ready` cho DB-readiness. Blueprint dùng `/api/v1/health` làm HTTP health check.
 - [ ] Cấu hình **external managed MySQL** bằng `DATABASE_URL`, connection pool nhỏ hợp lý, TLS/SSL theo provider, timeout/reconnect, migration trước khi bật phiên bản mới, backup/restore test theo gói dịch vụ.
 - [ ] Secret trong **Render Environment Variables** hoặc secret management: Oracle/anchorer private key, DB credential, RPC key, admin auth secret. `.env.example` chỉ chứa placeholder; kiểm tra Git history không lộ secret.
-- [ ] CORS whitelist **đúng** origin Frontend local/production, không wildcard với credentials; `APP_ENV` tách local/test/production; tắt `/api/v1/demo/*` trên public production.
+- [x] CORS dùng explicit allowlist, không wildcard/credentials; `APP_ENV` tách local/test/production và `/api/v1/demo/*` không được đăng ký trong production.
 - [ ] Gắn `PUBLIC_API_BASE_URL` từ URL **Render thực tế đã được cấp sau deploy**; cập nhật tài liệu + cung cấp cho Member 3. Không hardcode URL ví dụ trong build/README như thể đó là môi trường thật.
 - [ ] Kiểm tra HTTPS (bao gồm ESP32 TLS), OpenAPI nếu được cho phép, health, DB migrations và ít nhất một request từ ESP32/simulator **qua URL public**.
 - [ ] Kiểm tra vận hành outbox/retry khi instance restart; với Render Free, không dựa vào process memory hoặc timer sống liên tục để bảo đảm anchoring/payout. Cần đường manual retry khi demo, hoặc worker/scheduler trả phí phù hợp nếu muốn SLA.
@@ -583,7 +657,7 @@ DATA_INTEGRITY_CONTRACT_ADDRESS=<data-integrity-address>
 INSURANCE_CONTRACT_ADDRESS=<insurance-contract-address>
 BACKEND_ANCHORER_PRIVATE_KEY=<set-as-secret-in-environment>
 BACKEND_ORACLE_PRIVATE_KEY=<set-as-secret-in-environment>
-DEVICE_REGISTRY_CONFIG=<optional-configuration-reference>
+ADMIN_API_KEY=<set-as-secret-in-environment>
 PUBLIC_API_BASE_URL=https://<your-render-service>.onrender.com/api/v1
 ```
 
@@ -611,6 +685,7 @@ VITE_API_BASE_URL=https://<your-render-service>.onrender.com/api/v1
 
 - [ ] Unit test: canonicalization, signature verification, gap/replay, Merkle root, timestamp, route simulation, 15-minute policy, idempotency.
 - [ ] API integration test: device registration/revocation, signed ingestion, MySQL migrations, batch membership, verify endpoint, CORS/auth/rate limit.
+- [ ] Test luồng §3.6: đăng ký ID/tên → tạo shipment/code/UUID → gán → script cấp key → signed ingest; kiểm tra trùng ID/code, sai UUID, thiếu/khác assignment, thiếu/revoked/sai curve key và gán đồng thời. Không làm lại module Merkle/Oracle; dùng test regression hiện có để phát hiện tác động tích hợp.
 - [ ] Local chain/testnet test: anchor receipt + root verify, chain pending/revert/reorg nếu testnet hỗ trợ, no double payout, insurance paid event check.
 - [ ] E2E cùng Member 3: toàn bộ trạng thái thiết bị, batch, anchoring, payout và cảnh báo hiện đúng; Frontend không tự suy ra verified/confirmed.
 - [ ] Rehearse trên public URL và DB/demo seed riêng; có fallback simulator đã ký khi ESP32 mất mạng.
@@ -636,6 +711,7 @@ Bàn giao **trước khi Member 2 chốt/triển khai contract interface**:
 - [ ] Canonical record/leaf hash/Merkle root **byte-level** + golden fixtures + batch metadata, `batch_id`, first/last sequence, batch membership.
 - [ ] Dự thảo `anchorBatch` request, `verifyBatch/getBatch` lookup expectations và idempotency key.
 - [ ] `shipment_id` / `batch_id` identity và yêu cầu encode thành `bytes32` (cần Member 2 xác nhận rule).
+- [ ] Bảng ánh xạ `code=SHIP-001` → UUID và `shipmentKey=keccak256(UTF8(UUID))`; provisioning/Device–Shipment ở MySQL, không yêu cầu contract đăng ký device/key. Tạo shipment off-chain không đồng nghĩa policy đã fund trên chain.
 - [ ] Violation evidence schema, thời điểm Backend phát hiện, policy/beneficiary/oracle requirements, payout event uniqueness.
 - [ ] RPC retries / receipt-confirmation semantics kỳ vọng.
 
@@ -659,6 +735,7 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 
 - [ ] `docs/contracts/api-v1.md`, OpenAPI URL/export, example request/response/seed data.
 - [ ] Type/schema cho device status, signed telemetry public view, missing sequences, integrity summary/batches và audit alerts.
+- [ ] Contract §3.6 cho form ID/tên device, tạo chuyến theo `code`, DeviceView/list/key status, dropdown gán bằng UUID và lỗi `DEVICE_ALREADY_ASSIGNED`; chỉ script cấp public key, UI không nhập khóa.
 - [ ] Các trạng thái `DATA_VERIFIED`, `DATA_INCOMPLETE`, `DATA_ANCHORED`, `DATA_INTEGRITY_FAILED`, `BLOCKCHAIN_PENDING`, `BLOCKCHAIN_FAILED` và payout riêng.
 - [ ] Blockchain tx schema **tách anchoring tx và insurance payout tx**, kèm receipt/confirmation semantics.
 - [ ] Error schema, pagination, filter, auth requirements, demo scenario matrix.
@@ -705,10 +782,18 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 | T16 | ESP32 mất Wi-Fi rồi reconnect | Queue gửi lại theo sequence, duplicate idempotent, gap thể hiện nếu thiếu |
 | T17 | Render restart/cold start | API có thể khởi động chậm nhưng dữ liệu MySQL còn, status không giả lập |
 | T18 | Frontend CORS + public URL | Chỉ origin được cho phép; không dùng localhost trong production build |
+| T19 | Đăng ký device chưa key/chưa chuyến | `201`, tên được lưu, list/detail có `has_public_key=false`, `current_shipment_id=null`; signed ingest bị chặn |
+| T20 | Tạo code `SHIP-001`, gán UUID trả về, cấp public key | Mỗi bước độc lập; `has_public_key=true`; mẫu P-256 đúng được lưu, không tự tạo policy funded trên chain |
+| T21 | Device lạ, chưa gán, gán sang chuyến khác hoặc key thiếu/revoked | Từ chối theo §3.6, không accepted record/Merkle/evidence |
+| T22 | Gán một device sang hai chuyến, cả khi concurrent | Tối đa một dòng active; request xung đột `409`; nhiều device cùng chuyến hợp lệ |
+| T23 | Bỏ gán rồi đổi chuyến | History/batch cũ không đổi, counter tiếp tục; payload chuyến cũ bị chặn khi assignment không còn active |
+| T24 | Provisioning hai device, nhầm private PEM, retry upload | Hai cặp key khác nhau, private PEM bị từ chối, upload retry không tự sinh/ghi đè khóa; không secret trong Git/UI/DB/log |
+| T25 | Trùng device ID/code và admin credential sai | `409 DEVICE_EXISTS`/`DUPLICATE_SHIPMENT_CODE`; thao tác admin không đủ quyền bị chặn |
 
 ### 6.2. Demo theo thứ tự nên trình bày
 
 - [ ] **Mở Dashboard:** shipment hiện vị trí `backend_simulated`, policy nhiệt độ, trạng thái cảm biến và public Backend URL đang hoạt động.
+- [ ] **Chuẩn bị bằng Admin UI:** đăng ký `ESP32-001`/tên → tạo mã chuyến `SHIP-001` (lưu UUID trả về) → chọn device/chuyến và gán. UI thấy "Chưa cấp public key". Trên máy tin cậy chạy script, nạp `config.h` qua USB, đăng ký public key qua `/keys`; UI refetch thấy "Đã có public key", không hiển thị private key.
 - [ ] **Gửi signed telemetry:** ESP32/simulator gửi HTTPS; API trả signature hợp lệ, timestamp server, sequence tăng.
 - [ ] **Chữ ký sai / duplicate / gap / offline:** hiện số liệu xác thực và cảnh báo khác nhau; không tạo payout từ dữ liệu thiếu.
 - [ ] **Integrity batch:** seal batch, hiện leaf count/Merkle root, gửi anchor và trạng thái `BLOCKCHAIN_PENDING` trước receipt.
@@ -733,6 +818,7 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 
 - [ ] ECDSA P-256/mbedTLS chuẩn, secure RNG, không tự phát minh chữ ký/hashing; golden cross-platform tests.
 - [ ] Chỉ public key ở Backend; ESP32 private key và Oracle/anchorer private key tách biệt; quản lý rotation/revocation.
+- [ ] Mỗi ESP32 có cặp khóa riêng; script tạo key local không overwrite; `config.h` chứa khóa thật bị Git bỏ qua. Không có private key trong React, API request/response, MySQL, Blockchain, screenshot hay log; xử lý cấp khóa bằng USB, không cần PKI/OTA.
 - [ ] HTTPS + certificate verification trên ESP32 và Frontend; không dùng HTTP public, không disable SSL validation.
 - [ ] Admin auth, permissions, validation, rate limit/body limit, CORS allowlist, hạn chế request log dữ liệu nhạy cảm.
 - [ ] Unique sequence/idempotency, anomaly audit, time skew check, anti-replay, last-seen monitoring.
@@ -755,9 +841,9 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 
 | Deliverable | Owner | Hoàn thành khi |
 |---|---|---|
-| Firmware signed telemetry + provision guide | Member 1 | Test trên board/simulator, signed fixture verified |
+| Firmware DHT22 + `config.example.h` + provisioning Python/USB guide | Member 1 | Cặp key riêng/device, chỉ public key qua API, file thật gitignored, signed fixture verified |
 | Simulator nhiều kịch bản có ký số | Member 1 | Chạy T01–T06 và T16 không cần ESP32 |
-| FastAPI device/shipments/telemetry API | Member 1 | OpenAPI, auth, validation, persistence và test |
+| FastAPI register/list/assign/key + shipments/telemetry API | Member 1 | Contract §3.6, auth, bước độc lập, một assignment active và signed ingest có test |
 | External MySQL schema + Alembic migrations | Member 1 | Fresh DB migrate/restart/restore thành công |
 | Canonicalization/Merkle Service | Member 1 | Golden fixtures cùng Member 2, tamper detection |
 | Blockchain Adapter 2 contract | Member 1 | On-chain anchor, verify, insurance gọi đúng ABI |
@@ -769,17 +855,17 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 | `docs/deployment/render.md` | Member 1 | Build/start/env/migration/troubleshooting/cold start |
 | E2E test + demo runbook | Members 1–3 | Test matrix có minh chứng và checklist chạy lại |
 
-**Chưa thể đánh dấu hoàn tất khi chỉ có Roadmap:** chưa có xác nhận trạng thái code/repository, board/Arduino core, hợp đồng Smart Contract thực tế, MySQL provider, URL Render và Frontend origin. Không đưa ví dụ placeholder vào tài liệu như thành tích đã triển khai.
+**Chưa thể đánh dấu hoàn tất từ thay đổi tài liệu:** code baseline và tiến độ lịch sử nêu ở đầu file được giữ lại; script provisioning, DTO ID/tên, GET device list và constraint assignment mới vẫn là nhiệm vụ chưa triển khai. Board cross-test, MySQL production, URL Render/Frontend và testnet phải có bằng chứng riêng; không đưa placeholder thành thành tích đã triển khai.
 
 ## 9. Các quyết định còn cần xác nhận / blockers trước khi thực thi
 
-1. **Phần cứng:** model ESP32, Arduino core/mbedTLS version, cảm biến nào là nguồn `temperature_c`/`humidity_pct`, có NVS/secure element/flash encryption hay không.
-2. **Crypto:** fixture P-256 DER/Base64 trên firmware thật đã verify được với Python hay chưa; key provisioning và thời điểm revoke/rotate.
+1. **Phần cứng:** xác nhận board/Arduino core/mbedTLS và cross-test DHT22 GPIO 27; tiếp tục dùng Preferences/NVS hiện có, không bắt buộc thêm secure element cho demo.
+2. **Crypto/provisioning:** P-256 + SHA-256, DER/Base64 và `key_id` đã có code; cần script local/USB, kiểm chứng key trên board thật, quy trình revoke/add key khi lộ.
 3. **Canonicalization/Hash:** Members 1–2 xác nhận `SIGNED-TELEMETRY-v1`, `MERKLE-v1`, `bytes32` `batch_key` và danh sách field được hash; không cho thay đổi ngầm.
 4. **Insurance evidence:** cả nhóm chốt `PAYOUT_REQUIRES_ANCHORED_EVIDENCE`, cách xử lý nếu vi phạm 15 phút nhưng một batch chưa anchor/verify được, max allowed gap.
 5. **Chain:** Member 2 cung cấp 2 ABI, address, event, RPC, chain ID, oracle/anchorer role, confirmations và giá trị demo token.
 6. **Production:** chọn external MySQL provider, vùng triển khai, TLS, backup, budget Render, domain thực tế/CORS; Free chỉ phù hợp demo, không phải monitoring SLA.
-7. **Repository:** sau khi có đủ 3 Roadmap và cây code, kiểm tra xung đột/giao diện thực tế trước khi merge. Roadmap NTK này không tự khẳng định đã được đồng bộ với hai Roadmap chưa cung cấp trong lượt chỉnh sửa.
+7. **Tích hợp đăng ký:** triển khai DTO/view/migration §3.6 và cập nhật caller cùng lúc; cả ba roadmap đã được sửa đồng bộ trong lượt này, nhưng thay đổi tài liệu không thay thế kiểm thử code, MySQL hoặc xác nhận của từng owner.
 
 ---
 
@@ -797,4 +883,4 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 - Render — Health Checks: https://render.com/docs/health-checks
 - Render — Deploy for Free / ephemeral filesystem / cold start: https://render.com/docs/free
 
-*Roadmap này cập nhật nội dung gốc của NTK theo prompt kiến trúc mới, giữ nguyên phân công Member 1 và các yêu cầu cốt lõi. Chỉ tạo/chỉnh sửa **một file Markdown Roadmap** trong lượt này; những file tài liệu và mã nguồn được nêu là deliverables cho giai đoạn triển khai sau.*
+*Lượt cập nhật này chỉnh sửa đồng bộ **ba file roadmap**, giữ phân công và tiến độ cũ; bổ sung công việc đơn giản hóa đăng ký/cấp khóa/gán chuyến. Không sửa source code, migration, API contract thực thi hoặc deploy. Merkle Tree, Data Integrity, Blockchain Anchoring và Insurance Oracle tiếp tục dùng thiết kế/code hiện có.*

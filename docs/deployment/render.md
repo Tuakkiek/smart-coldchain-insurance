@@ -1,159 +1,112 @@
-# Hướng dẫn Deploy Smart Cold Chain Insurance lên Render
+# Deploy FastAPI Backend lên Render
 
-Tài liệu hướng dẫn triển khai toàn diện hệ thống **Smart Cold Chain Insurance** lên nền tảng [Render](https://render.com), bao gồm:
-1. **Backend Web Service**: FastAPI + Uvicorn kết nối External MySQL (Aiven).
-2. **Frontend Static Site**: React + Vite + TypeScript.
+Trạng thái tài liệu: **deployment-ready, chưa xác nhận deploy thực tế**. Chỉ ghi URL public sau khi Render cấp URL và toàn bộ smoke test bên dưới pass.
 
----
+## 1. Hạ tầng bắt buộc
 
-## 1. Chuẩn bị trước khi Deploy
+- Render Web Service dùng Python runtime, region `singapore`, Root Directory `backend`.
+- External managed MySQL có TLS và backup; không dùng SQLite hoặc filesystem của Render để lưu dữ liệu.
+- Repository có `render.yaml`; Blueprint mặc định dùng gói Free cho demo.
+- Data Integrity và Insurance contract có address/role/signer riêng nếu bật Blockchain.
 
-- Toàn bộ source code đã được push lên Git repository (GitHub/GitLab).
-- Đã có tài khoản trên [Render](https://render.com).
-- Cơ sở dữ liệu **MySQL Cloud** (ví dụ [Aiven MySQL](https://aiven.io)) đã được tạo và có thông tin kết nối (Host, Port, User, Password, Database).
+Render Free phù hợp demo, không phù hợp production/SLA: service spin down sau 15 phút không có inbound traffic, lần gọi sau có cold start, filesystem là ephemeral và Free service không có one-off job/shell. Xem tài liệu chính thức: [Deploy for Free](https://render.com/docs/free), [Blueprint YAML](https://render.com/docs/blueprint-spec), [FastAPI](https://render.com/docs/deploy-fastapi), [Health Checks](https://render.com/docs/health-checks).
 
----
+## 2. Build, migrate và start
 
-## 2. Triển khai Backend (FastAPI Web Service)
+Blueprint chạy:
 
-### Bước 2.1: Tạo Web Service trên Render
-1. Đăng nhập vào Render Dashboard: https://dashboard.render.com
-2. Nhấn **New +** ở góc trên bên phải → chọn **Web Service**.
-3. Chọn kho lưu trữ GitHub của dự án `smart-coldchain-insurance` và nhấn **Connect**.
+```text
+Build: pip install -r requirements.txt
+Start: python -m app.cli upgrade-db && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+Health check: /api/v1/health
+```
 
-### Bước 2.2: Cấu hình thông số Build & Deploy
-Điền các trường cấu hình như sau:
+`upgrade-db` là idempotent và chạy trước Uvicorn. Nếu migration thất bại, process không nhận traffic. Đây là phương án cho Free Web Service vì `preDeployCommand` chỉ có trên paid web/private/worker service. Khi nâng lên paid plan, chuyển migration sang `preDeployCommand: python -m app.cli upgrade-db` và trả start command về chỉ chạy Uvicorn.
 
-| Mục | Giá trị |
-|---|---|
-| **Name** | `smart-coldchain-insurance` (hoặc tên bạn chọn) |
-| **Region** | `Singapore` (tối ưu độ trễ cho người dùng tại Việt Nam) |
-| **Branch** | `main` (hoặc nhánh bạn muốn deploy) |
-| **Root Directory** | `backend` *(rất quan trọng: phải chỉ rõ thư mục backend)* |
-| **Runtime** | `Python 3` |
-| **Build Command** | `pip install -r requirements.txt` |
-| **Start Command** | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
-| **Instance Type** | `Free` (hoặc gói trả phí tùy nhu cầu) |
+Trước migration production: tạo backup/restore point của MySQL, đọc revision Alembic dự kiến, deploy trong cửa sổ bảo trì và không seed demo.
 
-### Bước 2.3: Thiết lập Environment Variables (Biến môi trường)
-Kéo xuống mục **Environment Variables** (hoặc tab **Environment**), nhấn **Add Environment Variable** và thêm các biến:
+## 3. Environment Variables
+
+Không dán secret vào Git, log, screenshot hay frontend. Các giá trị bắt buộc trong Render:
 
 ```dotenv
-PYTHON_VERSION=3.11.9
-APP_ENV=development
+APP_ENV=production
+DATABASE_URL=mysql+pymysql://<user>:<url-encoded-password>@<host>:<port>/<database>
+ADMIN_API_KEY=<random-secret-at-least-32-characters>
+CORS_ORIGINS=https://<actual-frontend-domain>
+PUBLIC_API_BASE_URL=https://<actual-render-service>.onrender.com/api/v1
 LOG_LEVEL=INFO
-SENSOR_GAP_MINUTES=5
-MAX_SAMPLE_GAP_SECONDS=300
-INTEGRITY_BATCH_MAX_RECORDS=100
-INTEGRITY_BATCH_MAX_AGE_MINUTES=5
-PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true
-BLOCKCHAIN_CONFIRMATIONS=1
-DATA_INTEGRITY_CONTRACT_ADDRESS=<data-integrity-contract-address>
-BACKEND_ANCHORER_PRIVATE_KEY=<set-as-render-secret>
-DATA_INTEGRITY_ABI_PATH=backend/app/integrations/abi/ColdChainDataIntegrity.json
-BLOCKCHAIN_CONTRACT_ADDRESS=<insurance-contract-address>
-BLOCKCHAIN_ORACLE_PRIVATE_KEY=<set-as-render-secret>
+```
 
-# Cấu hình kết nối MySQL ngoài Render (ví dụ Aiven)
-MYSQL_HOST=<your-aiven-host>
-MYSQL_PORT=<your-aiven-port>
-MYSQL_DATABASE=defaultdb
-MYSQL_USER=avnadmin
-MYSQL_PASSWORD=<your-aiven-password>
+`DATABASE_URL` được ưu tiên hơn `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD`. Backend bắt buộc MySQL, tự dùng driver PyMySQL, pool nhỏ (`5 + 2 overflow`), `pool_pre_ping`, recycle và timeout. Nếu provider cấp CA, tạo Render Secret File rồi đặt:
 
-# CORS: Cho phép cả local dev lẫn domain frontend Render
-CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://<your-frontend-subdomain>.onrender.com
+```dotenv
+MYSQL_SSL_CA=/etc/secrets/mysql-ca.pem
+```
 
-# Cấu hình Blockchain (tùy chọn, để false nếu chạy demo thông thường)
+Nếu chưa tích hợp chain:
+
+```dotenv
 BLOCKCHAIN_ENABLED=false
 ```
 
-> [!NOTE]
-> - Khi evidence gate bật, `retry-integrity` sẽ verify batch và tự thử giải phóng payout; `retry-blockchain` cũng chạy lại evidence gate trước khi gọi Oracle. Có thể dùng API admin `POST /api/v1/shipments/{id}/insurance/reconcile` khi demo.
-> - Nếu dùng Aiven MySQL, hệ thống tự động thiết lập kết nối SSL TLS (`verify_mode=none` nếu không chỉ định `MYSQL_SSL_CA`).
-> - Nếu muốn dùng CA cert của Aiven để xác thực chứng chỉ (`aiven-ca.pem`):
->   1. Tại mục **Secret Files** trên Render, thêm file tên `aiven-ca.pem` và dán nội dung chứng chỉ CA vào.
->   2. Đường dẫn file trên Render sẽ là `/etc/secrets/aiven-ca.pem`.
->   3. Thêm biến môi trường: `MYSQL_SSL_CA=/etc/secrets/aiven-ca.pem`.
-
-### Bước 2.4: Cấu hình Health Check Path
-- Mở rộng mục **Advanced**.
-- Tìm mục **Health Check Path**, nhập: `/api/v1/health`
-- Nhấn **Create Web Service**.
-
-Render sẽ tiến hành build và khởi chạy. Khi hoàn tất, bạn sẽ nhận được URL Backend, ví dụ:
-`https://smart-coldchain-insurance.onrender.com`
-
-Kiểm tra nhanh bằng trình duyệt hoặc curl:
-```bash
-curl https://smart-coldchain-insurance.onrender.com/api/v1/health
-# Kết quả mong đợi: {"status":"ok"}
-```
-
----
-
-## 3. Triển khai Frontend (React Static Site)
-
-### Bước 3.1: Tạo Static Site trên Render
-1. Tại Render Dashboard, nhấn **New +** → chọn **Static Site**.
-2. Chọn cùng repository GitHub của dự án và nhấn **Connect**.
-
-### Bước 3.2: Cấu hình thông số Static Site
-
-| Mục | Giá trị |
-|---|---|
-| **Name** | `smart-coldchain-frontend` |
-| **Branch** | `main` |
-| **Root Directory** | `frontend` *(chỉ định thư mục frontend)* |
-| **Build Command** | `npm install && npm run build` |
-| **Publish Directory** | `dist` |
-
-### Bước 3.3: Thiết lập Environment Variables cho Frontend
-Thêm các biến môi trường cho Frontend:
+Khi bật chain, phải đặt đầy đủ và đối chiếu role trước khi nhận traffic:
 
 ```dotenv
-# Trỏ đến URL Backend vừa tạo ở Bước 2
-VITE_API_BASE_URL=https://smart-coldchain-insurance.onrender.com
-VITE_USE_MOCK=false
-VITE_ENABLE_DEMO=true
+BLOCKCHAIN_ENABLED=true
+BLOCKCHAIN_NETWORK=<actual-network-name>
+BLOCKCHAIN_RPC_URL=<secret-rpc-url>
+BLOCKCHAIN_CHAIN_ID=<actual-chain-id>
+BLOCKCHAIN_CONFIRMATIONS=1
+DATA_INTEGRITY_CONTRACT_ADDRESS=<actual-address>
+BACKEND_ANCHORER_PRIVATE_KEY=<render-secret>
+BLOCKCHAIN_CONTRACT_ADDRESS=<actual-insurance-address>
+BLOCKCHAIN_ORACLE_PRIVATE_KEY=<render-secret>
 ```
 
-### Bước 3.4: Cấu hình SPA Routing (Redirects / Rewrites)
-Ứng dụng sử dụng React Router DOM để điều hướng trang (`/shipments`, `/devices`, `/integrity`, `/events`). Để không bị lỗi 404 khi người dùng F5 hoặc truy cập trực tiếp URL con:
+Không dùng wildcard cho `CORS_ORIGINS`. `APP_ENV=production` tắt toàn bộ `/api/v1/demo/*`, từ chối unsigned telemetry và fail startup nếu admin secret quá ngắn hoặc CORS không phải allowlist rõ ràng.
 
-1. Trong trang cài đặt của Static Site, chọn tab **Redirects/Rewrites**.
-2. Nhấn **Add Rule**:
-   - **Type**: `Rewrite`
-   - **Source**: `/*`
-   - **Destination**: `/index.html`
-3. Nhấn **Save Changes**.
+## 4. Smoke test sau deploy
 
-Nhấn **Create Static Site** (hoặc **Manual Deploy** → **Clear build cache & deploy**).
-Sau vài phút, Render sẽ cấp cho bạn URL Frontend, ví dụ:
-`https://smart-coldchain-frontend.onrender.com`
+Thay `<api-origin>` bằng origin Render thật, không thêm `/api/v1` hai lần:
 
----
+```bash
+curl -fsS https://<api-origin>/api/v1/health
+curl -fsS https://<api-origin>/api/v1/ready
+curl -fsS https://<api-origin>/openapi.json
+```
 
-## 4. Đồng bộ CORS giữa Frontend và Backend
+Kỳ vọng khi chưa bật Blockchain:
 
-Sau khi đã có URL Frontend chính thức (ví dụ: `https://smart-coldchain-frontend.onrender.com`):
-1. Quay lại **Web Service Backend** trên Render Dashboard.
-2. Vào tab **Environment**.
-3. Cập nhật biến `CORS_ORIGINS`:
-   ```text
-   http://localhost:5173,https://smart-coldchain-frontend.onrender.com
-   ```
-4. Nhấn **Save Changes**. Render sẽ tự động redeploy Backend trong vài giây.
+```json
+{"status":"ok","database":"ok","blockchain":"unavailable"}
+```
 
----
+`/health` là liveness và vẫn trả `200` với `status=degraded`; `/ready` trả `503` khi MySQL unavailable. RPC unavailable không làm readiness fail vì accepted telemetry phải được persist trước, còn anchor/payout đi qua outbox.
 
-## 5. Lưu ý quan trọng khi dùng Render Free Tier
+Tiếp tục kiểm tra:
 
-1. **Hiện tượng Cold Start (Ngủ đông)**:
-   - Trên gói miễn phí của Render, sau 15 phút không có request nào, Web Service sẽ tạm thời chuyển sang trạng thái ngủ (spin down).
-   - Khi có request mới (người dùng mở web hoặc gửi telemetry), Render cần khoảng **30 - 50 giây** để khởi động lại service.
-   - Frontend đã được tích hợp cơ chế nhận biết `RENDER_COLD_START_TIMEOUT` và thông báo người dùng chờ đợi thay vì báo lỗi hệ thống/lỗi cảm biến.
+1. Gọi admin API bằng `X-Admin-Key`, đăng ký public key thiết bị và assignment.
+2. Gửi một signed telemetry từ simulator qua HTTPS public; xác nhận signature `VALID`, `received_at` do server tạo và dữ liệu đọc lại được.
+3. Restart/redeploy service; xác nhận shipment/telemetry vẫn còn trong external MySQL.
+4. Gửi preflight/request từ đúng Frontend origin và xác nhận origin khác không nhận CORS header.
+5. Xác nhận `/api/v1/demo/...` trả `404` và unsigned telemetry trả `403` trên production.
+6. Nếu bật chain, kiểm tra RPC/chain ID/contract role, anchor + readback và insurance receipt thật trước khi ghi trạng thái `DEPLOYED`.
 
-2. **Dữ liệu MySQL không bị mất**:
-   - Do hệ thống sử dụng MySQL bên ngoài (Aiven Cloud Managed MySQL) nên toàn bộ telemetry, thiết bị, lô hàng và sự kiện bảo hiểm được lưu trữ bền vững, độc lập với vòng đời của container Render.
+## 5. Khôi phục và retry
 
+- DB lỗi: `/ready` trả `503`; kiểm tra provider/TLS/CA/pool, phục hồi backup nếu cần rồi restart. Không chạy seed lên production.
+- RPC lỗi: telemetry vẫn nằm trong MySQL; dùng `python -m app.cli retry-integrity` và `python -m app.cli retry-blockchain` ở môi trường worker/paid shell, hoặc admin retry API có xác thực trong demo.
+- Render Free không bảo đảm timer/worker sống liên tục. Muốn retry theo SLA phải dùng paid worker/cron phù hợp; không ping giả để né spin-down.
+- Transaction pending giữ nguyên signed raw transaction/idempotency; không xóa outbox hoặc tự sửa `transaction_hash` trong DB.
+- Chỉ log request ID, shipment/device/batch/evidence ID và mã lỗi đã chuẩn hóa; không log connection string, private key, admin key hoặc raw transaction.
+
+## 6. Handoff cho Frontend
+
+Chỉ sau khi smoke test hoàn tất mới bàn giao:
+
+```dotenv
+VITE_API_BASE_URL=https://<actual-render-service>.onrender.com/api/v1
+```
+
+Ghi kèm thời điểm kiểm tra, branch/commit deploy, trạng thái MySQL, chain/network và giới hạn cold start. Placeholder không được báo cáo như URL thật.
