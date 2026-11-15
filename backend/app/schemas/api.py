@@ -126,10 +126,13 @@ class SignedTelemetryCreate(StrictBody):
 
 
 class DeviceRegister(StrictBody):
-    device_id: str
-    key_id: str
-    public_key_pem: str = Field(min_length=1, max_length=512)
-    shipment_id: str
+    device_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,100}$", strict=True)
+    device_name: str = Field(min_length=1, max_length=100, strict=True)
+
+    @field_validator("device_name", mode="before")
+    @classmethod
+    def trim_device_name(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 class DeviceKeyRegister(StrictBody):
@@ -143,7 +146,34 @@ class DeviceStateUpdate(StrictBody):
 
 class AssignmentUpdate(StrictBody):
     shipment_id: str
+    active: bool = Field(strict=True)
+
+
+class DeviceKeyOut(BaseModel):
+    key_id: str
+    status: Literal["active", "revoked"]
+
+
+class DeviceAssignmentOut(BaseModel):
+    shipment_id: str
     active: bool
+
+
+class DeviceOut(BaseModel):
+    device_id: str
+    device_name: str
+    status: Literal["active", "revoked"]
+    has_public_key: bool
+    current_shipment_id: str | None
+    last_sequence_number: int
+    last_seen_at: datetime | None
+    keys: list[DeviceKeyOut]
+    assignments: list[DeviceAssignmentOut]
+
+
+class DevicesOut(BaseModel):
+    items: list[DeviceOut]
+    total: int
 
 
 class LocationOut(BaseModel):

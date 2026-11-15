@@ -24,6 +24,8 @@ from app.schemas.api import (
     SignedTelemetryCreate,
     SignedTelemetryOut,
     DeviceRegister,
+    DeviceOut,
+    DevicesOut,
     DeviceKeyRegister,
     DeviceStateUpdate,
     AssignmentUpdate,
@@ -47,6 +49,15 @@ demo_router = APIRouter(prefix="/api/v1/demo")
 DbSession = Annotated[Session, Depends(get_session)]
 
 
+def admin_session(request: Request, session: DbSession,
+                  x_admin_key: str | None = Header(default=None, alias="X-Admin-Key")) -> Session:
+    signed_ingestion.require_admin(x_admin_key, request.app.state.settings.admin_api_key)
+    return session
+
+
+AdminSession = Annotated[Session, Depends(admin_session)]
+
+
 @router.get("/health", response_model=HealthOut)
 def health(request: Request) -> HealthOut:
     return HealthOut.model_validate(service_health(request.app.state.engine, request.app.state.settings))
@@ -61,7 +72,7 @@ def ready(request: Request, response: Response) -> HealthOut:
 
 
 @router.post("/shipments", response_model=ShipmentOut, response_model_exclude_unset=True, status_code=201)
-def create_shipment(payload: ShipmentCreate, request: Request, session: DbSession):
+def create_shipment(payload: ShipmentCreate, request: Request, session: AdminSession):
     shipment = shipments.create_shipment(session, payload)
     return shipments.shipment_dict(session, shipment, request.app.state.clock, request.app.state.settings.sensor_gap_minutes)
 
@@ -116,49 +127,45 @@ def add_telemetry(shipment_id: UUID4, payload: SignedTelemetryCreate | Telemetry
     return shipments.telemetry_dict(sample)
 
 
-def admin_session(request: Request, session: DbSession,
-                  x_admin_key: str | None = Header(default=None, alias="X-Admin-Key")) -> Session:
-    signed_ingestion.require_admin(x_admin_key, request.app.state.settings.admin_api_key)
-    return session
-
-
-AdminSession = Annotated[Session, Depends(admin_session)]
-
-
-@router.post("/devices", status_code=201)
+@router.post("/devices", response_model=DeviceOut, status_code=201)
 def register_device(payload: DeviceRegister, session: AdminSession):
     device = signed_ingestion.register_device(
-        session, payload.device_id, payload.key_id, payload.public_key_pem, payload.shipment_id,
+        session, payload.device_id, payload.device_name,
     )
     return signed_ingestion.device_view(session, device)
 
 
-@router.get("/devices/{device_id}")
+@router.get("/devices", response_model=DevicesOut)
+def list_devices(session: AdminSession):
+    return signed_ingestion.list_devices(session)
+
+
+@router.get("/devices/{device_id}", response_model=DeviceOut)
 def get_device(device_id: str, session: AdminSession):
     return signed_ingestion.device_view(session, signed_ingestion.get_device(session, device_id))
 
 
-@router.post("/devices/{device_id}/keys", status_code=201)
+@router.post("/devices/{device_id}/keys", response_model=DeviceOut, status_code=201)
 def add_device_key(device_id: str, payload: DeviceKeyRegister, session: AdminSession):
     signed_ingestion.add_key(session, device_id, payload.key_id, payload.public_key_pem)
     return signed_ingestion.device_view(session, signed_ingestion.get_device(session, device_id))
 
 
-@router.patch("/devices/{device_id}")
+@router.patch("/devices/{device_id}", response_model=DeviceOut)
 def set_device_status(device_id: str, payload: DeviceStateUpdate, session: AdminSession):
-    device = signed_ingestion.get_device(session, device_id)
+    device = signed_ingestion.get_device(session, device_id, lock=True)
     device.status = payload.status
     session.commit()
     return signed_ingestion.device_view(session, device)
 
 
-@router.patch("/devices/{device_id}/keys/{key_id}")
+@router.patch("/devices/{device_id}/keys/{key_id}", response_model=DeviceOut)
 def set_device_key_status(device_id: str, key_id: str, payload: DeviceStateUpdate, session: AdminSession):
     signed_ingestion.set_key_status(session, device_id, key_id, payload.status)
     return signed_ingestion.device_view(session, signed_ingestion.get_device(session, device_id))
 
 
-@router.post("/devices/{device_id}/assignments")
+@router.post("/devices/{device_id}/assignments", response_model=DeviceOut)
 def set_device_assignment(device_id: str, payload: AssignmentUpdate, session: AdminSession):
     signed_ingestion.set_assignment(session, device_id, payload.shipment_id, payload.active)
     return signed_ingestion.device_view(session, signed_ingestion.get_device(session, device_id))
@@ -260,7 +267,7 @@ def anchor_integrity_batch(batch_id: UUID4, request: Request, session: AdminSess
 
 
 @router.post("/batches/{batch_id}/verify", response_model=IntegrityVerifyOut)
-def verify_integrity_batch(batch_id: UUID4, request: Request, session: DbSession):
+def verify_integrity_batch(batch_id: UUID4, request: Request, session: AdminSession):
     return batch_service.verify_batch(
         session,
         str(batch_id),

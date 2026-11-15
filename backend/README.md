@@ -11,30 +11,53 @@ rules and pending Member 2 handoff.
 
 Phase 2 now uses this module when `POST .../telemetry` receives the signed v1
 payload. The legacy unsigned payload remains available only with
-`APP_ENV=development`; production rejects it. Signed data is verified but is
-**not yet anchored evidence**. The signed path does not dispatch insurance
-payouts before the Data Integrity Contract and evidence gate exist.
+`APP_ENV=development`; production rejects it. Signed telemetry can be batched,
+anchored and used by the existing anchored-evidence gate when both Blockchain
+adapters are configured. Verification alone does not imply anchoring or payout.
 
 ## Phase 2 — đăng ký thiết bị và nhận telemetry có chữ ký
 
-Đặt `ADMIN_API_KEY` là chuỗi ngẫu nhiên dài trong `backend/.env`. Trên MySQL
-hiện có, sao lưu dữ liệu rồi chạy `python -m app.cli upgrade-db` từ `backend/`.
-Lệnh áp dụng Alembic revision `20261105_01`, tạo thêm các bảng `devices`,
-`device_keys`, `device_assignments`, `signed_telemetry_receipts`,
-`ingestion_audit` mà không sửa các bảng cũ. Với DB mới,
-`python -m app.cli init-db` tạo bảng nền và chạy cùng revision. `seed-demo` cũng nâng schema trước
-khi seed. Chỉ chạy upgrade trên môi trường đã sao lưu; downgrade sẽ xóa các
-bảng thiết bị mới và dữ liệu của chúng.
+Đặt `ADMIN_API_KEY` là chuỗi ngẫu nhiên dài trong `backend/.env`. Trên MySQL hiện có,
+sao lưu dữ liệu rồi chạy `python -m app.cli upgrade-db` từ `backend/`; với DB mới dùng
+`python -m app.cli init-db`. Cả hai chạy tới head **`20261115_03`**, gồm các revision
+signed telemetry/Merkle trước đó, thêm `devices.device_name` (backfill bằng ID)
+và unique generated-column index `uq_device_assignment_active`. Không sửa revision cũ.
 
-`POST /api/v1/devices` yêu cầu header `X-Admin-Key` và body:
+Quy trình admin mới, mọi thao tác ghi bên dưới đều có header `X-Admin-Key`:
+
+1. **Đăng ký device** qua `POST /api/v1/devices`, chỉ hai trường:
 
 ```json
-{"device_id":"ESP32-001","key_id":"key-v1","public_key_pem":"-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n","shipment_id":"<UUID-v4>"}
+{"device_id":"ESP32-001","device_name":"Cold Chain Sensor 01"}
 ```
 
-Admin có thể xem thiết bị, thêm/revoke key, revoke thiết bị và bật/tắt
-assignment qua `/api/v1/devices/*` trong `/docs`. Chỉ public key vào Backend;
-giữ private key ngoài Git. Mẫu signed v1 dùng đúng schema trong
+2. **Tạo chuyến** bằng `POST /api/v1/shipments` với `code=SHIP-001` và DTO hiện có.
+   Lấy `id` UUID trong response, không dùng code thay `shipment_id`. Policy trong MySQL
+   chưa đồng nghĩa policy đã fund trên chain.
+3. **Gán device** bằng `POST /api/v1/devices/ESP32-001/assignments`,
+   body `{"shipment_id":"<UUID trả về>","active":true}`. Mỗi device chỉ có một chuyến
+   active, nhiều device có thể cùng chuyến; cùng cặp retry idempotent. Gán sang chuyến khác
+   trả `409 DEVICE_ALREADY_ASSIGNED`; bỏ gán cũ với `active=false` trước, không reset counter.
+4. **Cấp key local/USB**, mỗi ESP32 dùng cặp P-256 riêng. Private key chỉ ghi vào
+   `device/cold_chain_device/config.h` (gitignored), nạp bằng USB; chỉ public key SPKI PEM
+   được gửi tới `POST /api/v1/devices/ESP32-001/keys`:
+
+```json
+{"key_id":"key-v1","public_key_pem":"<public key P-256 SPKI PEM thật>"}
+```
+
+5. **Giám sát**: admin `GET /api/v1/devices` trả `{items,total}` với mọi device, kể cả chưa key/chưa gán.
+   DeviceView có `device_name`, `has_public_key`, `current_shipment_id` (UUID hoặc null),
+   sequence/last seen và metadata keys/assignments; không trả PEM/private key. Có key trong DB
+   chưa chứng minh đã nạp firmware đúng; xác nhận bằng mẫu signed đầu tiên.
+
+DTO đăng ký gộp cũ không còn được nhận. Frontend phải chuyển sang form ID/tên và gọi
+assignment riêng, gửi admin header khi tạo shipment/list device; các endpoint đọc monitoring
+vẫn như cũ. `POST /batches/{batch_id}/verify` cũng yêu cầu admin. Không thêm alias `/assign`
+hoặc `/public-key`, không thay protocol/ABI/logic bảo hiểm.
+
+Admin vẫn có thể thêm/revoke key, revoke device và bật/tắt assignment trong `/docs`.
+Chỉ public key vào Backend; private key không qua React/API/DB/Blockchain. Mẫu signed v1 dùng schema trong
 `docs/contracts/api-v1.md` và golden fixture. Retry cùng nội dung/sequence
 trả `200` với `duplicate=true`; sequence xung đột hoặc cũ trả `409` và ghi
 audit. Chữ ký sai, thiết bị/key chưa đăng ký hoặc không được assignment sẽ bị
@@ -44,6 +67,46 @@ mặc định 8192 và `SIGNED_RATE_LIMIT_PER_MINUTE` mặc định 120; giới 
 `GET /api/v1/shipments/{shipment_id}/devices` cho Frontend đọc trạng thái
 `UNKNOWN/ONLINE/OFFLINE` từ thời điểm nhận mẫu signed cuối cùng; retry mẫu
 cũ không làm thiết bị "online" giả. Header `X-Request-ID` có ở mọi response.
+
+### Migration khi quan hệ cũ bị xung đột
+
+Migration mới kiểm tra **trước DDL** và dừng nếu một device có nhiều assignment active.
+Nó không tự chọn chuyến hoặc xóa lịch sử. Xem các device cần xử lý bằng truy vấn chỉ đọc:
+
+```sql
+SELECT device_id, COUNT(*) AS active_count
+FROM device_assignments WHERE active = true
+GROUP BY device_id HAVING COUNT(*) > 1;
+```
+
+Admin đối chiếu từng shipment và tắt các assignment sai bằng phiên bản API cũ/SQL quản trị
+trước khi chạy lại upgrade. Dữ liệu keys/sequence/telemetry/batches/evidence được giữ nguyên.
+SQLite test dùng virtual generated column tương đương; chỉ SQLite giữ default tên rỗng để
+thêm cột NOT NULL mà không rebuild bảng cha có foreign key. API vẫn bắt buộc tên không rỗng.
+Downgrade revision mới chỉ bỏ tên/constraint mới; downgrade về `base` sẽ xóa các bảng bổ sung cũ,
+không dùng để phục hồi production thay cho backup.
+
+### Kiểm thử
+
+```powershell
+# Từ backend/, sau khi cài requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest -q
+
+# MySQL test server riêng: tests tạo và xóa schema coldchain_test_<random> của chính chúng.
+# Không dùng URL/database production. URL dưới là ví dụ cho server test local riêng.
+$env:COLDCHAIN_TEST_MYSQL_URL = 'mysql+pymysql://<test-user>:<test-password>@127.0.0.1:<test-port>'
+.\.venv\Scripts\python.exe -m pytest tests/test_device_registration_migration.py -q
+```
+
+MySQL tests kiểm tra upgrade/downgrade có dữ liệu, dừng trước DDL khi assignment xung đột
+và hai request gán đồng thời chỉ một thành công. Các test live MySQL/Hardhat khác vẫn opt-in
+bằng cờ riêng hiện có.
+
+Kiểm chứng ngày 2026-11-15: Python 3.13, requirements đã khóa và MySQL 8.0.46 trên server
+test tạm bind localhost; toàn bộ Backend **109 passed, 5 skipped**. Các trường hợp bỏ qua gồm
+hai race test chỉ chạy trên MySQL (bản SQLite) và ba test live MySQL/Hardhat opt-in cũ.
+Đã kiểm tra cả snapshot MySQL cũ sau thu hồi device/key/assignment và hai lần gửi cùng mẫu
+đồng thời chỉ tạo một receipt. Không áp dụng migration vào database thật hoặc deploy trong lượt này.
 
 FastAPI + SQLAlchemy, dùng **MySQL** cho dữ liệu ứng dụng. REST contract: [api-v1.md](../docs/contracts/api-v1.md). Python 3.10+ và MySQL 8.0+.
 
@@ -55,7 +118,7 @@ py -3 -m venv .venv
 ./.venv/Scripts/python.exe -m pip install -r requirements.txt
 ```
 
-Nếu chưa có `backend/.env`, sao chép `.env.example` thành `.env`, rồi điền `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD` của tài khoản ứng dụng. Không ghi mật khẩu vào Git. Backend tạo URL MySQL bằng `URL.create`, nên mật khẩu chứa `@`, `/` hay `:` không cần mã hóa thủ công. `DATABASE_URL` cũ của SQLite không còn được dùng. `.env` được Git bỏ qua.
+Nếu chưa có `backend/.env`, sao chép `.env.example` thành `.env`, điền `DATABASE_URL` MySQL hoặc bộ `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`. `DATABASE_URL` MySQL được ưu tiên; SQLite chỉ dùng cho test cô lập. Không ghi mật khẩu vào Git. Với bộ biến `MYSQL_*`, Backend dùng `URL.create`, nên mật khẩu chứa `@`, `/` hay `:` không cần mã hóa thủ công. `.env` được Git bỏ qua.
 
 Kết nối MySQL luôn yêu cầu TLS. Cấu hình mặc định tương đương `ssl-mode=REQUIRED` trong URI Aiven: dữ liệu được mã hóa nhưng chưa xác minh danh tính máy chủ. Nếu tải CA certificate của dự án từ Aiven, đặt đường dẫn file vào `MYSQL_SSL_CA` trong `.env` để bật kiểm tra certificate và hostname.
 
@@ -133,7 +196,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/shipments/<shipment-id>/batches/seal \
 
 Các endpoint đọc/verify gồm `GET /api/v1/shipments/{id}/integrity`, `GET /api/v1/shipments/{id}/batches`, `GET /api/v1/batches/{batch_id}` và `POST /api/v1/batches/{batch_id}/verify`. Seal lưu atomically `integrity_batches`, `integrity_batch_items` và một `integration_outbox` `ANCHOR_BATCH`. Verify tính lại MERKLE-v1 từ telemetry/receipt trong database. Nếu root, leaf, membership hoặc giá trị hiển thị không còn khớp signed receipt, batch chuyển `DATA_INTEGRITY_FAILED` và tạo một `INTEGRITY_MISMATCH` duy nhất cho lần phát hiện đầu.
 
-Sau khi lấy code mới, chạy `./.venv/Scripts/python.exe -m app.cli upgrade-db` để áp dụng revision `20261109_02`. Không áp dụng migration production trước khi có backup và cửa sổ triển khai.
+Sau khi lấy code mới, chạy `./.venv/Scripts/python.exe -m app.cli upgrade-db` để áp dụng các revision còn thiếu tới `20261115_03`, bao gồm bảng batch của `20261109_02`. Không áp dụng migration production trước khi có backup và cửa sổ triển khai.
 
 ### Data Integrity anchoring (Phase 5)
 

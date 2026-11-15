@@ -56,7 +56,7 @@ def test_signed_batch_is_anchored_and_read_back_on_local_chain(tmp_path):
     ).decode("ascii")
     try:
         with TestClient(app) as client:
-            shipment = client.post("/api/v1/shipments", json={
+            shipment = client.post("/api/v1/shipments", headers=ADMIN, json={
                 "code": "CHAIN-INTEGRITY",
                 "cargo_type": "vaccine",
                 "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
@@ -69,10 +69,12 @@ def test_signed_batch_is_anchored_and_read_back_on_local_chain(tmp_path):
             shipment_id = shipment["id"]
             assert client.post("/api/v1/devices", headers=ADMIN, json={
                 "device_id": "CHAIN-DEVICE",
-                "key_id": "key-v1",
-                "public_key_pem": public_key,
-                "shipment_id": shipment_id,
+                "device_name": "Local chain sensor",
             }).status_code == 201
+            assert client.post("/api/v1/devices/CHAIN-DEVICE/assignments", headers=ADMIN,
+                               json={"shipment_id": shipment_id, "active": True}).status_code == 200
+            assert client.post("/api/v1/devices/CHAIN-DEVICE/keys", headers=ADMIN,
+                               json={"key_id": "key-v1", "public_key_pem": public_key}).status_code == 201
             payload = {
                 "payload_version": 1,
                 "shipment_id": shipment_id,

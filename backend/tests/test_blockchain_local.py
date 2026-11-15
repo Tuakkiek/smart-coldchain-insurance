@@ -98,10 +98,12 @@ def test_signed_anchored_violation_pays_once_on_local_chain(tmp_path):
         with TestClient(app) as client:
             assert client.post("/api/v1/devices", headers=ADMIN, json={
                 "device_id": "PHASE6-HARDHAT",
-                "key_id": "key-v1",
-                "public_key_pem": public_key,
-                "shipment_id": SEEDED_SHIPMENT_ID,
+                "device_name": "Hardhat sensor",
             }).status_code == 201
+            assert client.post("/api/v1/devices/PHASE6-HARDHAT/assignments", headers=ADMIN,
+                               json={"shipment_id": SEEDED_SHIPMENT_ID, "active": True}).status_code == 200
+            assert client.post("/api/v1/devices/PHASE6-HARDHAT/keys", headers=ADMIN,
+                               json={"key_id": "key-v1", "public_key_pem": public_key}).status_code == 201
             route = f"/api/v1/shipments/{SEEDED_SHIPMENT_ID}/telemetry"
             for sequence, minute in enumerate((0, 5, 10, 15), start=1):
                 app.state.clock.current = start + timedelta(minutes=minute)

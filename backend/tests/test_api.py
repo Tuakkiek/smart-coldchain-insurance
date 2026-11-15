@@ -24,14 +24,15 @@ SHIPMENT = {
     "violation_duration_minutes": 15,
     "insured_amount_vnd": 10000000,
 }
+ADMIN = {"X-Admin-Key": "api-test-admin"}
 
 
 @pytest.fixture
 def api(tmp_path):
     database_url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
-    app = create_app(Settings(database_url=database_url))
+    app = create_app(Settings(database_url=database_url, admin_api_key=ADMIN["X-Admin-Key"]))
     Base.metadata.create_all(app.state.engine)
-    with TestClient(app) as client:
+    with TestClient(app, headers=ADMIN) as client:
         yield client, app
     app.state.engine.dispose()
 

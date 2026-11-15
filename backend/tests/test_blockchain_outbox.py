@@ -77,6 +77,7 @@ def run_breach(tmp_path, gateway_mode):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'chain.db').as_posix()}",
         payout_requires_anchored_evidence=False,
+        admin_api_key="outbox-test-admin",
     ))
     Base.metadata.create_all(app.state.engine)
     app.state.clock = VirtualClock(datetime(2026, 11, 4, tzinfo=timezone.utc))
@@ -85,7 +86,8 @@ def run_breach(tmp_path, gateway_mode):
     coordinator = BlockchainCoordinator("localhost", gateway, receipt_timeout_seconds=1)
     app.state.blockchain = coordinator
     with TestClient(app) as client:
-        shipment = client.post("/api/v1/shipments", json=SHIPMENT).json()
+        shipment = client.post("/api/v1/shipments", headers={"X-Admin-Key": "outbox-test-admin"},
+                               json=SHIPMENT).json()
         shipment_id = shipment["id"]
         response = client.post(
             f"/api/v1/demo/shipments/{shipment_id}/scenario",
