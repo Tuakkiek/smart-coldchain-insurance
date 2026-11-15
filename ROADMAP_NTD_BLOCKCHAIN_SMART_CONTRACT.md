@@ -3,14 +3,18 @@
 > **Dự án:** `smart-coldchain-insurance`  
 > **Phụ trách:** Member 2 — NTD, **owner của `blockchain/`**  
 > **Mục tiêu nâng cấp:** triển khai **Data Integrity Contract** để neo Merkle Root của telemetry lên Blockchain, đồng thời **giữ và hoàn thiện Insurance Contract** để tiếp nhận bằng chứng vi phạm, kiểm soát Oracle và chi trả token demo an toàn.  
-> **Kết quả mong đợi:** hai contract triển khai được trên local chain/testnet, có Hardhat tests, ABI/deployment artifacts, ví dụ gọi hàm và tài liệu `blockchain/INTEGRATION.md` đủ chi tiết để NTK kết nối từ FastAPI mà không phải đoán giao thức.  
+> **Kết quả mong đợi:** hai contract giữ ABI/nghiệp vụ hiện có, compile/test bằng Remix, deploy bằng Remix + MetaMask lên **Ethereum Sepolia `11155111`**, có ABI/manifest/receipt và `blockchain/INTEGRATION.md` để NTK kết nối bằng **Python Web3.py qua Alchemy HTTPS RPC**.
 > **Trạng thái tài liệu:** KẾ HOẠCH CẬP NHẬT — không ngụ ý source code, hợp đồng, deployment hay test đã được thực hiện.
 
 > **Điều chỉnh thiết kế demo 2026-11-15:** Đồng bộ [roadmap NTK](ROADMAP_NTK_IOT_BACKEND.md) và [roadmap TTDK](ROADMAP_TTDK_FRONTEND_QA.md); chỉ điều chỉnh tích hợp bị ảnh hưởng bởi đăng ký/gán/cấp khóa. Repo đã có hai contract, ABI/adapter và `blockchain/INTEGRATION.md`; phần thiết kế bên dưới dùng để đối chiếu/tái sử dụng, **không yêu cầu viết lại contract**. Giữ nguyên checkbox/tiến độ lịch sử; lượt này không chạy lại test, deploy hoặc sửa Solidity.
 
+> **Chuyển đổi 2026-11-15 — PLANNED, chưa triển khai:** Quy trình mới **Solidity → Remix Compiler → Remix Solidity Unit Testing → Remix + MetaMask deploy → Sepolia → Alchemy RPC → Python Web3.py**. Không dùng Hardhat setup/config/node/tests/deployment scripts/Ignition hoặc localhost `31337` làm dependency/gate nghiệm thu mới. Mọi checkbox đã tick và kết quả local bên dưới là **lịch sử legacy**; giữ nguyên source/tests/artifacts và bằng chứng, không coi chúng là Sepolia `DEPLOYED`. Node.js chỉ còn cần cho React Vite, không yêu cầu cài để làm Smart Contract. Tài liệu này và hai roadmap liên quan là phạm vi chỉnh sửa; việc port tests/cập nhật runtime/runbook vẫn chưa thực hiện.
+
+**Auth thống nhất:** một Admin được NTK cấu hình qua `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `JWT_SECRET_KEY` → `POST /api/v1/auth/login` → JWT Bearer cho FastAPI. Không Register/thêm Admin/đa vai trò/bảng users/refresh session, không `ADMIN_API_KEY`/`X-Admin-Key` trong thiết kế mới. JWT không cấp quyền Owner/Oracle/anchorer và không đi vào calldata; không lưu username/password/JWT lên Blockchain hay thêm Admin Contract. ESP32 vẫn ký P-256 riêng, không dùng JWT Admin. Chi tiết [NTK §3.2.1](ROADMAP_NTK_IOT_BACKEND.md#321-login-của-duy-nhất-admin--contract-mới-planned).
+
 ### Quy trình demo và định danh dùng chung
 
-**Admin đăng ký thiết bị → Admin đăng ký chuyến hàng → Liên kết thiết bị với chuyến hàng → Cấp khóa cho ESP32 → ESP32 ký và gửi dữ liệu → Backend xác minh bằng Public Key → Lưu MySQL → Tạo bằng chứng Blockchain → Xử lý bảo hiểm.**
+**Admin login/JWT → đăng ký thiết bị → đăng ký chuyến hàng → liên kết thiết bị với chuyến hàng → cấp khóa cho ESP32 → ESP32 ký và gửi dữ liệu → Backend xác minh Public Key → MySQL → Merkle Root → Web3.py → Alchemy RPC → Ethereum Sepolia → Insurance.**
 
 - Device đăng ký bằng `device_id = "ESP32-001"`, `device_name = "Cold Chain Sensor 01"`, chưa cần key/chuyến. Mỗi device có tối đa một assignment active; nhiều device có thể cùng một shipment. Bỏ gán cũ rồi mới đổi chuyến, giữ sequence và dữ liệu lịch sử.
 - Mã chuyến Admin nhập `SHIP-001` là **`shipments.code`**, còn `shipments.id` là **UUID v4 chữ thường do Backend tạo**. UUID là `shipment_id` trong path, signed payload, assignment và input cho `shipmentKey`; không hash `code` thay UUID. Frontend hiển thị mã dễ đọc, Backend/adapter dùng ID chuẩn.
@@ -19,7 +23,7 @@
 - **Không đăng ký ESP32 trên Blockchain, không đưa public/private key hoặc từng record lên chain, không thêm Device Registry Contract.** `deviceKey = keccak256(UTF8(device_id))` trong batch metadata chỉ là hash định danh, **không phải khóa mật mã ESP32**.
 - `ColdChainDataIntegrity` tiếp tục lưu root/batch commitment; `ColdChainInsurance` xử lý policy/payout; Backend tiếp tục là Oracle và Blockchain Adapter. Tạo shipment trong MySQL chưa đồng nghĩa policy đã được tạo/fund trên chain.
 
-Chi tiết request/response, lỗi và schema dùng chung: [NTK §3.6 và Phase 3](ROADMAP_NTK_IOT_BACKEND.md#36-contract-mục-tiêu-cho-đăng-ký-gán-chuyến-và-cấp-khóa--chưa-triển-khai). Các bước mới vẫn là thiết kế, chưa tự động được nghiệm thu.
+Chi tiết request/response, lỗi và schema dùng chung: [NTK §3.6 và Phase 3](ROADMAP_NTK_IOT_BACKEND.md#36-contract-mục-tiêu-cho-đăng-ký-gán-chuyến-và-cấp-khóa--jwt-chưa-triển-khai). Phần JWT/Sepolia mới vẫn là thiết kế, chưa tự được nghiệm thu.
 
 ---
 
@@ -29,7 +33,7 @@ Chi tiết request/response, lỗi và schema dùng chung: [NTK §3.6 và Phase 
 
 - Thiết kế, viết, kiểm thử và triển khai **Data Integrity Smart Contract** (module A): neo batch hash/Merkle Root, metadata tối thiểu, phân quyền anchor, chống đăng ký lặp, bất biến sau khi neo, truy vấn/đối chiếu và phát event.
 - Tiếp tục xây dựng **Insurance Smart Contract** (module B): quản lý policy, beneficiary, quỹ token demo, Oracle, ghi nhận vi phạm, chống payout trùng và phát `InsurancePaid`.
-- Quản lý Solidity/Hardhat/TypeScript, test fixtures, compile, local chain, testnet, deployment scripts và artifact/ABI.
+- Quản lý Solidity/Remix IDE, compiler/dependency settings, Remix Unit Testing, pytest/Web3.py contract scenarios, deployment Sepolia bằng MetaMask và ABI/manifest. Tái sử dụng contract hiện có, không đổi constructor/events/access control/logic chỉ vì đổi công cụ.
 - Xác định và tài liệu hóa chính xác các quy tắc **`shipmentKey`, `batchKey`, `deviceKey`, Merkle Root, `evidenceHash`, event/transaction receipt** cùng NTK.
 - Cung cấp ABI, contract address, RPC configuration, chain ID, quyền `ANCHORER`/`ORACLE`, error codes, events và ví dụ giao dịch đã test cho NTK.
 - Hỗ trợ Member 1 xác minh giao dịch từ Backend adapter, hỗ trợ Member 3 hiểu ý nghĩa status thông qua REST API (không để frontend gọi Blockchain trực tiếp).
@@ -52,29 +56,26 @@ blockchain/
 │   ├── ColdChainDataIntegrity.sol       # Module A: anchoring và lookup
 │   ├── ColdChainInsurance.sol           # Module B: policy, oracle, payout
 │   └── MockInsuranceToken.sol           # ERC-20 demo (nếu dùng)
-├── scripts/
-│   ├── deploy.ts                        # Deploy cả 2 module + token demo
-│   ├── seed-demo.ts                     # Policy/batch demo trên local chain
-│   └── verify-deployment.ts             # Kiểm tra address, roles, code/chain
-├── test/
-│   ├── DataIntegrity.test.ts
-│   ├── Insurance.test.ts
-│   ├── IntegrationFlow.test.ts
-│   └── fixtures/                        # Hash vectors từ Member 1
-├── ignition/                            # Chỉ nếu framework thực tế sử dụng
+├── remix-tests/                         # Đề xuất mới: Solidity Unit Testing
+│   ├── DataIntegrity_test.sol
+│   └── Insurance_test.sol
+├── python-tests/                        # Đề xuất mới: pytest/Web3.py opt-in Sepolia
+│   ├── test_data_integrity_sepolia.py
+│   ├── test_insurance_sepolia.py
+│   └── fixtures/                        # Dùng golden vectors NTK, không tạo protocol khác
+├── compiler-settings.json               # Đề xuất: full solc/OZ/optimizer/EVM/source metadata
 ├── deployments/
-│   ├── localhost.json                   # Không chứa secret
-│   └── <network>.json                   # Chỉ tạo sau deploy thật
-├── artifacts/                            # Generate; không sửa tay
-├── hardhat.config.ts
-├── package.json
-├── package-lock.json                   # Hoặc lockfile package manager đã chốt
+│   ├── localhost.json                   # Nếu có: bằng chứng legacy, không dùng trên Sepolia
+│   ├── sepolia.json                     # Chỉ tạo sau receipt deploy thật
+│   └── abi/                             # ABI Remix đúng source/settings deploy
+├── scripts/, test/, artifacts/          # Hardhat cũ: giữ nguyên như legacy, không gate mới
+├── hardhat.config.ts, package*.json     # Baseline legacy; không yêu cầu npm install
 ├── .env.example                        # Chỉ placeholder
 ├── README.md
 └── INTEGRATION.md                       # Source of truth Blockchain ↔ Backend
 ```
 
-Cấu trúc trên là **đề xuất mở rộng từ Roadmap cũ**; nếu repository hiện có đường dẫn/tên contract khác, giữ tên đang hoạt động hoặc lên kế hoạch migration trước khi đổi. Không được tự giả định cây thư mục thực tế đã có đủ các file này.
+Cây trên là **kế hoạch**, không khẳng định các file Remix/Python/manifest đã có. Giữ nguyên source và các đường dẫn legacy hiện có; không di chuyển/xóa tests/artifacts lịch sử trong lượt này. README/INTEGRATION cần chỉ rõ legacy và hướng dẫn mới không đòi Hardhat.
 
 ---
 
@@ -98,7 +99,7 @@ External MySQL (toàn bộ accepted telemetry và audit)
     ├──► Integrity Service (Member 1)
     │       ├─ Canonical record, SHA-256 leaf hashes
     │       ├─ MERKLE-v1 root theo batch đã SEALED
-    │       └─ Blockchain Adapter → anchorBatch(...)
+    │       └─ Python Web3.py → Alchemy HTTPS RPC → anchorBatch(...) on Sepolia 11155111
     │                              ▼
     │                 Data Integrity Contract (Member 2)
     │                   └─ batchKey → immutable root + event
@@ -120,7 +121,7 @@ Frontend (Member 3) ── REST API ──► FastAPI Backend
 - **Data Integrity Contract** không đọc JSON telemetry, không xác minh trực tiếp ECDSA chữ ký của ESP32 và không phát hiện sample bị mất. Backend thực hiện các kiểm tra đó; contract ghi và trả về root bất biến sau khi được authorized anchorer gửi.
 - **Insurance Contract** không kết nối cảm biến/HTTP và không tự tính 15 phút; Backend là **Oracle có trách nhiệm** đối với dữ liệu nghiệp vụ, contract kiểm soát quyền gọi, policy và việc chuyển token.
 - **Blockchain failure** phải độc lập với persistence telemetry: khi RPC lỗi, Backend lưu trạng thái pending/failed ở MySQL và retry theo cơ chế durable outbox, không bỏ mẫu cảm biến.
-- **Public Backend** trên Render là trách nhiệm NTK; NTD chỉ cung cấp network/RPC/contract configuration, tránh để frontend hoặc ESP32 trực tiếp điều khiển contract.
+- **Public Backend** trên Render là trách nhiệm NTK; NTK tạo Alchemy Ethereum Sepolia app và giữ RPC URL thật trong Backend env. NTD bàn giao ABI/address/chain/roles; Alchemy chỉ là RPC provider, không lưu telemetry hoặc blockchain riêng. Không để frontend/ESP32 trực tiếp điều khiển contract.
 
 ### 2.2. Giữ nguyên các nguyên tắc từ Roadmap gốc
 
@@ -150,7 +151,7 @@ Frontend (Member 3) ── REST API ──► FastAPI Backend
 
 ### 2.4. Stack và bảo mật
 
-- Giữ stack đề xuất hiện tại: **Solidity + Hardhat + TypeScript + EVM local chain/testnet**. Chốt và pin phiên bản compiler, framework, Node/lockfile khi triển khai; không tự đổi framework khi chưa có lý do.
+- Stack mục tiêu: **Solidity + Remix IDE + MetaMask + Ethereum Sepolia + Alchemy + Python Web3.py/pytest**. Remix VM dùng cho unit tests không tốn gas; demo chính thức trên Sepolia. Pin compiler đầy đủ, optimizer/runs, EVM target và dependency trước compile/deploy; không yêu cầu node local, Hardhat hoặc Node.js cho NTD.
 - Ưu tiên thư viện phổ biến đã được kiểm thử như **OpenZeppelin** cho access control, ERC-20, SafeERC20 và reentrancy protection (nếu cần); không tự viết token/kiểm soát quyền thiếu kiểm thử.
 - Chỉ tài khoản **local/testnet demo**; không kết nối ví nắm giữ tài sản thật. Tách quyền deploy/admin, anchorer, oracle và token funder nếu thực tế phù hợp.
 - Secret nằm trong `.env` local được gitignore hoặc secret manager của môi trường chạy; **`.env.example` chỉ placeholder**. Không ghi private key/mnemonic vào `deployments/*.json`, log, README hay repo.
@@ -184,9 +185,9 @@ NTK chịu trách nhiệm cung cấp trước khi NTD chốt ABI:
 - [ ] Ví dụ `anchorBatch`, `getBatch`, `verifyBatch`, `createPolicy`, `reportViolation`, event/receipt, cả success lẫn revert.
 - [ ] Quyền `ANCHORER` và `ORACLE`, cách cấp/thu hồi quyền và cấu hình address; **không** chuyển private key qua Git/tài liệu.
 - [ ] Quy tắc finality/confirmations, tx status, duplicate, nonce/retry sau RPC timeout và cách phân loại thất bại.
-- [ ] Deployment scripts, Hardhat tests, fixtures và file `blockchain/INTEGRATION.md` được cập nhật trước khi Backend dùng ABI thật.
+- [ ] Hồ sơ compile/deploy Remix (full compiler version, optimizer/runs/EVM, dependency, source revision/checksum, constructor args), manifest Sepolia/receipt thật, Remix test + pytest/Web3.py scenario map, fixtures và `blockchain/INTEGRATION.md`. Không bàn giao script Hardhat như điều kiện chạy mới.
 
-**Acceptance gate:** NTK tự làm được tối thiểu 1 anchor → lấy receipt → đọc root on-chain và 1 payout demo → đọc sự kiện, dựa trên tài liệu bàn giao, không cần NTD sửa Backend.
+**Acceptance gate:** NTK tự làm được tối thiểu 1 anchor → receipt/event → đọc root khớp Python và 1 payout demo → event/state/balance delta **trên Sepolia qua Alchemy**, dùng ABI từ Remix. Mock/legacy pass không thay gate Sepolia; NTD không phải sửa Backend.
 
 ### 3.3. Member 1 ↔ Member 3; Member 2 hỗ trợ gì?
 
@@ -201,16 +202,17 @@ Prefix `/api/v1`; ba roadmap dùng cùng contract mục tiêu ở NTK §3.6:
 
 | Method | Endpoint | Request / response cần biết | Hiện trạng |
 |---|---|---|---|
-| `POST` | `/api/v1/devices` | `{device_id, device_name}` → `201 DeviceView`, chưa key/chuyến | Có route; **cần đổi DTO đăng ký gộp** |
-| `GET` | `/api/v1/devices` | `{items: DeviceView[], total}`, gồm device chưa key/chưa gán | **Cần bổ sung ở Backend** |
-| `POST` | `/api/v1/shipments` | `code`, cargo, origin/destination, ngưỡng/thời lượng, VND → `201 ShipmentDetail` có `id` UUID | Có; giữ DTO, **cần bảo vệ create bằng AdminSession** |
+| `POST` | `/api/v1/auth/login` | `{username, password}` → `{access_token, token_type: "bearer"}` | **Mới, chưa triển khai**, thuộc NTK; không liên quan ABI |
+| `POST` | `/api/v1/devices` | `{device_id, device_name}` → `201 DeviceView`, chưa key/chuyến | Đã có DTO độc lập; cần JWT, chưa xác nhận deploy |
+| `GET` | `/api/v1/devices` | `{items: DeviceView[], total}`, gồm device chưa key/chưa gán | Đã có trong code; cần JWT |
+| `POST` | `/api/v1/shipments` | `code`, cargo, origin/destination, ngưỡng/thời lượng, VND → `201 ShipmentDetail` có `id` UUID | Đã có `AdminSession`; thay API key bằng JWT |
 | `GET` | `/api/v1/shipments` | `{items: ShipmentDetail[], total}` | Có; giữ nguyên |
 | `POST` | `/api/v1/devices/{device_id}/assignments` | `{shipment_id: UUID, active: true/false}` → `200 DeviceView` | Có; **cần chặn gán active sang chuyến khác**, cùng cặp idempotent |
 | `POST` | `/api/v1/devices/{device_id}/keys` | Script gửi `{key_id, public_key_pem}` → `201 DeviceView` | Có; tái sử dụng sau đăng ký, không thêm `/public-key` |
 | `POST` | `/api/v1/shipments/{shipment_id}/telemetry` | Signed v1 với UUID và `key_id` bắt buộc → `201`, duplicate hợp lệ `200` | Có; giữ protocol/anti-replay |
 
-- `DeviceView` mục tiêu giữ `device_id`, `status`, `last_sequence_number`, `last_seen_at`, metadata `keys` và `assignments`; thêm `device_name`, `has_public_key`, `current_shipment_id` (UUID hoặc `null`). Hai trường cuối suy ra từ key/assignment active. Đây là **field đề xuất chưa có trong view hiện tại**, không phải transaction on-chain.
-- Các thao tác quản trị dùng `X-Admin-Key`; không thêm alias `/assign`. Đăng ký/gán/cấp key là ba thao tác độc lập; `has_public_key=true` chỉ nói có key active trong DB, không chứng minh board đã flash đúng khóa. Ingestion mới là bước kiểm chứng.
+- `DeviceView` giữ `device_id`, `status`, `last_sequence_number`, `last_seen_at`, `keys`, `assignments`, `device_name`, `has_public_key`, `current_shipment_id` (UUID hoặc `null`). Đối chiếu tĩnh `DeviceOut` đã có các field; hai trường tổng hợp suy ra từ key/assignment active. Không coi việc đọc code là test/deploy và không tạo transaction on-chain cho view này.
+- Các thao tác quản trị/monitoring dùng **JWT Bearer** sau login một Admin; provisioning script cũng login rồi upload public key, không đặt token/password trong ESP32. Không thêm alias `/assign`. Đăng ký/gán/cấp key độc lập; `has_public_key=true` chỉ nói có key active trong DB, không chứng minh board đã flash đúng khóa. Ingestion vẫn ECDSA riêng. API key hiện có là baseline cần loại bỏ, không fallback.
 - Giữ lỗi `409 DEVICE_EXISTS`, `DUPLICATE_SHIPMENT_CODE`, `KEY_EXISTS`; thêm `409 DEVICE_ALREADY_ASSIGNED` khi gán sang chuyến khác. Unknown/unassigned/key missing/invalid signature bị Backend chặn theo NTK §3.6. Không nhận telemetry thì không có leaf, anchor hoặc payout evidence tương ứng.
 - MySQL dùng lại `devices.id` (API `device_id`), `device_keys` (public PEM, PK device/key), `device_assignments` (device/shipment, active), `shipments.id` UUID và `code` unique, `telemetry` + `signed_telemetry_receipts` (unique device/sequence), `ingestion_audit`. NTK thêm `devices.device_name` và constraint một assignment active/device bằng migration mới; không tạo bảng registry/policy on-chain để thay DB.
 - Tạo shipment off-chain trước, rồi tiếp tục quy trình seed/`createPolicy(shipmentKey, ...)` hiện có khi cần demo bảo hiểm. **Không đổi ABI, event, logic payout hoặc evidence hash vì thao tác đăng ký mới.** Cùng UUID phải đi xuyên MySQL → canonical signed record → batch → policy/Oracle.
@@ -233,7 +235,7 @@ Prefix `/api/v1`; ba roadmap dùng cùng contract mục tiêu ở NTK §3.6:
 
 ### 4.2. Quy tắc `MERKLE-v1` khớp Roadmap NTK
 
-**Quy tắc chung giữa Python (NTK) và TypeScript tests (NTD), không phải logic chạy trong Solidity:**
+**Quy tắc chung giữa Python (NTK), pytest/Web3.py và fixture Remix (NTD), không phải logic dựng tree chạy trong Solidity:**
 
 1. Chỉ batch những **accepted telemetry đã verify chữ ký**; mỗi batch cho đúng một `(shipment_id, device_id)` và đã khóa membership (`SEALED`).
 2. Sắp xếp record theo `sequence_number` **tăng dần**; Backend phải lưu `leaf_index`/membership, không phụ thuộc thứ tự SELECT mặc định.
@@ -244,7 +246,7 @@ Prefix `/api/v1`; ba roadmap dùng cùng contract mục tiêu ở NTK §3.6:
 7. `merkleRoot` là **đúng 32 byte**; Solidity nhận `bytes32`; chuỗi hex `0x` + 64 hex chỉ là biểu diễn. **Không** `keccak256(hex-string)` lại, không đổi sang SHA-3, không encode cả JSON thành ABI để thay root.
 8. `hash_version = "MERKLE-v1"` lưu ở MySQL/API/INTEGRATION; nếu đổi quy tắc phải tăng phiên bản và đối chiếu fixture trước khi thay code.
 
-> **Yêu cầu kiểm thử byte-level:** fixture 1/2/3/5 leaf phải ghi `canonical_record_utf8_hex`, `leaf_hash_hex`, `merkle_root_hex` và cách tính. Hardhat/TypeScript hash thử phải ra cùng root với Python. Smart Contract **chỉ lưu/check** `bytes32`, không có nhiệm vụ tự dựng Merkle Tree từ raw telemetry.
+> **Yêu cầu kiểm thử byte-level:** fixture 1/2/3/5 leaf ghi `canonical_record_utf8_hex`, `leaf_hash_hex`, `merkle_root_hex`. Pytest tính lại đúng Python root rồi Web3.py anchor/readback trên Sepolia; Remix tests dùng cùng expected bytes32. Giữ golden vectors và mọi scenario TypeScript cũ trong bảng đối chiếu port test, không xóa case khi bỏ công cụ. Smart Contract **chỉ lưu/check** `bytes32`, không tự dựng tree từ raw telemetry.
 
 **Hash Chain:** chỉ tùy chọn để nối audit log hoặc các batch theo thời gian, phải có domain/version riêng. Không dùng Hash Chain làm tên gọi khác của Merkle root, không bắt buộc triển khai trong MVP.
 
@@ -322,7 +324,7 @@ event BatchAnchored(
 6. Nếu reorg/revert/khác root/khác network, giữ trạng thái pending/failed phù hợp; có audit/log và cơ chế đối soát. Không tự sửa root đã seal trong DB để cho khớp chain.
 7. Khi Backend tính lại record Merkle Root và phát hiện lệch, gắn `DATA_INTEGRITY_FAILED` và ngăn dùng batch đó làm bằng chứng hợp lệ cho payout theo policy. **Không xóa hay thay on-chain root cũ**.
 
-Định nghĩa finality cụ thể (`confirmation_count`, polling strategy) phải được Member 2 chốt theo **network thật**; ở local chain có thể dùng ngưỡng khác testnet nhưng phải ghi rõ environment.
+Định nghĩa confirmations/polling phải khóa cho **Sepolia** với NTK; đề xuất demo `BLOCKCHAIN_CONFIRMATIONS=2`, receipt timeout 120 giây, chưa phải kết quả kiểm thử/finality tuyệt đối. Pending quá HTTP timeout vẫn cần đối soát receipt/state; không đánh dấu thành công/thất bại chỉ vì hết thời gian chờ.
 
 ---
 
@@ -368,7 +370,7 @@ event OracleUpdated(...);
 
 - Source/ABI và `blockchain/INTEGRATION.md` quyết định chữ ký thực tế; snippet không phải bằng chứng deploy. Yêu cầu đăng ký mới **không cần thêm** `violationEvidenceId`, `batchKey`, `policyVersion` vào `reportViolation`; giữ ABI đã dùng bởi adapter.
 - `detectedAt` là thời gian Backend xác lập sự kiện, thường là Unix seconds từ `received_at`; contract có thể kiểm tra reasonable bounds nhưng **không tự xác thực độ chính xác** của event time do Oracle gửi.
-- **Cần chốt:** sự kiện xảy ra trước `expiry` nhưng transaction gửi sau `expiry` vì anchor pending có được chi trả trong `reporting_grace_period` hay không. Đặc tả chính xác điều kiện `detectedAt`, `block.timestamp`, effective time và anti-backdating thay vì vô tình từ chối hợp lệ hoặc cho phép timestamp giả.
+- **Giữ expiry hiện có:** `reportViolation` từ chối nếu `block.timestamp > policy.expiry`, kể cả khi `detectedAt` trước expiry. Không có reporting grace period trong đợt chuyển công cụ; test độ trễ anchor, chọn expiry demo đủ dài và không backdate/đổi clock để vượt điều kiện.
 
 ### 5.2. Quan hệ giữa Data Integrity và Insurance
 
@@ -402,12 +404,13 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 **Việc cần làm**
 
-- [ ] Xác nhận sở hữu `blockchain/`, tạo nhánh `feat/blockchain_smart_contract` như Roadmap gốc (hoặc tên nhánh chuẩn repo); đọc cấu trúc repository và Hardhat version đang dùng trước khi thay đổi.
+- [ ] Xác nhận sở hữu `blockchain/`, tiếp tục nhánh phù hợp repo; đọc source/ABI/constructor và hồ sơ compiler/dependency hiện có để tái sử dụng. Đánh dấu toolchain Hardhat cũ là legacy trong README/INTEGRATION, không xóa code/tests/artifacts.
 - [ ] Thống nhất **2 module**: `ColdChainDataIntegrity` và `ColdChainInsurance`, `MockInsuranceToken` tùy chọn; liệt kê rõ ai deploy/admin/anchor/oracle/fund.
 - [ ] Chốt `shipmentKey`, `batchKey`, `deviceKey` và `evidenceHash` mapping với NTK, bao gồm input bytes/encoding, domain/version, expected hex vectors.
 - [ ] Chốt `MERKLE-v1` byte-level từ NTK (SHA-256, prefix `0x00/0x01`, odd leaf duplicate) và nguồn fixture cross-language.
 - [ ] Dự thảo `anchorBatch/getBatch/verifyBatch`, `createPolicy/reportViolation`, events, errors, payout funding/expiry và duplicate rules.
-- [ ] Làm rõ policy khi integrity pending/failed, `PAYOUT_REQUIRES_ANCHORED_EVIDENCE`, reporting grace period, chain confirmations và số confirmations môi trường local/testnet.
+- [ ] Giữ `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`, rule 15 phút/gap/anti-replay và policy expiry hiện có; khóa confirmations/polling Sepolia với NTK. Không thêm grace period hoặc sửa logic chỉ vì đổi IDE.
+- [ ] Xác nhận auth một Admin/JWT thuộc NTK/TTDK: không JWT/password trong Solidity, không đổi Owner/Oracle/anchorer, ABI/events/constructor do thay đăng nhập. NTK tạo Alchemy app; NTD nhận public signer addresses để deploy/đặt quyền.
 - [ ] Tạo bản đầu `blockchain/INTEGRATION.md` có interface proposal **gắn trạng thái PROPOSED/APPROVED**, gửi cho Member 1 và nhận phản hồi; thông báo requirements UI qua NTK cho Member 3.
 - [ ] Ghi rõ địa chỉ deploy/RPC chưa có nếu chưa deploy thực tế, không sử dụng địa chỉ ví dụ như thông số production.
 - [ ] Đánh giá contract impact của §3.4 cùng NTK: registry/key/assignment ở MySQL, dùng UUID cho shipmentKey; lập kết luận không cần ABI mới hoặc Device Registry Contract. Giữ `SIGNED-TELEMETRY-v1`, `MERKLE-v1`, evidence hash và logic insurance hiện có.
@@ -419,16 +422,19 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [ ] Không có breaking schema change chưa thông báo cả nhóm.
 - [ ] NTK/TTDK hiểu cùng một ánh xạ `SHIP-001` (`code`) → UUID (`shipment_id`) → `shipmentKey`; không có yêu cầu đăng ký ESP32 hoặc public key on-chain.
 
-### Phase 1 — Hardhat Setup & Data Integrity Contract
+### Phase 1 — Remix Setup & Contract Compilation
 
-**Phụ thuộc:** Phase 0 khóa tối thiểu `batchKey` và root encoding; vẫn có thể tạo scaffolding Hardhat ngay.
+**Phụ thuộc:** Phase 0 khóa ID/root encoding; có source Solidity và browser với MetaMask. **Thiết kế mới, chưa nghiệm thu.**
 
 **Việc cần làm**
 
-- [ ] Khởi tạo/xác nhận Hardhat + TypeScript + Solidity, pin version, lockfile; tạo scripts `compile`, `test`, `node`, `deploy` phù hợp thực tế.
+- [ ] Mở [Remix IDE](https://remix.ethereum.org/), import nguyên source `ColdChainDataIntegrity.sol`, `ColdChainInsurance.sol`, `MockInsuranceToken.sol` (nếu dùng); không viết lại contract. Không cần npm/Hardhat/Node.js cho compile/deploy.
+- [ ] Đối chiếu baseline: `hardhat.config.ts` cũ ghi solc `0.8.24`, optimizer bật/200 runs; lockfile ghi OpenZeppelin `5.6.1`. Chọn **full compiler build tương thích source và dependency**, EVM target hỗ trợ Sepolia; ghi rõ optimizer/runs, `viaIR` và metadata. Mục tiêu giữ `0.8.24`/200 nếu compile được; không dùng compiler/dependency `latest` hoặc đổi Solidity nghiệp vụ để né lỗi. Nếu dependency yêu cầu compiler/EVM khác, ghi lý do thay settings và regression ABI trước deploy.
+- [ ] Pin OpenZeppelin bằng import URL có tag/version hoặc vendor đúng snapshot vào Remix workspace, giải quyết các import `@openzeppelin/contracts/...` bằng dependency/remapping tương ứng. Giữ source nghiệp vụ trong Git; ghi checksum mọi nguồn/dependency và export compiler settings/standard JSON. Không thay import thành dependency trôi nổi.
+- [ ] Compile từng contract, xem warnings, bytecode, ABI và constructor; đối chiếu ABI với Backend artifacts về signatures/types/returns/events/errors, xác nhận không breaking change. Lưu full solc version, EVM target và settings đã compile thành công trong hồ sơ tái lập; chưa compile thì để `PLANNED`, không tự ghi PASS. Tham khảo [Remix Compiler](https://remix-ide.readthedocs.io/en/latest/compile.html).
 - [ ] Đối chiếu quyền owner/anchorer và `setAnchorer` hiện có; giữ quyền cấp/thu hồi, event và test permission. Không chuyển sang `DEFAULT_ADMIN_ROLE`/`ANCHORER_ROLE` chỉ vì quy trình đăng ký mới.
-- [ ] Xây `ColdChainDataIntegrity.sol` với `Batch` metadata tối thiểu, immutable `batchKey`/`merkleRoot`, duplicate prevention và custom errors.
-- [ ] Triển khai `anchorBatch(...)`, `getBatch(...)`, `verifyBatch(...)`, event `BatchAnchored` theo interface đã chốt; không ghi raw telemetry.
+- [ ] Tái sử dụng `ColdChainDataIntegrity.sol`: `Batch` metadata, immutable `batchKey`/`merkleRoot`, duplicate prevention/custom errors; chỉ sửa khi có lỗi nghiệp vụ đã chứng minh, không do đổi toolchain.
+- [ ] Kiểm tra `anchorBatch/getBatch/verifyBatch`, `BatchAnchored` đúng source/ABI hiện có; không ghi raw telemetry.
 - [ ] Kiểm thử `bytes32` roundtrip và root bắt nguồn SHA-256; lưu đơn vị test dùng fixture thay vì tính hash theo Solidity khác quy tắc.
 - [ ] Viết test từ account có quyền/không quyền, batch rỗng, zero IDs/root, duplicate key, root immutable và retrieval.
 - [ ] Không đưa claim "on-chain validates sensor" vào docs hoặc UI metadata.
@@ -436,17 +442,19 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 **Definition of Done**
 
-- [ ] Compile thành công, Hardhat tests của Module A pass.
+- [ ] Cả ba source compile bằng Remix với settings/dependency cố định; có hồ sơ tái lập và ABI khớp interface cũ. Test Module A qua Remix ở Phase 4, không dùng Hardhat pass làm DoD mới.
 - [ ] `batchKey` chưa có → anchor được; cùng key gửi lại → revert; batch cũ không sửa được.
 - [ ] `getBatch`/`verifyBatch` trả đúng root byte-for-byte từ golden fixture NTK.
 
-### Phase 2 — Batch Anchoring, Verification & Cross-language Proof
+### Phase 2 — Batch Anchoring, Verification & Python/Web3.py Fixtures
 
 **Phụ thuộc:** Module A có ABI; NTK cung cấp canonical batch fixtures.
 
+**Thứ tự nghiệm thu:** fixtures và Remix/mock assertions là DoD phát triển trước deploy. Anchor/readback/event **Sepolia** được kiểm chứng sau Phase 5 trong Phase 6, không chặn chính bước deploy để tránh dependency vòng.
+
 **Việc cần làm**
 
-- [ ] Viết TypeScript fixture reader và hash/reference test tính root từ canonical bytes theo `MERKLE-v1` cho 1, 2, 3, 5 record; so sánh expected Python root.
+- [ ] Port fixture reader/hash assertions sang **Python pytest** dùng golden vectors NTK cho 1/2/3/5 record; so canonical bytes/leaf/root từng byte. Remix tests dùng expected root, không viết lại Merkle bằng Solidity. Giữ TypeScript fixture/tests cũ trong legacy để đối chiếu coverage scenario.
 - [ ] Dựng test anchor một batch đã seal, query root by `batchKey`, xác minh match và mismatch; test hai batch khác key nhưng cùng root vẫn hợp lệ.
 - [ ] Chạy thử event `BatchAnchored`: topic/indexed args, field order và giải mã từ ABI; cung cấp ví dụ cho Backend.
 - [ ] Test batch có gap: `recordCount` thấp hơn khoảng first/last sequence **không bị Contract suy ra thành thông tin nhiệt độ**; Backend giữ trạng thái `DATA_INCOMPLETE`.
@@ -458,6 +466,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 **Definition of Done**
 
 - [ ] NTK và NTD tạo **cùng 32-byte root** trên cùng fixture; có bằng chứng test.
+- [ ] Pytest offline/mock chạy không RPC/khóa ví/gas; anchor/readback thật chạy opt-in sau Phase 5 trên Sepolia qua Alchemy và dùng ABI export từ Remix.
 - [ ] Anchor + readback + decoded event khớp; mismatch trả false hoặc custom error đúng contract.
 - [ ] `blockchain/INTEGRATION.md` đủ thông tin cho Backend tích hợp batch anchoring.
 - [ ] Đường đi đăng ký mới không đòi hỏi thay đổi calldata/ABI/events; on-chain không có PEM/private key/từng telemetry, chỉ giữ commitment và metadata tối thiểu như cũ.
@@ -466,7 +475,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 **Phụ thuộc:** Phase 0 đã khóa `shipmentKey`, `evidenceHash`, Oracle role, reporting window và token scheme; có thể phát triển song song với Phase 1/2.
 
-**Việc cần làm**
+**Lịch sử đã thực hiện — giữ nguyên checkbox local, không xác nhận Sepolia:**
 
 - [x] Giữ và hoàn thiện `ColdChainInsurance.sol` theo chức năng gốc: policy, beneficiary, payout amount, expiry, trạng thái và event.
 - [x] Tạo/điều chỉnh `MockInsuranceToken.sol` nếu chọn ERC-20 demo; sử dụng thư viện tiêu chuẩn và khởi tạo funding trong seed script.
@@ -483,11 +492,17 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [x] Unauthorized/expired/unfunded/duplicate đều revert đúng; không có double payout khi gửi lại.
 - [x] Payout amount và beneficiary trong on-chain state/event khớp token transfer thực tế.
 
-### Phase 4 — Hardhat Security, Unit Tests & Failure Scenarios
+**Công việc/DoD mới — chưa triển khai:**
+
+- [ ] Compile/test lại `ColdChainInsurance`/token hiện có trong Remix, giữ constructor `(payoutToken, oracle)` và `MockInsuranceToken(initialSupply)`, ABI/events/Owner/Oracle, rule expiry và anti-double-payout.
+- [ ] Với token hiện có, insurer phải có đủ MINS và gọi `approve(insuranceAddress, payoutAmount)` rồi `createPolicy(shipmentKey, beneficiary, payoutAmount, expiry)`; contract `safeTransferFrom` khóa vốn ngay lúc tạo policy. Transfer token trực tiếp vào vault không thay bước approve/createPolicy. Ghi raw units/18 decimals, insurer/beneficiary và expiry UTC.
+- [ ] Sau Phase 5, kiểm tra funding/Oracle/payout trên Sepolia: receipt success, `InsurancePaid`, `getPolicy`/balance delta đúng; expiry/thiếu quỹ/transfer fail/duplicate không trả paid. Contract hiện kiểm tra `block.timestamp > expiry`; không thêm grace period hoặc mock time-travel lên Sepolia. Negative cases khó dựng trên testnet dùng Remix/mock và có nhãn bằng chứng.
+
+### Phase 4 — Remix Contract Testing, Security & Python Failure Scenarios
 
 **Phụ thuộc:** Module A và B có implementation đủ kiểm thử. Viết test song song mỗi khi có function mới.
 
-**Việc cần làm**
+**Lịch sử Hardhat đã thực hiện — giữ nguyên bằng chứng, không thay test suite mới:**
 
 - [x] Test role admin/anchorer/oracle: account trái quyền không anchor/payout/rotate được, revocation có hiệu lực.
 - [x] Test unknown batch, zero root, duplicate `batchKey`, mismatch root, immutable root, cùng root/khác ID.
@@ -505,11 +520,24 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [x] Có bảng đối chiếu test cases với requirement, ghi rõ những case cần Backend/E2E mới kiểm chứng được.
 - [x] Không còn secret/production token trong repo hoặc test fixtures.
 
-### Phase 5 — Local/Testnet Deployment, ABI & Artifact Handoff
+**Việc cần làm mới — PLANNED:**
 
-**Phụ thuộc:** Phase 1–4 đạt DoD; chốt target local chain/testnet với nhóm.
+- [ ] Bật [Solidity Unit Testing plugin](https://remix-ide.readthedocs.io/en/latest/unittesting.html); tạo `*_test.sol` cho Module A/B, dùng cùng compiler/optimizer/EVM của Phase 1. Chạy trong môi trường unit test Remix; deploy demo thật vẫn Sepolia.
+- [ ] Lập bảng từng scenario từ `DataIntegrity.test.ts`, `ColdChainInsurance.test.ts`, `IntegrationFlow.test.ts`, `SecurityAndFailureScenarios.test.ts`, `DeploymentWorkflow.test.ts`, `Phase6IntegrationScenarios.test.ts` → test Remix/pytest mới → output minh chứng. Không bỏ coverage vì khác công cụ.
+- [ ] Remix kiểm tra owner/anchorer/Oracle grant/revoke, unauthorized, batch zero/duplicate/immutable, unknown/get/verify match/mismatch, events/bytes32, policy/funding/expiry/transfer fail/reentrancy/double payout. Khi Remix không diễn đạt tốt, chuyển chính scenario sang pytest/Web3.py hoặc mock đúng tầng; không bỏ case.
+- [ ] Pytest/Web3.py Sepolia opt-in kiểm tra transactions/receipt/events/balance và root Python ↔ chain; NTK phối hợp FastAPI/adapter/evidence tests. Mock RPC/contract cho timeout, 429, receipt pending/revert, reorg, connection loss, nonce reconciliation và restart, không cần ép lỗi hạ tầng thật.
+- [ ] Default unit tests không gửi tx và không yêu cầu ví/RPC; suite có marker/cờ opt-in Sepolia, preflight chain `11155111`, code/address/roles, đủ gas, dataset riêng. Ghi lệnh chạy mới cùng dependencies Python; các file/marker mới là đề xuất chưa tồn tại.
 
-**Việc cần làm**
+**Definition of Done mới:**
+
+- [ ] Mọi scenario lịch sử có mapping sang Remix/Python với kết quả hoặc `NOT_TESTED/BLOCKED` và owner; không dùng tổng số Hardhat pass để chứng minh suite mới đã pass.
+- [ ] Quyền anchor/Oracle, duplicate batch/payout, root immutability, retrieval/verify, expiry/funding/failed tx và mismatch/tamper có test riêng; mặc định offline, Sepolia smoke có bằng chứng riêng.
+
+### Phase 5 — Sepolia Deployment bằng Remix & ABI Handoff
+
+**Phụ thuộc:** Phase 1–4 đã đạt **compile + test Remix/offline**; các smoke giao dịch thật ghi ở Phase 2/3/4 thực hiện **sau deploy**, tại Phase 6. MetaMask chọn Ethereum Sepolia `11155111`, deployer/anchorer/Oracle có Sepolia ETH; NTK tạo Alchemy HTTPS RPC. Không cần node localhost/deployment scripts và không yêu cầu smoke Sepolia trước khi có contract address.
+
+**Lịch sử deploy/local handoff — giữ nguyên, không phải hướng dẫn chạy mới:**
 
 - [x] Viết `deploy.ts` deploy Data Integrity Contract, token demo (nếu dùng), Insurance Contract; cấu hình role, funding, oracle/anchorer addresses đúng environment.
 - [x] Viết `seed-demo.ts` tạo policy/fixtures; giữ seed deterministic, tránh yêu cầu cài nhiều thứ ngoài hướng dẫn.
@@ -529,11 +557,29 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [x] ABI + examples đủ để NTK gọi cả 2 contract mà không phải đoán argument order, byte encoding hay event names.
 - [x] Nếu testnet chưa triển khai được, ghi `BLOCKED` và nguyên nhân; **không** trình bày URL/address placeholder như deployment thành công.
 
-### Phase 6 — Backend Oracle & Integrity Integration
+**Quy trình mới — tất cả chưa hoàn thành:**
+
+- [ ] 1. Import/compile bằng Remix với settings Phase 1, chọn đúng contract; trong Deploy & Run dùng kết nối MetaMask/browser wallet (Injected Provider nếu UI dùng tên này). Kiểm tra network `11155111`, account deployer và gas trước mỗi deploy; [Remix Deploy & Run](https://remix-ide.readthedocs.io/en/latest/run.html).
+- [ ] 2. Deploy `MockInsuranceToken(initialSupply)` nếu dùng; ghi raw supply/decimals/address/receipt. Không lấy address token local sang Sepolia.
+- [ ] 3. Deploy `ColdChainDataIntegrity(anchorerAddress)`; chờ receipt `status=1`, đọc `owner()`/`anchorer()` và kiểm tra code.
+- [ ] 4. Deploy `ColdChainInsurance(tokenAddress, oracleAddress)`; xác minh receipt/code, `owner()`/`oracle()`/`payoutToken()`. Giữ thứ tự constructor hiện có, không đổi ABI.
+- [ ] 5. Owner cấu hình/kiểm tra `setAnchorer` và `setOracle` khi cần, đọc lại quyền; tách ví Owner khỏi signer Backend. Nạp Sepolia ETH cho hai signer để đủ gas; không đưa private key/mnemonic vào Remix source/Markdown/Frontend/Git.
+- [ ] 6. Cấp token demo cho insurer; approve → createPolicy như Phase 3, dùng `shipmentKey` từ UUID shipment NTK cấp, expiry còn đủ cho độ trễ anchor. Xác minh escrow balance, policy và quyền sai bị từ chối.
+- [ ] 7. Kiểm tra deployment/role/funding/policy tx trên `https://sepolia.etherscan.io`; receipt success + bytecode + state đúng. Hash tồn tại hoặc Remix hiện address chưa đủ để ghi `DEPLOYED`.
+- [ ] 8. Export ABI từ Remix đúng source/settings đã deploy; giữ schema ABI JSON Backend loader chấp nhận, cập nhật hai file `backend/app/integrations/abi/` qua NTK. Đối chiếu exact signatures/constructor/events/errors và lưu source revision, full compiler/optimizer/EVM/dependency settings, constructor args.
+- [ ] 9. Chỉ sau deploy thành công mới ghi `blockchain/deployments/sepolia.json`: chain ID/network, addresses token/hai contracts, deploy tx hash/block, public deployer/owner/anchorer/Oracle, ABI paths/checksum, compiler settings, confirmation policy, explorer và trạng thái từng contract. Không RPC key/private key; contract chưa deploy phải ghi chưa deploy, không placeholder address như kết quả.
+- [ ] 10. Bàn giao package §3.2/§7.3, NTK thử Web3.py qua Alchemy và xác nhận anchor/readback/payout bằng receipt/events/state. NTK giữ HTTPS RPC thật trong Backend env, NTD chỉ công bố URL mẫu đã bỏ key.
+
+**Definition of Done mới:**
+
+- [ ] Hai contracts/token cần thiết có receipt thành công, code/roles/funding/policy đúng trên Sepolia `11155111`, ABI/source/settings/constructor/manifest tái lập được; chỉ lúc đó từng deployment mới `DEPLOYED`.
+- [ ] NTK import ABI và chạy smoke Phase 6 bằng Web3.py/Alchemy; có tx/Etherscan/root/balance evidence. Chưa có faucet/RPC/gas/deploy thật thì ghi `BLOCKED/NOT_TESTED`, không quay lại local chain làm gate nghiệm thu chính.
+
+### Phase 6 — Python Backend Integration, Oracle & Integrity
 
 **Phụ thuộc:** Member 1 Phase 4/5 hoàn thành canonical batch + adapter; Phase 5 của NTD đã bàn giao ABI/addresses. Insurance integration dựa trên Member 1 Phase 6.
 
-> **Trạng thái hiện tại (`COMPLETED ON LOCAL HARDHAT NODE`):**
+> **Trạng thái lịch sử (`COMPLETED ON LOCAL HARDHAT NODE` — không áp dụng Sepolia):**
 > - Backend PR `#27` (`7d8c823`, `d4a7fef`) đã hoàn thành `Web3IntegrityAdapter`, `IntegrityAnchorCoordinator`, `InsuranceEvidenceCoordinator` (`ANCHORED-EVIDENCE-v1`) và `backend/tests/test_blockchain_local.py`.
 > - Đã kiểm chứng E2E giữa Backend thực (`FastAPI` + SQLAlchemy ORM + `Web3IntegrityAdapter` Account `#2` + `Web3BlockchainAdapter` Account `#1`) và 3 contract trong `deployments/localhost.json` trên local Hardhat node (`chainId: 31337`): signed telemetry $\rightarrow$ sealed `MERKLE-v1` batches $\rightarrow$ `anchorBatch` + `BatchAnchored` $\rightarrow$ DB tamper & co-tamper detection (`DATA_INTEGRITY_FAILED`) $\rightarrow$ 15-minute sustained breach payout (`InsurancePaid`, `1000.0 MINS`, beneficiary balance verified) $\rightarrow$ duplicate anchor/payout guards (`BATCH_ALREADY_ANCHORED`, `POLICY_ALREADY_PAID`), wrong signer (`ORACLE_MISMATCH`, `ANCHORER_MISMATCH`), wrong chain ID/contract address, insufficient funding (`E17b`), unseeded/expired policy. (Kiểm thử E2E DB tamper chạy qua SQLAlchemy trên SQLite do môi trường local không bật MySQL server; logic kiểm toán Merkle & `verify_batch` dùng chung cho cả MySQL/SQLite.)
 
@@ -558,18 +604,26 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [x] Mọi tx dùng chain đúng, receipt/state/event khớp; không double anchor hoặc payout ngoài mong đợi.
 - [ ] Policy, anchor và evidence dùng cùng UUID shipment; không thêm transaction đăng ký device hay upload ESP32 key và không đổi logic bảo hiểm do đổi form Admin.
 
+**Công việc/DoD mới — Python Backend Integration trên Sepolia, chưa thực hiện:**
+
+- [ ] Bàn giao ABI/address/chain/roles từ Remix cho NTK; thống nhất thứ tự `anchorBatch`, `getBatch`, `verifyBatch`, `createPolicy`, `reportViolation`, `bytes32` ID/root, Unix seconds và units token theo ABI hiện có.
+- [ ] FastAPI Admin login/JWT bảo vệ setup/verify/retry/reconcile; ESP32 gửi signed telemetry độc lập. NTK seal/tính Python root và Web3.py ký bằng anchorer → Alchemy → Sepolia; receipt/event/readback metadata + root khớp rồi mới `DATA_ANCHORED`.
+- [ ] Tạo policy từ cùng UUID, cấp vốn qua approve/createPolicy; evidence liên tục ≥15 phút theo `received_at`, không gap, batch `MATCHED + DATA_ANCHORED` mới gọi Oracle. Receipt success/`InsurancePaid`/policy state/balance delta khớp mới ghi paid.
+- [ ] Kiểm tra duplicate/revert/unauthorized/expired/insufficient funding; mock timeout/pending/nonce/restart với NTK. JWT Admin không cấp quyền owner/anchorer/Oracle; không sửa access control để làm smoke pass.
+- [ ] Lưu output pytest/Web3.py Sepolia, receipt/tx/Etherscan và API/MySQL evidence riêng; chạy offline regression mặc định không tx. Hoàn tất các gate này mới nghiệm thu Phase 6 Sepolia; toàn bộ checked local phía trên vẫn chỉ là lịch sử.
+
 ### Phase 7 — End-to-End Blockchain Demo, Documentation & Safety Review
 
-**Phụ thuộc:** NTK đã deploy Backend lên Render với external MySQL hoặc demo local rõ ràng; Member 3 tích hợp API/các trạng thái. **Không phụ thuộc bắt buộc Render để viết/kiểm thử contract.**
+**Phụ thuộc:** demo chính thức cần Remix deployment Sepolia + NTK Render/external MySQL/JWT + TTDK REST client. Có thể phát triển/test Remix/mock trước Render; không dùng localhost deployment thay điều kiện nghiệm thu cuối.
 
 **Việc cần làm**
 
-- [ ] Hoàn thiện `blockchain/README.md`: setup → test → local node → deploy → seed → ABI → reset/reseed demo.
+- [ ] Hoàn thiện `blockchain/README.md`: import source/dependency → compiler settings → Remix tests/Python tests → MetaMask Sepolia deploy → roles/funding/policy → ABI/manifest → Web3.py smoke → dataset mới khi demo lại. Đánh dấu toàn bộ lệnh `npx hardhat`/npm blockchain cũ **legacy**, không yêu cầu đọc/chạy để theo flow mới; không xóa file/test lịch sử.
 - [ ] Hoàn thiện `blockchain/INTEGRATION.md`: public interface, root/ID vectors, role setup, tx lifecycle, error matrix, network/ABI handoff.
 - [ ] Demo minh họa **12 kịch bản bắt buộc** ở §8, phân rõ những kịch bản thuộc NTK, NTD, TTDK và cần phối hợp.
 - [ ] Kiểm tra `Render public API → external MySQL → Blockchain RPC` theo pipeline Backend; nếu dùng Render Free, công bố cold start/idle limitation (không ping giả để né giới hạn).
 - [ ] Rà soát secrets: demo keys chỉ nằm local env/Render env phù hợp; frontend không giữ khóa; deployment JSON không chứa mnemonic/password/RPC key.
-- [ ] Test one clean deploy trên máy khác, import ABI và xác minh on-chain root/payout bằng CLI/scripts.
+- [ ] Tái lập workspace/compile settings và quy trình Remix trên máy khác, import ABI và xác minh Sepolia root/payout bằng Python/Web3.py; không yêu cầu cài Node.js cho blockchain.
 - [ ] Đối chiếu UI với Backend: `DATA_VERIFIED`, `DATA_ANCHORED`, `DATA_INTEGRITY_FAILED`, `DATA_INCOMPLETE`, `BLOCKCHAIN_PENDING`, `BLOCKCHAIN_FAILED` và payout status không bị gộp.
 - [ ] Ghi giới hạn bảo mật: Blockchain không chứng minh nhiệt độ thực, không bù được sensor tampering/compromised private key/Oracle sai, không thay thế hệ thống bảo hiểm thật.
 - [ ] Chốt changelog, quyết định kỹ thuật đã duyệt, vấn đề còn pending và rollback/redeploy hướng dẫn.
@@ -606,7 +660,9 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - Được triển khai Module A và B song song sau Phase 0, nhưng **không** khai báo Phase 5/6 hoàn thành nếu ABI/hash chưa thống nhất.
 - Commit/PR nhỏ theo phase, không commit private keys hoặc test wallet có thật; test pass trước merge.
 
-### 7.3. Checklist package bàn giao thực tế cho NTK
+### 7.3. Checklist package bàn giao cho NTK
+
+**Package local lịch sử — giữ nguyên checkbox, không phải Sepolia handoff:**
 
 - [x] `blockchain/INTEGRATION.md` ghi đúng **version giao thức, compiler/chain, contract addresses**.
 - [x] ABI JSON của cả hai contracts + (nếu có) MockInsuranceToken.
@@ -619,6 +675,14 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [x] Oracle/anchorer role grant/revoke scripts and documented confirmation count.
 - [x] Hardhat tests và command chạy được từ môi trường sạch.
 - [ ] Ví dụ `code=SHIP-001` → UUID → `shipmentKey`, xác nhận registry/key/assignment không lên chain; request/response quản trị dẫn chiếu NTK §3.6, không chốt API riêng ở Blockchain.
+
+**Package mục tiêu Remix/Sepolia — chưa bàn giao:**
+
+- [ ] ABI JSON đúng compiler output của cả hai contract và token demo nếu dùng; source revision/checksum, full solc/OZ version, optimizer/runs/EVM/`viaIR`, constructor args và ABI checksum.
+- [ ] `deployments/sepolia.json` sau deploy thật: `11155111`, contract/token addresses, deploy tx hashes/block numbers, owner/anchorer/Oracle public addresses, code/state checks; không chứa secret. ABI copy sang Backend do NTK thực hiện đúng loader/path.
+- [ ] Exact function signatures/order/types/returns/errors/events, UUID→bytes32 và golden root vectors; sample success/unauthorized/duplicate receipts, decoded events, policy/funding/expiry/beneficiary/token units.
+- [ ] Hướng dẫn Remix deploy/config roles/approve/createPolicy và pytest/Web3.py mới; scenario mapping legacy→Remix/Python không mất test. Confirmation/polling/timeout/retry rules và Etherscan links thật.
+- [ ] Environment mapping cho NTK: `BLOCKCHAIN_NETWORK=sepolia`, `BLOCKCHAIN_CHAIN_ID=11155111`, `BLOCKCHAIN_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY`, `DATA_INTEGRITY_CONTRACT_ADDRESS`, `BLOCKCHAIN_CONTRACT_ADDRESS`, `DATA_INTEGRITY_ABI_PATH`, `BLOCKCHAIN_ABI_PATH`, `BACKEND_ANCHORER_PRIVATE_KEY`, `BLOCKCHAIN_ORACLE_PRIVATE_KEY`. NTK tự đặt Alchemy key/private keys bằng secret env, không bàn giao qua Git/Markdown. Không tự đổi sang alias chưa có consumer (`INSURANCE_CONTRACT_ADDRESS`, `BACKEND_ORACLE_PRIVATE_KEY`, `DEMO_TOKEN_CONTRACT_ADDRESS`).
 
 ---
 
@@ -659,7 +723,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 ### 8.2. Kịch bản demo blockchain theo đúng thứ tự
 
-1. **Chuẩn bị Admin/provisioning:** TTDK UI đăng ký device ID/tên → tạo mã chuyến `SHIP-001` → nhận UUID và gán device; NTK chạy script trên máy tin cậy, nạp `config.h` qua USB, đăng ký public key qua `/keys`. NTD seed policy ERC-20 demo bằng `shipmentKey` từ **UUID vừa tạo**, UI đọc qua API; ghi rõ token không có giá trị thực và các bước registry không tạo giao dịch chain.
+1. **Chuẩn bị Admin/provisioning:** duy nhất Admin login/JWT rồi TTDK UI đăng ký device ID/tên → tạo mã chuyến `SHIP-001` → nhận UUID và gán; NTK script dùng JWT upload public key sau provisioning/USB. NTD tạo policy qua Remix/MetaMask bằng `shipmentKey` từ **UUID vừa tạo**, approve/fund token; UI đọc qua API. Registry không tạo giao dịch chain, token không có giá trị thực.
 2. **Ký và nhận telemetry:** ESP32/simulator gửi sample, Backend verify chữ ký/sequence, ghi MySQL; chain chưa có từng sample.
 3. **Kiểm tra tính toàn vẹn đầu vào:** chữ ký sai, duplicate, gap, offline được gắn trạng thái đúng; không kích hoạt bảo hiểm giả.
 4. **Seal batch:** Backend dựng Merkle root bằng `MERKLE-v1`, hiển thị root/batch ID/record count/first-last seq.
@@ -672,7 +736,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 ### 8.3. Điều kiện hoàn thành demo
 
-- [ ] Có ít nhất một transaction anchoring và một insurance transaction với **receipt/event/state** khớp trên local/testnet thực.
+- [ ] Có ít nhất một transaction anchoring và một insurance transaction với **receipt/event/state/balance** khớp trên **Ethereum Sepolia `11155111` qua Alchemy**, ABI từ Remix; kèm Etherscan link thật. Legacy local chỉ là lịch sử.
 - [ ] Hiển thị tách bạch root anchoring tx và insurance payout tx; không kết luận thành công chỉ từ tx hash.
 - [ ] Phân biệt verified signature, anchored root, integrity mismatch, data incomplete và payout confirmation.
 - [ ] Không tuyên bố blockchain tự đo được nhiệt độ thật; không dùng token demo là tiền thực.
@@ -733,7 +797,15 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 | 11 | `blockchain/README.md` | Run/test/deploy/demo/error handling | `DELIVERED` |
 | 12 | Hardhat test results + demo evidence | Receipt + root + token balance + edge cases | `TESTED (83 passing, 100% PASS; Phase 6 local E2E verified)` |
 
-Các trạng thái và số test trong bảng được giữ từ cập nhật Blockchain của nhánh được merge, áp dụng cho **local Hardhat chain 31337**, không phải testnet/Render hoặc E2E MySQL production. Lượt giải quyết conflict này không chạy lại bộ test hay deploy; `BLOCKED` của public testnet được giữ nguyên. Các nhiệm vụ đăng ký demo bổ sung vẫn chưa được đánh dấu hoàn thành.
+Các trạng thái và số test trong bảng được giữ từ cập nhật Blockchain trước đây, áp dụng cho **local Hardhat chain 31337**, không phải Sepolia/Render hoặc E2E MySQL production. Không chạy lại test/deploy trong lượt sửa roadmap này; `BLOCKED` testnet cũ là lịch sử, chưa có bằng chứng triển khai Sepolia mới. Tên `test/Insurance.test.ts` trong bảng lịch sử được giữ nguyên như bản cũ; file hiện có dùng để port là `test/ColdChainInsurance.test.ts`.
+
+| Deliverable mới | Owner | Trạng thái |
+|---|---|---|
+| Remix workspace/compiled source + settings/dependency snapshot | NTD | `PLANNED — chưa compile bằng Remix trong lượt này` |
+| Remix Solidity Unit Testing + Python scenario mapping/test suite | NTD, NTK hỗ trợ adapter | `PLANNED — chưa port/chạy suite mới` |
+| Sepolia deployment/roles/funding/policy + manifest/ABI/receipts | NTD | `PLANNED — chưa có bằng chứng deploy Sepolia` |
+| Web3.py/Alchemy smoke + MySQL/evidence/payout E2E | NTK + NTD, TTDK QA | `PLANNED — không dùng legacy pass thay thế` |
+| Một Admin/JWT cho API/UI, không ABI/account contract mới | NTK + TTDK; NTD regression quyền | `PLANNED — auth runtime chưa đổi` |
 
 **Deliverable bổ sung cho yêu cầu đăng ký (chưa thực hiện):** ghi chú impact/API/ID mapping trong INTEGRATION và regression E21–E25, owner **NTD**; script/key/schema/API do **NTK**, form Admin/key status/dropdown/QA do **TTDK**. Không phát sinh smart contract mới.
 
@@ -743,17 +815,17 @@ Các trạng thái và số test trong bảng được giữ từ cập nhật B
 2. **`MERKLE-v1`:** NTK xác nhận danh sách canonical fields, timestamps, hash prefixes, odd-leaf rule và golden fixtures; NTD xác nhận `bytes32` root truyền on-chain nguyên 32 bytes.
 3. **`evidenceHash`:** giữ `keccak256(UTF8(event_id))` hiện có; NTK tiếp tục lưu evidence/batch references ở Backend. Không cần protocol mới cho đăng ký device.
 4. **Role:** NTD/NTK xác nhận địa chỉ `ANCHORER` và `ORACLE` có dùng chung signer hay tách, rotate/revoke protocol.
-5. **Network:** local/testnet nào, chain ID, gas/confirmation threshold, RPC provider, explorer và budget demo; addresses thực chưa biết cho tới khi deploy.
+5. **Network đã chọn:** Ethereum Sepolia `11155111`, Remix/MetaMask deploy, Alchemy HTTPS RPC, Sepolia Etherscan; còn thiếu gas/faucet, addresses/receipts thật và khóa confirmations/polling/budget. Không coi local Hardhat là lựa chọn nghiệm thu mới.
 6. **Funding:** token demo standard, decimals, policy escrow/funding method, mapping từ giá trị bảo hiểm nghiệp vụ sang số token demo (nếu muốn hiển thị).
 7. **Policy & anchoring:** giữ mặc định `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`; xác nhận E2E không bỏ qua evidence gate khi thêm flow đăng ký, thiếu assignment/key vẫn bị chặn trước khi tạo evidence.
-8. **Expiry & reporting delay:** nếu temperature breach kết thúc trước expiry nhưng receipt anchor chậm, policy có cho `reportViolation` sau expiry không? Chốt chống backdating và grace period.
-9. **Integration:** repo actual structure và Hardhat version, giao diện Backend `blockchain_adapter.py`/API contract, public Render URL và DB provider do NTK đảm nhận.
+8. **Expiry & reporting delay:** hiện contract từ chối khi `block.timestamp > expiry`, kể cả phát hiện vi phạm trước đó; giữ logic này, test delay và chọn expiry demo đủ dài. Grace period chỉ là yêu cầu nghiệp vụ tương lai, không phải thay đổi để migrate công cụ.
+9. **Integration:** khóa compiler/dependency/EVM Remix, ABI loader/paths, JWT API contract/client, Alchemy app; public Render URL/MySQL do NTK đảm nhận. README/INTEGRATION hiện còn hướng dẫn legacy cần NTD chuyển trước nghiệm thu.
 10. **Deployment status:** có source/ABI/tài liệu trong repo và checkbox lịch sử, nhưng lượt sửa này không xác minh runtime/testnet/Render; không tự nhận address/receipt/URL thật hoặc tăng trạng thái hoàn thành.
 
 ### 10.3. Các bước thực hiện đầu tiên (để nhóm làm song song)
 
 1. NTD mở Phase 0, draft `INTEGRATION.md` và role/contract interface; NTK chốt ID/telemetry/Merkle vectors; TTDK dựng UI bằng OpenAPI mocks.
-2. NTD làm **Data Integrity Contract** và **Insurance Contract** song song sau khi interface tối thiểu được duyệt; hoàn thiện tests trước deploy.
+2. NTD import **hai contract hiện có** vào Remix, pin compiler/dependency/settings, đối chiếu ABI rồi port tests; không viết lại Solidity vì đổi IDE.
 3. NTD handoff Data Integrity ABI sớm để NTK triển khai `blockchain_adapter.py` + durable outbox; không cần đợi insurance token test xong.
 4. NTD handoff Insurance ABI và policy/Oracle config cho NTK sau khi unit tests pass; Member 3 chỉ nhận schema, status và tx URLs qua Backend API.
 5. Khi Backend public được deploy trên Render, nhóm chạy E2E theo §8; mọi vấn đề ở contract sửa trong `blockchain/`, ở Backend sửa bởi NTK, ở Frontend sửa bởi TTDK.
@@ -762,10 +834,33 @@ Các trạng thái và số test trong bảng được giữ từ cập nhật B
 
 ## 11. Quy tắc nghiệm thu cuối và ghi chú chỉnh sửa
 
-- Roadmap được cập nhật **trực tiếp từ bản NTD cũ**: giữ vai trò owner, Hardhat, local/testnet, policy, oracle, demo-token payout, chống payout trùng, scripts/README/INTEGRATION và quy tắc không sửa code chéo.
+- Roadmap giữ owner, source/ABI/constructor/events/access control, policy/Oracle/token payout, chống payout trùng và ownership. Hardhat/local `31337`/scripts/tests/artifacts chỉ giữ dưới nhãn **lịch sử legacy**, không còn nằm trong workflow/gate mục tiêu.
 - Phần mở rộng mới: **Data Integrity Contract độc lập**, `MERKLE-v1` cùng NTK, batch immutable anchoring, phân quyền anchorer, on-chain readback, network/finality, public Backend integration và QA/demo matrix.
-- **Không triển khai Merkle hashing trong Solidity chỉ để "có Merkle"**: Python/TypeScript thống nhất canonical byte-level; contract nhận `bytes32` root; inclusion proofs là tính năng mở rộng có đặc tả riêng.
-- **Không báo payout thành công trước khi** tx receipt success, state/event khớp và beneficiary nhận token demo thật trên local/testnet.
+- **Không triển khai Merkle hashing trong Solidity chỉ để "có Merkle"**: Python fixtures/Remix tests thống nhất canonical bytes; contract nhận `bytes32` root; inclusion proofs là mở rộng riêng.
+- **Không báo payout thành công trước khi** tx receipt success, state/event khớp và beneficiary nhận token demo trên Sepolia; kết quả Remix VM/mock/local được ghi đúng môi trường.
 - Một Phase chỉ kết thúc khi hoàn tất DoD và có bằng chứng test/deployment; mọi trường đang `TBD` phải được chốt trước khi tăng integration dependency.
 
-**Bản cập nhật này chỉnh sửa đồng bộ ba roadmap; chưa sửa source code, ABI, API thực thi hoặc deploy. Giữ nguyên tiến độ/checkbox; phần đăng ký demo mới vẫn cần triển khai và kiểm thử theo owner.**
+**Bản cập nhật này chỉ sửa ba roadmap; chưa sửa source/ABI/API/client/`.env`, port tests hoặc deploy. Giữ nguyên tiến độ và checkbox lịch sử; các nhiệm vụ JWT/Remix/Sepolia/Alchemy mới đều chưa được tự đánh dấu hoàn thành.**
+
+## 12. Tóm tắt chuyển đổi và rủi ro cần kiểm thử — dùng chung ba roadmap
+
+| Phần | Quy trình mục tiêu | Công việc còn lại / owner |
+|---|---|---|
+| Bỏ Hardhat khỏi workflow | Không setup/config/node/Ignition/localhost deploy hoặc lệnh Hardhat làm gate; giữ code/test/artifact legacy | NTD chuyển README/INTEGRATION; NTK chuyển runtime defaults, test runner và runbook, không xóa lịch sử |
+| Thay bằng Remix | Compile/settings/dependencies, Solidity Unit Testing, MetaMask Sepolia deploy, roles/funding/policy và export ABI | NTD Phase 1/3/4/5, chưa thực hiện |
+| Thay bằng Python/Web3.py | Golden root/bytes32 tests, transaction/receipt/event/state/balance, FastAPI adapter/evidence integration; RPC mocks cho lỗi | NTD port contract scenarios, NTK port adapter/E2E; default offline, Sepolia smoke opt-in |
+| Triển khai Sepolia | Faucet/gas → compile/test → deploy token/integrity/insurance → roles → approve/createPolicy → verify receipt/code → manifest | NTD; NTK tạo Alchemy app và Backend secrets, sau đó anchor/readback/payout smoke |
+| Package NTD → NTK | ABI/source/settings/constructor, addresses/token/chain/deploy tx, roles/events/errors/ID vectors, confirmations và runbook | §7.3; không private key/RPC key thật trong hồ sơ công khai |
+| Auth một Admin | Backend env → login/JWT có TTL → Bearer cho Admin/monitoring; ESP32 P-256 riêng | NTK login/dependency/rate limit/config/tests, TTDK Login/Logout/401/session token; không users/đa vai trò hoặc ABI mới |
+
+| Rủi ro còn lại | Cách kiểm thử / tiêu chí |
+|---|---|
+| Compiler/OZ/EVM/ABI không khớp | Pin full versions/settings/checksum; Remix compile, ABI diff và constructor preflight; giữ signatures/events/roles cũ |
+| Sai chain/address/role, thiếu ETH hoặc token | Preflight `11155111`, code, public signer addresses/balance; test unauthorized, approve/fund/expiry và receipt fail không paid |
+| Alchemy 429/timeout, pending/reorg, retry trùng | Mock RPC + persisted outbox/nonce/hash/state reconciliation; opt-in Sepolia kiểm chứng receipt/events/root, không chỉ tx hash |
+| Root Python khác on-chain, MySQL bị sửa | Golden vectors 1/2/3/5 leaf, root readback, tamper/co-tamper trên DB demo; `DATA_INTEGRITY_FAILED` chặn evidence |
+| Policy hết hạn lúc chờ anchor hoặc payout lặp | Remix/pytest test expired/insufficient funding/transfer revert/double report; giữ rule 15 phút/gap/anti-replay và anchored evidence, chọn expiry demo đủ dài |
+| Gỡ API key làm hở route hoặc token sai vẫn dùng được | Ma trận Admin GET/POST/PATCH/verify/retry, JWT expired/tampered/missing claim/alg/sai subject/header cũ, rate limit/HTTPS/redacted logs; ESP32 không JWT vẫn phải ký đúng |
+| Render restart/cold start/MySQL chưa deploy | Persistence/CORS/public HTTPS smoke, manual reconcile JWT, phân biệt Backend unavailable/device offline/chain pending; chưa chạy ghi `NOT_TESTED/BLOCKED` |
+
+Tham chiếu: [Remix compiler](https://remix-ide.readthedocs.io/en/latest/compile.html), [Remix Unit Testing](https://remix-ide.readthedocs.io/en/latest/unittesting.html), [Deploy & Run](https://remix-ide.readthedocs.io/en/latest/run.html), [Alchemy Ethereum Sepolia RPC](https://www.alchemy.com/rpc/ethereum-sepolia), [PyJWT usage](https://pyjwt.readthedocs.io/en/stable/usage.html). Các hướng dẫn repo được link ở trên còn baseline legacy cho tới khi owner hoàn thành nhiệm vụ cập nhật; không dùng lệnh Hardhat/API key trong chúng làm yêu cầu mới.
