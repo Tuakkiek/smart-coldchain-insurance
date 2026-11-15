@@ -17,6 +17,7 @@ import {
   ShipmentDevicesOut,
   DeviceTelemetryStatus,
   DeviceRegisterPayload,
+  DeviceAssignmentPayload,
   AdminDeviceViewOut,
   IntegrityBatch,
   IntegrityBatchesOut,
@@ -32,6 +33,7 @@ import {
   mockBatches,
   mockIntegritySummary,
 } from './fixtures';
+import { ApiError } from '../api/client';
 
 class MockAdapter {
   private shipments: ShipmentOut[] = JSON.parse(JSON.stringify(mockShipments));
@@ -190,34 +192,34 @@ class MockAdapter {
   }
 
   async registerDevice(payload: DeviceRegisterPayload): Promise<AdminDeviceViewOut> {
-    const existing = this.devices.find((d) => d.device_id.toLowerCase() === payload.device_id.trim().toLowerCase());
-    if (existing) {
-      throw new Error(`Thiết bị '${payload.device_id}' đã tồn tại trong hệ thống.`);
-    }
+    const trimmedId = payload.device_id.trim();
+    const trimmedName = payload.device_name.trim();
 
-    const assignedShipment = this.shipments.find(
-      (s) => s.id === payload.shipment_id || s.code === payload.shipment_id
-    );
+    const existing = this.devices.find((d) => d.device_id.toLowerCase() === trimmedId.toLowerCase());
+    if (existing) {
+      throw new ApiError(`Thiết bị '${trimmedId}' đã tồn tại trong hệ thống.`, 409, 'DEVICE_EXISTS');
+    }
 
     const newDevice: DeviceItemOut = {
       id: `dev-mock-${Date.now()}`,
-      device_id: payload.device_id.trim(),
-      key_id: payload.key_id.trim(),
-      public_key_pem: payload.public_key_pem.trim(),
-      firmware_version: 'esp32-1.0',
-      assigned_shipment_id: assignedShipment?.id || payload.shipment_id,
-      assigned_shipment_code: assignedShipment?.code || 'ASSIGNED',
-      signature_status: 'VALID',
-      completeness_status: 'COMPLETE',
+      device_id: trimmedId,
+      device_name: trimmedName,
+      key_id: '',
+      has_public_key: false,
+      firmware_version: 'v1.2.0',
+      assigned_shipment_id: null,
+      assigned_shipment_code: null,
+      signature_status: 'UNKNOWN_KEY',
+      completeness_status: 'OFFLINE',
       registered_at: new Date().toISOString(),
       health: {
-        device_id: payload.device_id.trim(),
+        device_id: trimmedId,
         last_sequence_number: 0,
         missing_sequence_count: 0,
         last_heartbeat_at: null,
         last_seen_at: null,
-        online_status: 'ONLINE',
-        firmware_version: 'esp32-1.0',
+        online_status: 'OFFLINE',
+        firmware_version: 'v1.2.0',
       },
     };
 
@@ -225,26 +227,78 @@ class MockAdapter {
 
     return {
       device_id: newDevice.device_id,
+      device_name: newDevice.device_name,
       status: 'active',
+      has_public_key: false,
+      current_shipment_id: null,
+      current_shipment_code: null,
       last_sequence_number: 0,
       last_seen_at: null,
-      keys: [{ key_id: payload.key_id.trim(), status: 'active' }],
-      assignments: [{ shipment_id: payload.shipment_id, active: true }],
+      keys: [],
+      assignments: [],
+    };
+  }
+
+  async assignDevice(deviceId: string, payload: DeviceAssignmentPayload): Promise<AdminDeviceViewOut> {
+    const dev = this.devices.find((d) => d.device_id === deviceId);
+    if (!dev) {
+      throw new ApiError(`Không tìm thấy thiết bị '${deviceId}'`, 404, 'DEVICE_NOT_FOUND');
+    }
+
+    const shipment = this.shipments.find((s) => s.id === payload.shipment_id);
+    if (!shipment) {
+      throw new ApiError(`Không tìm thấy lô hàng với ID UUID '${payload.shipment_id}'`, 404, 'SHIPMENT_NOT_FOUND');
+    }
+
+    if (payload.active) {
+      if (dev.assigned_shipment_id && dev.assigned_shipment_id !== payload.shipment_id) {
+        throw new ApiError(
+          `Thiết bị '${deviceId}' đã được liên kết với chuyến hàng khác (${dev.assigned_shipment_code || dev.assigned_shipment_id}). Mỗi thiết bị chỉ được có một liên kết đang kích hoạt. Vui lòng bỏ liên kết cũ (active=false) trước khi gán mới.`,
+          409,
+          'DEVICE_ALREADY_ASSIGNED'
+        );
+      }
+      dev.assigned_shipment_id = shipment.id;
+      dev.assigned_shipment_code = shipment.code;
+    } else {
+      if (dev.assigned_shipment_id === payload.shipment_id) {
+        dev.assigned_shipment_id = null;
+        dev.assigned_shipment_code = null;
+      }
+    }
+
+    return {
+      device_id: dev.device_id,
+      device_name: dev.device_name,
+      status: 'active',
+      has_public_key: !!dev.has_public_key,
+      current_shipment_id: dev.assigned_shipment_id,
+      current_shipment_code: dev.assigned_shipment_code,
+      last_sequence_number: dev.health.last_sequence_number ?? 0,
+      last_seen_at: dev.health.last_seen_at,
+      keys: dev.key_id ? [{ key_id: dev.key_id, status: 'active' }] : [],
+      assignments: dev.assigned_shipment_id
+        ? [{ shipment_id: dev.assigned_shipment_id, active: true }]
+        : [],
     };
   }
 
   async getAdminDeviceDetails(deviceId: string): Promise<AdminDeviceViewOut> {
     const dev = this.devices.find((d) => d.device_id === deviceId);
     if (!dev) {
-      throw new Error(`Mock 404: Không tìm thấy thiết bị ${deviceId}`);
+      throw new ApiError(`Không tìm thấy thiết bị ${deviceId}`, 404, 'DEVICE_NOT_FOUND');
     }
 
     return {
       device_id: dev.device_id,
+      device_name: dev.device_name,
       status: 'active',
+      has_public_key: !!dev.has_public_key,
+      current_shipment_id: dev.assigned_shipment_id,
+      current_shipment_code: dev.assigned_shipment_code,
       last_sequence_number: dev.health.last_sequence_number ?? 0,
       last_seen_at: dev.health.last_seen_at,
-      keys: [{ key_id: dev.key_id, status: 'active' }],
+      keys: dev.key_id ? [{ key_id: dev.key_id, status: 'active' }] : [],
       assignments: dev.assigned_shipment_id
         ? [{ shipment_id: dev.assigned_shipment_id, active: true }]
         : [],
