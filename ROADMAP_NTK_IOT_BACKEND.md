@@ -16,9 +16,13 @@
 
 > **Điều chỉnh thiết kế demo 2026-11-15:** Đồng bộ với [roadmap NTD](ROADMAP_NTD_BLOCKCHAIN_SMART_CONTRACT.md) và [roadmap TTDK](ROADMAP_TTDK_FRONTEND_QA.md). Tách đăng ký thiết bị, tạo chuyến hàng, gán chuyến và cấp khóa thành các bước độc lập. Đây là **công việc đề xuất bổ sung**, chưa triển khai trong lượt sửa tài liệu; giữ nguyên tiến độ và checkbox đã có. Các kết quả test ở trên là lịch sử được giữ lại, không phải kết quả chạy lại lần này.
 
+> **Thiết kế mục tiêu 2026-11-15 — PLANNED, chưa triển khai:** **Remix IDE → Ethereum Sepolia (`11155111`) ← Alchemy HTTPS RPC ← Python Web3.py**, cùng **một Admin trong Backend environment → login → JWT Bearer**. Hardhat/chain `31337`, scripts và kết quả local ở các cập nhật/checkbox lịch sử chỉ là **legacy**, không phải quy trình chạy mới hoặc bằng chứng Sepolia. Không xóa source/tests/artifacts cũ; không tăng trạng thái hoàn thành từ việc sửa roadmap. Phạm vi lượt này chỉ là ba roadmap; `.env`, runtime settings, API/client, dependencies và runbook thực thi cần được NTK/NTD/TTDK cập nhật theo các Phase bên dưới.
+
+**Stack thống nhất:** ESP32 + DHT22 / Arduino C++ → REST/HTTPS → FastAPI trên Render → MySQL → SHA-256 / `MERKLE-v1` → Web3.py → Alchemy RPC → Ethereum Sepolia; Solidity được compile/test/deploy bằng Remix. React Vite chỉ gọi FastAPI. Alchemy là RPC provider, không lưu telemetry và không phải một blockchain riêng. Không cần Node.js cho công việc Smart Contract; Node.js vẫn dùng cho React Vite.
+
 ### Quy trình demo thống nhất giữa ba thành viên
 
-**Admin đăng ký thiết bị → Admin đăng ký chuyến hàng → Liên kết thiết bị với chuyến hàng → Cấp khóa cho ESP32 → ESP32 ký và gửi dữ liệu → Backend xác minh bằng Public Key → Lưu MySQL → Tạo bằng chứng Blockchain → Xử lý bảo hiểm.**
+**Admin đăng nhập → nhận JWT → đăng ký thiết bị → đăng ký chuyến hàng → liên kết thiết bị với chuyến hàng → cấp khóa cho ESP32 → ESP32 ký và gửi dữ liệu → Backend xác minh bằng Public Key → MySQL → Merkle Root → Web3.py → Alchemy RPC → Ethereum Sepolia → Insurance.**
 
 - **Device ID:** `device_id = "ESP32-001"`; thêm `device_name = "Cold Chain Sensor 01"`. Đăng ký chỉ cần hai trường này, chưa cần khóa hoặc chuyến hàng.
 - **Shipment ID trên giao diện:** mã người dùng nhập `SHIP-001` ánh xạ vào trường **`code`** hiện có. Backend tiếp tục tạo **`id` UUID v4 chữ thường**; UUID này là `shipment_id` trong path, assignment, firmware, signed payload và `shipmentKey`. Không đổi giao thức ký để đưa `SHIP-001` vào trường UUID.
@@ -33,13 +37,14 @@ Kiểm tra tĩnh tại `backend/app/api/routes.py`, `schemas/api.py`, `models/en
 
 | Hạng mục | Code hiện có | Thay đổi đề xuất trong roadmap |
 |---|---|---|
-| Đăng ký device | `POST /devices` bắt buộc `device_id`, `key_id`, `public_key_pem`, `shipment_id` cùng lúc | Đổi cùng endpoint thành đăng ký `device_id` + `device_name`; key/assignment đăng ký riêng |
-| Danh sách device | Chưa có `GET /devices` ở Backend; client/mock Frontend đã tham chiếu | Bổ sung một endpoint danh sách admin, gồm cả device chưa có key/chưa gán |
-| Cấp public key | Có `POST /devices/{device_id}/keys`, body `key_id`, `public_key_pem`, auth `X-Admin-Key` | Tái sử dụng; không thêm alias `/public-key` hoặc `/keys/rotate` |
-| Liên kết | Có `POST /devices/{device_id}/assignments`, body `shipment_id`, `active`; chưa chặn nhiều assignment active | Tái sử dụng; bổ sung kiểm tra một chuyến đang gán, transaction/khóa chống race; không thêm `/assign` |
-| Shipment | Có create/list/detail, `code` unique và `id` UUID do server tạo; create chưa dùng `AdminSession` | Giữ DTO/ID; bảo vệ thao tác tạo bằng auth admin hiện có |
-| MySQL | Có `devices`, `device_keys`, `device_assignments`, `signed_telemetry_receipts`, `ingestion_audit` | Thêm tên thiết bị và ràng buộc một assignment active, không dựng bảng registry mới |
+| Đăng ký device | `POST /devices` đã nhận `device_id` + `device_name` | Giữ DTO và các bước key/assignment độc lập; chuyển dependency sang JWT |
+| Danh sách device | Đã có `GET /devices`, gồm tên/key status/chuyến hiện gán | Giữ view; xác minh với MySQL và JWT, không suy ra đã deploy |
+| Cấp public key | Có `POST /devices/{device_id}/keys`, body `key_id`, `public_key_pem`; auth API key là baseline cũ | Tái sử dụng endpoint, thay auth bằng JWT; không thêm `/public-key` hoặc `/keys/rotate` |
+| Liên kết | Có `/assignments`, khóa dòng và xử lý `DEVICE_ALREADY_ASSIGNED` | Giữ transaction/constraint, thay auth; không thêm `/assign` |
+| Shipment | Có create/list/detail, `code` unique và `id` UUID; create đã dùng `AdminSession` | Thay nội dung dependency sang JWT; mở rộng bảo vệ cả monitoring Admin |
+| MySQL | Đã có tên device và migration `20261115_03` với unique active assignment | Tái sử dụng migration, kiểm chứng trên MySQL; không thêm bảng user chỉ để lưu Admin |
 | Firmware/simulator | Có `config.example.h`, `.gitignore` cho `config.h`, P-256 signed simulator; README tạo khóa bằng đoạn Python thủ công | Bổ sung script provisioning tái sử dụng và hướng dẫn theo trình tự mới; board cross-test vẫn chưa được xác nhận |
+| Auth / Blockchain | Settings vẫn đọc `ADMIN_API_KEY`/`X-Admin-Key`, mặc định localhost/`31337`; chưa có login JWT | Chuyển đồng bộ settings/routes/tests/client/runbook sang JWT + Sepolia/Alchemy; giữ lịch sử local |
 
 Request/response và lỗi mục tiêu nằm ở **§3**; migration nằm ở **Phase 3**. Tài liệu `api-v1.md` hiện có một số đoạn tiến độ cũ, nên khi triển khai phải cập nhật cùng OpenAPI theo code thực tế, không coi mọi endpoint trong roadmap đã chạy.
 
@@ -132,7 +137,7 @@ smart-coldchain-insurance/
 ### 2.1. Luồng dữ liệu mục tiêu
 
 ```text
-Admin → register device (ID/name) → create shipment (code → UUID)
+Admin → POST /auth/login → JWT Bearer → register device (ID/name) → create shipment (code → UUID)
   → assign device to shipment → trusted Python provisioning → USB flash ESP32
   → register public key only in MySQL via admin API
 
@@ -154,10 +159,10 @@ External MySQL (system of record)
 Backend Integrity Service
   ├─ Canonical records → SHA-256 leaves → Merkle root
   ├─ Freeze batch membership and store metadata
-  ├─ Outbox → Blockchain adapter → Data Integrity Contract
+  ├─ Outbox → Python Web3.py → Alchemy HTTPS RPC → Data Integrity Contract on Sepolia
   └─ Receipt / on-chain hash verification / tamper alerts
       ↓
-Blockchain (batch commitments only)
+Ethereum Sepolia, chain ID 11155111 (batch commitments only; deploy bằng Remix + MetaMask)
 
 Parallel insurance branch:
 Verified telemetry + continuity rules + integrity evidence
@@ -193,7 +198,8 @@ Frontend (Member 3) → REST/HTTPS → Public FastAPI Backend ONLY
 | Batching | Đề xuất theo **mỗi cặp `(shipment_id, device_id)`**, tối đa 100 bản ghi hoặc 5 phút; cấu hình được | Member 1 ↔ Member 2 |
 | Blockchain key encoding | `batch_key` / `shipment_key` kiểu `bytes32` theo một quy tắc duy nhất ghi trong `blockchain/INTEGRATION.md` | Member 2 chốt, Member 1 áp dụng |
 | Evidence policy | Đề xuất **không gọi payout khi bằng chứng cần thiết chưa được xác minh và anchor thành công**; chờ khi pending | Cả 3 thành viên xác nhận |
-| Chain / contract | Tên network, chain ID, contract address, ABI, confirmations từ Member 2, không tự đoán | Member 2 |
+| Chain / contract | Ethereum Sepolia `11155111`, Alchemy HTTPS RPC; ABI/address từ deployment Remix đã xác nhận, confirmations cấu hình rõ | Member 2 bàn giao; Member 1 tạo Alchemy app |
+| Admin auth | Một Admin từ `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `JWT_SECRET_KEY`; JWT Access Token, không bảng users/roles/refresh session | Member 1, Member 3 tích hợp |
 | Render / MySQL | Render Web Service công khai + external managed MySQL; chọn nhà cung cấp MySQL thực tế trước Phase 7 | Member 1 |
 
 Nếu thuật toán/thư viện ký số không phù hợp với ESP32 thật, phải mở quyết định kỹ thuật và cập nhật **cả** firmware, API, fixture, tài liệu; không âm thầm thay đổi giao thức.
@@ -312,9 +318,10 @@ Backend validate min/max, thời lượng và số tiền; giữ `cargo_type` v�
 
 | Method | Endpoint | Nguồn gọi / mục đích | Hiện trạng → công việc đề xuất |
 |---|---|---|---|
-| `POST` | `/api/v1/devices` | **Admin UI:** `device_id`, `device_name` | Có route; tách key/assignment khỏi DTO đăng ký |
-| `GET` | `/api/v1/devices` | **Admin UI:** mọi device, tên, trạng thái key và chuyến hiện gán | **Route mới cần bổ sung** |
-| `POST` | `/api/v1/shipments` | **Admin UI:** `code` + thông tin/policy, trả `id` UUID | Có; giữ DTO, thêm `AdminSession` cho thao tác tạo |
+| `POST` | `/api/v1/auth/login` | Username/password của duy nhất Admin | **API mới, PLANNED**, trả JWT; giới hạn thử đăng nhập |
+| `POST` | `/api/v1/devices` | **Admin UI:** `device_id`, `device_name` | Có DTO độc lập; chuyển auth sang JWT |
+| `GET` | `/api/v1/devices` | **Admin UI:** mọi device, tên, trạng thái key và chuyến hiện gán | Đã có trong code; chuyển auth sang JWT |
+| `POST` | `/api/v1/shipments` | **Admin UI:** `code` + thông tin/policy, trả `id` UUID | Có `AdminSession`; thay API-key dependency bằng JWT |
 | `GET` | `/api/v1/shipments` | Danh sách chuyến `{items, total}` | Có; giữ nguyên |
 | `POST` | `/api/v1/devices/{device_id}/assignments` | **Admin UI:** `{shipment_id, active}` | Có; chặn nhiều assignment active, bảo đảm idempotent |
 | `POST` | `/api/v1/devices/{device_id}/keys` | **Script trên máy tin cậy:** `{key_id, public_key_pem}` | Có; dùng cho cấp khóa ban đầu sau đăng ký |
@@ -329,14 +336,36 @@ Backend validate min/max, thời lượng và số tiền; giữ `cargo_type` v�
 | `GET` | `/api/v1/shipments/{shipment_id}/integrity` | Tổng quan batch/root/anchor/verification | Có; không giả có counters chưa được DTO trả |
 | `GET` | `/api/v1/shipments/{shipment_id}/batches` | Danh sách Merkle batch | Có; giữ path, không thêm `/integrity/batches` |
 | `GET` | `/api/v1/batches/{batch_id}` | Chi tiết batch, anchor transaction | Có |
-| `POST` | `/api/v1/batches/{batch_id}/verify` | Tính lại root, đối chiếu on-chain | Có; chính sách bảo vệ admin cần rà soát, route hiện chưa dùng `AdminSession` |
+| `POST` | `/api/v1/batches/{batch_id}/verify` | **Admin:** tính lại root, đối chiếu on-chain | Đã dùng `AdminSession`; chuyển dependency sang JWT |
 | `POST` | `/api/v1/shipments/{shipment_id}/batches/seal` | **Admin:** seal batch khi demo/reconcile | Có; giữ nguyên |
 | `POST` | `/api/v1/batches/{batch_id}/anchor` | **Admin:** dispatch/retry anchor | Có; giữ nguyên |
 | `POST` | `/api/v1/shipments/{shipment_id}/insurance/reconcile` | **Admin:** đối soát evidence/payout | Có; giữ nguyên |
 | `GET` | `/api/v1/health`, `/api/v1/ready` | Health/readiness không lộ secret | Có |
 | `POST` | `/api/v1/demo/shipments/{shipment_id}/scenario` | **Dev/local only** | Có `normal`, `temperature_breach`; mở rộng scenario chỉ khi triển khai thật |
 
-**Auth dùng lại:** `X-Admin-Key` và dependency `AdminSession` cho đăng ký/list/detail thiết bị, assignment, public key và tạo shipment theo thiết kế mục tiêu. Header này hiện có trên các route device admin; tạo shipment chưa được bảo vệ nên là nhiệm vụ chưa hoàn thành. Script lấy admin credential ở môi trường máy tin cậy, không ghi vào `config.h`. Admin UI nhận credential lúc sử dụng, không nhúng vào bundle/`VITE_*` hay log. CORS phải cho phép header cần dùng và không thay authentication. Read-only monitoring giữ phân quyền theo API hiện có.
+**Auth mục tiêu — chưa triển khai:** một dependency FastAPI chung `require_admin` xác minh `Authorization: Bearer <jwt_token>`; có thể giữ tên `AdminSession` để ghép session DB với dependency đó. Bảo vệ **mọi API quản trị và monitoring**: device/key/assignment, create/list/detail shipment, đọc telemetry/events/device health/integrity/batch, verify/seal/anchor retry, insurance reconcile và demo khi development. Health/readiness tối thiểu và login được public; POST signed telemetry dùng ECDSA riêng, không yêu cầu JWT Admin. Route demo vẫn tắt ở production dù JWT hợp lệ. Script provisioning đăng nhập rồi dùng Bearer Token ngắn hạn để upload public key; không ghi password/JWT vào `config.h`. CORS cho phép `Authorization` và `Content-Type`, không thay xác thực. Baseline API key phải bị loại bỏ hoàn toàn khỏi runtime mới, không có fallback cho header cũ.
+
+### 3.2.1. Login của duy nhất Admin — contract mới, PLANNED
+
+`POST /api/v1/auth/login`, JSON request (chỉ là placeholder):
+
+```json
+{"username":"admin","password":"<your-demo-password>"}
+```
+
+Thành công `200`:
+
+```json
+{"access_token":"<jwt_token>","token_type":"bearer"}
+```
+
+- Đọc `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `JWT_SECRET_KEY` từ Backend environment; không tài khoản thứ hai, register/sign up, nhiều vai trò hoặc bảng `users`. So sánh credential an toàn, không log password/token và không trả config secret qua API.
+- Dùng **PyJWT**, khóa phiên bản sau khi kiểm tra tương thích requirements; không tự viết JWT. Đề xuất HS256 cố định phía server, secret ngẫu nhiên đủ mạnh (ít nhất 32 byte), claims bắt buộc `sub` bằng Admin đã cấu hình, `iat`, `exp`; Access Token 30 phút theo `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` mới. Khi decode phải xác minh chữ ký, allowlist thuật toán và bắt buộc các claims/thời hạn, không tin `alg` do client chọn. Xem [PyJWT usage](https://pyjwt.readthedocs.io/en/stable/usage.html).
+- Sai credential hoặc Bearer thiếu/sai chữ ký/hết hạn/sai subject trả `401` với lỗi chung, header `WWW-Authenticate: Bearer`; body validation trả `422`. Rate limit đề xuất 5 lần/phút/IP, vượt trả `429` và `Retry-After`; cấu hình IP/proxy tin cậy trên Render, test không giả mạo được qua header tùy ý.
+- Cấu hình auth thiếu/rỗng/placeholder phải fail closed khi khởi động; không có chế độ bỏ auth khi secret rỗng, kể cả development. HTTPS trên Render; không ghi raw login body hoặc Authorization vào request/error log.
+- Chỉ Access Token; hết hạn thì đăng nhập lại. Không refresh token, OAuth bên thứ ba, MFA, quên/đổi mật khẩu hoặc session DB. Logout là xóa token ở Frontend; token đã cấp còn hiệu lực tới `exp`, không xây revocation/session service trong demo.
+- JWT Admin chỉ cho FastAPI; không cấp quyền Owner/Oracle/anchorer của Solidity. ESP32 giữ cặp P-256 riêng và `SIGNED-TELEMETRY-v1`, không đăng nhập username/password hay dùng JWT Admin.
+- Admin được quản lý device (metadata, active/revoked, public key, gán/bỏ gán), shipment/policy khi quy tắc cho phép, monitoring/audit, verify và retry/reconcile đã hỗ trợ; không nhập thêm API key. Nếu thiếu API sửa metadata/shipment thì ghi task/schema cần bổ sung và review trong Phase 2/3, không tự coi route chưa có đã chạy, không cho sửa evidence/policy đã khóa trái luật nghiệp vụ.
 
 Không thêm alias `/assign`, `/public-key`, device registry contract hoặc dịch vụ provisioning riêng. Pagination/filter là mở rộng khi cần, không giả đã có trong v1; demo có thể dùng `{items, total}` hiện tại.
 
@@ -384,7 +413,9 @@ API hiện có trả `insurance.payout_status = not_requested / evidence_pending
 - `docs/architecture/data-integrity.md`: chi tiết chữ ký, canonicalization, leaf/Merkle, byte encoding, membership, sequence rules và golden test vectors.
 - `blockchain/INTEGRATION.md` thuộc Member 2: ABI, address, chain ID, RPC, `batch_key`/`shipment_key`, event, contract permissions và xác nhận batch root.
 
-### 3.6. Contract mục tiêu cho đăng ký, gán chuyến và cấp khóa — chưa triển khai
+### 3.6. Contract mục tiêu cho đăng ký, gán chuyến và cấp khóa — JWT chưa triển khai
+
+DTO ID/tên, DeviceOut/list và constraint assignment đã có code khi đối chiếu tĩnh; giữ contract nghiệp vụ dưới đây để các caller dùng chung. **Phần mới chưa triển khai** là login/JWT, caller/provisioning migration và kiểm chứng MySQL/public deployment, không phải yêu cầu viết lại DTO đã có. Mọi thao tác admin trong §3.6 dùng JWT Bearer theo §3.2.1.
 
 **A. Đăng ký thiết bị độc lập:** `POST /api/v1/devices`, auth admin:
 
@@ -392,7 +423,7 @@ API hiện có trả `insurance.payout_status = not_requested / evidence_pending
 {"device_id":"ESP32-001","device_name":"Cold Chain Sensor 01"}
 ```
 
-`device_id` giữ pattern hiện có `[A-Za-z0-9_-]{1,100}`, phân biệt hoa/thường; tên được trim, không rỗng, tối đa 100 ký tự. Trùng ID trả `409 DEVICE_EXISTS`; không tự sửa device có sẵn. Không bắt buộc `key_id`, PEM hay shipment. Thay DTO cũ là thay đổi cần cập nhật đồng thời Backend, Frontend, simulator setup và tài liệu; không thêm endpoint đăng ký thứ hai. `201` trả **DeviceView mục tiêu**:
+`device_id` giữ pattern `[A-Za-z0-9_-]{1,100}`, phân biệt hoa/thường; tên trim, không rỗng, tối đa 100 ký tự. Trùng ID trả `409 DEVICE_EXISTS`; không sửa device có sẵn. Không bắt buộc `key_id`, PEM hay shipment. Tái sử dụng DTO độc lập hiện có, cập nhật caller còn dùng DTO gộp và auth cùng OpenAPI; không thêm endpoint đăng ký thứ hai. `201` trả **DeviceView**:
 
 ```json
 {
@@ -408,7 +439,7 @@ API hiện có trả `insurance.payout_status = not_requested / evidence_pending
 }
 ```
 
-`has_public_key` được Backend suy ra từ key active; không thêm cột boolean dễ lệch dữ liệu. `current_shipment_id` suy ra từ assignment active, `null` nếu chưa gán. Giữ `keys` metadata (`key_id`, `status`) và `assignments` (`shipment_id`, `active`) của view hiện có; không cần trả PEM cho UI. `GET /devices/{device_id}` và các thao tác key/assignment dùng cùng DeviceView; `GET /devices` trả `{"items":[DeviceView],"total":1}` (ký hiệu schema, không phải JSON chạy trực tiếp); danh sách rỗng là `{"items":[],"total":0}`. List phải thấy cả device chưa key/chưa gán. Tên và hai field tổng hợp là **phần mới cần thêm**, không phải view hiện có.
+`has_public_key` suy ra từ key active, `current_shipment_id` suy ra từ assignment active (`null` nếu chưa gán); không thêm cột boolean dễ lệch. Giữ `keys` metadata (`key_id`, `status`), `assignments` (`shipment_id`, `active`), không trả PEM cho UI. `GET /devices/{device_id}` và thao tác key/assignment dùng cùng DeviceView; `GET /devices` trả `{"items":[DeviceView],"total":1}` (ký hiệu schema, không phải JSON), danh sách rỗng `{"items":[],"total":0}`. List thấy cả device chưa key/chưa gán. Các field đã có trong `DeviceOut`; cần regression với JWT và deployment thực tế.
 
 **B. Tạo chuyến hàng:** request §3.1, response ShipmentDetail hiện có với `id` UUID, `code = "SHIP-001"`, policy tại `insurance`, trạng thái mới `created`, telemetry/location `null`. Trùng code trả `409 DUPLICATE_SHIPMENT_CODE`. UI lưu UUID từ response để gán/gửi, không dùng chuỗi `SHIP-001` thay UUID. Shipments list tiếp tục `{items, total}`.
 
@@ -420,8 +451,8 @@ API hiện có trả `insurance.payout_status = not_requested / evidence_pending
 
 - `200` trả DeviceView với `current_shipment_id` bằng UUID trên và assignment tương ứng active. Gán lại cùng cặp là idempotent, không tạo dòng trùng.
 - Cho phép gán khi chưa có public key; telemetry vẫn bị chặn đến khi cấp key hợp lệ. Device phải tồn tại/active, shipment phải tồn tại; không tìm thấy trả `404 DEVICE_NOT_FOUND`/`SHIPMENT_NOT_FOUND`.
-- Nếu đã có assignment active tới UUID khác, trả **`409 DEVICE_ALREADY_ASSIGNED` (mã lỗi mới đề xuất)** và giữ nguyên quan hệ cũ. Bỏ gán bằng cùng endpoint với `active=false`, rồi gán mới; không ngầm chuyển chuyến trong một request gán.
-- Khóa dòng device trong transaction khi đổi assignment, cùng thứ tự khóa với ingestion; ràng buộc DB ở Phase 3 chặn race hai admin. Assignment active là quan hệ chuyến hiện tại, không thêm state machine chuyến hàng chỉ cho mục đích gán.
+- Nếu đã có assignment active tới UUID khác, trả **`409 DEVICE_ALREADY_ASSIGNED` (đã có code)** và giữ quan hệ cũ. Bỏ gán bằng cùng endpoint với `active=false` rồi gán mới; không ngầm chuyển chuyến.
+- Giữ khóa dòng device trong transaction, cùng thứ tự khóa với ingestion và unique active assignment ở Phase 3 để chặn hai request đồng thời của cùng Admin. Không thêm state machine chuyến chỉ cho mục đích gán.
 - Một shipment nhận nhiều device. Telemetry/batch vẫn tách theo device, không trộn sequence giữa thiết bị; giữ logic evidence theo policy hiện có. Khi đổi chuyến cập nhật `SHIPMENT_ID` trong `config.h` rồi nạp USB; queue cũ không được đổi `shipment_id`/ký lại để đưa vào chuyến mới.
 
 **D. Cấp public key:** giữ `POST /api/v1/devices/ESP32-001/keys`, auth admin, do script gọi:
@@ -444,10 +475,10 @@ PEM trên là placeholder, phải thay bằng public key thật khi gọi. `201`
 |---|---|---:|---|---|
 | 0 | Architecture, API contract, crypto/hash contract | 2–3 ngày | Roadmap + repo hiện có | API v1 draft, golden fixture spec |
 | 1 | ESP32/DHT22, provisioning local/USB, signed simulator | 2–4 ngày | Phase 0 protocol; dùng fixture trước khi API mới sẵn sàng | Script cấp khóa, config mẫu, payload/firmware vectors |
-| 2 | API đăng ký/gán/key độc lập, verification, anti-replay | 2–3 ngày | Phase 0; làm cùng migration Phase 3 | DeviceView, list, signed ingest |
+| 2 | Login một Admin/JWT, API đăng ký/gán/key, verification, anti-replay | 2–3 ngày, ước lượng lại cho JWT | Phase 0; làm cùng migration Phase 3 | Login contract, Bearer dependency, DeviceView, signed ingest |
 | 3 | MySQL migration device/assignment + shipments + GPS mô phỏng | 2–3 ngày | Phase 2 baseline; mở schema song song Phase 2 | Migration, OpenAPI + seed cho Frontend |
 | 4 | Integrity Service + Merkle batches | 2–4 ngày | Phase 3 dữ liệu ổn định | Batch hashing fixture cho Member 2 |
-| 5 | Blockchain adapter + anchoring | 2–3 ngày | Phase 4 + Member 2 ABI/address | Anchor/verify API |
+| 5 | Web3.py + Alchemy/Sepolia anchoring | 2–3 ngày | Phase 4 + ABI/address từ deployment Remix của Member 2 | Receipt/readback Sepolia, anchor/verify API |
 | 6 | Violation detection + Insurance integration | 2–3 ngày | Phase 3 + evidence/adapter; chuẩn ABI Member 2 | Event/payout state API |
 | 7 | Render deployment + security hardening | 2–3 ngày | API/MySQL ổn định; có thể deploy skeleton từ Phase 3 | Public API URL cho Member 3 |
 | 8 | E2E/QA/demo/release handoff | 2–4 ngày | Phases 1–7 + Member 2/3 đã tích hợp | Demo checklist, logs, runbook |
@@ -457,7 +488,8 @@ PEM trên là placeholder, phải thay bằng public key thật khi gọi. `201`
 **Việc cần làm**
 
 - [ ] Kiểm tra cấu trúc repo/những phần đã có trước khi sửa code. Tạo nhánh `feat/iot-backend`; giữ `device/`, `backend/`, `blockchain/`, `frontend/`, `docs/` và owner như cũ.
-- [ ] Chốt stack **FastAPI + ESP32 + external MySQL + Web3 adapter + Render**; chọn phiên bản Python/Arduino core/mbedTLS/driver MySQL để đảm bảo chạy được.
+- [ ] Chốt stack **FastAPI + ESP32 + external MySQL + Web3.py + Alchemy + Ethereum Sepolia + Remix + Render**; chọn phiên bản Python/Arduino core/mbedTLS/driver MySQL. Không cần Hardhat Node hoặc chain `31337` để chạy Backend mới.
+- [ ] Khóa login §3.2.1, danh sách route Admin dùng JWT, TTL và rate limit với TTDK; không Register/User table/đa vai trò. Lập checklist đổi settings, routes, OpenAPI, tests, CLI/provisioning, frontend client và runbook cùng lần chuyển đổi; không bỏ bảo vệ API trong lúc gỡ API key.
 - [ ] Chốt quy trình demo và contract §3.6 với NTD/TTDK: ID/tên device riêng, `code` chuyến ánh xạ UUID, một assignment active/device, cấp key bằng script; giữ `/keys` và `/assignments` đang có. Lập danh sách caller cần đổi DTO đăng ký.
 - [ ] Khóa `SIGNED-TELEMETRY-v1`: các field, scaled integer, ECDSA P-256 SHA-256, DER/Base64, public key PEM, UTC timestamp, signed canonical projection.
 - [ ] Khóa `MERKLE-v1`: canonical record, leaf/node prefixes, odd-node rule, root bytes32, batch membership, sort order, empty batch.
@@ -479,7 +511,7 @@ PEM trên là placeholder, phải thay bằng public key thật khi gọi. `201`
 
 - [ ] Giữ cảm biến **DHT22** và sketch thực tế `device/cold_chain_device/cold_chain_device.ino` (GPIO 27 theo cấu hình hiện có); kiểm tra `NaN`, phạm vi và lỗi cảm biến, không tạo sketch trùng ở đường dẫn khác.
 - [ ] Thêm script đề xuất `device/provisioning/provision_device.py`, dùng Python `cryptography` sẵn có trên máy tin cậy: chọn device đã đăng ký, sinh cặp P-256 riêng bằng secure RNG, xuất private key vào `device/cold_chain_device/config.h` và public key SPKI PEM local. Không ghi đè key/config đã có, không in private key ra terminal/log.
-- [ ] Script/hướng dẫn có bước đăng ký **public key đã sinh** qua `POST /devices/{device_id}/keys` với `X-Admin-Key` từ môi trường máy tin cậy, sau khi nạp `config.h` bằng USB. Có thể chạy bước tạo file và bước upload public key riêng; lỗi mạng không làm sinh lại cặp khóa. Private key không đi qua Frontend, HTTP API hoặc Backend/MySQL.
+- [ ] Script/hướng dẫn đăng nhập `POST /auth/login` trên máy tin cậy rồi đăng ký **public key đã sinh** qua `POST /devices/{device_id}/keys` với JWT Bearer, sau khi nạp `config.h` bằng USB. Token ngắn hạn ở bộ nhớ tiến trình, hết hạn thì đăng nhập lại; không log hay ghi token/password vào firmware. Tách bước tạo file và upload; lỗi mạng không làm sinh lại cặp khóa. Private key không đi qua Frontend, HTTP API hoặc Backend/MySQL.
 - [ ] `config.example.h` chỉ placeholder cho `API_BASE_URL`, Wi-Fi, `DEVICE_ID`, `SHIPMENT_ID` (UUID lấy từ API), `KEY_ID`, `DEVICE_PRIVATE_KEY_PEM`, `TLS_ROOT_CA_PEM`; script giữ placeholder phần chưa cấu hình để admin điền local trước khi nạp. `.gitignore` tiếp tục loại `config.h`, `*.pem`, `*.key`; kiểm tra mọi file output local mới cũng bị bỏ qua.
 - [ ] Thực hiện ECDSA P-256/SHA-256 bằng thư viện mbedTLS được hỗ trợ; tự kiểm bằng golden fixture với Python.
 - [ ] Gắn `sequence_number` toàn cục theo device vào mẫu, lưu counter bền vững trước khi sử dụng; cấu hình `key_id`, `firmware_version`, `payload_version`.
@@ -504,9 +536,11 @@ PEM trên là placeholder, phải thay bằng public key thật khi gọi. `201`
 **Việc cần làm**
 
 - [ ] Dựng app FastAPI, dependency injection, settings, logging có request ID và `/api/v1/health`, OpenAPI `/docs` (quyền public docs theo policy).
+- [ ] **Mới, PLANNED:** thêm `POST /api/v1/auth/login` theo §3.2.1 bằng PyJWT; settings mới cho duy nhất Admin, secret/TTL validation, giới hạn thử đăng nhập, 401/429 chuẩn và redaction password/JWT.
+- [ ] Thay dependency API-key hiện có bằng `require_admin`/JWT chung; xóa đọc `ADMIN_API_KEY`/`X-Admin-Key` trong runtime, OpenAPI, test fixtures và hướng dẫn mới. Chặn toàn bộ route Admin/monitoring nêu §3.2; không fallback credential cũ. Tách signed ingestion khỏi JWT và giữ health/readiness public tối thiểu.
 - [ ] Mở rộng `api/routes.py`, `schemas/api.py`, `services/signed_ingestion.py`, `device_health_service.py` hiện có; không tách/viết lại module chỉ theo tên cây tham chiếu.
-- [ ] Đổi `DeviceRegister` sang `device_id` + `device_name`; cho device chưa có key/assignment tồn tại. Bổ sung `GET /devices` admin và DeviceView §3.6 cho create/list/detail/assignment/key; cập nhật toàn bộ caller cũ trước khi bỏ DTO đăng ký gộp.
-- [ ] Tái sử dụng `/devices/{device_id}/keys`, `/assignments`, các PATCH revoke; bảo vệ bằng `X-Admin-Key`/`AdminSession`. Giữ schema shipment, bổ sung `AdminSession` cho `POST /shipments`; không tạo alias API.
+- [ ] Đối chiếu/tái sử dụng `DeviceRegister(device_id, device_name)`, `GET /devices` và DeviceView §3.6 đã có trong code; cho device chưa key/assignment tồn tại. Cập nhật caller còn dùng DTO gộp và auth JWT, regression create/list/detail/assignment/key; không thêm endpoint trùng.
+- [ ] Tái sử dụng `/devices/{device_id}/keys`, `/assignments`, các PATCH revoke và shipment DTO; `AdminSession` dùng JWT thay API key. Cả Admin đọc/ghi, verify/retry/reconcile và demo dev đều kiểm tra token ở Backend; không tạo alias API.
 - [ ] Khi gán active, khóa dòng device trong transaction, từ chối active sang chuyến khác với `409 DEVICE_ALREADY_ASSIGNED`; cùng cặp retry idempotent. Bỏ gán bằng `active=false`, không reset sequence và không đổi telemetry/batch lịch sử. Hoàn tất cùng migration Phase 3 trước nghiệm thu API.
 - [ ] Triển khai validate payload/version/Decimal constraints/range và shipment association; xác minh DER/Base64 ECDSA trước khi accept.
 - [ ] Chống duplicate và replay bằng unique key và transaction, xử lý HTTP retry idempotent; phát hiện sequence gap và last seen từ telemetry hợp lệ. Signed heartbeat là mở rộng riêng nếu cần, không phải điều kiện thêm cho demo đăng ký/gửi dữ liệu.
@@ -517,10 +551,12 @@ PEM trên là placeholder, phải thay bằng public key thật khi gọi. `201`
 **Definition of Done**
 
 - [ ] Test đúng signature được chấp nhận, sai signature bị từ chối, unknown device không thể tự tạo thiết bị.
+- [ ] Login đúng trả JWT có hạn; login sai trả 401, vượt ngưỡng trả 429. Token thiếu/hết hạn/sửa chữ ký/sai subject/không có `exp` hoặc sai thuật toán đều bị chặn; header API key cũ không cấp quyền. Thiếu cấu hình không mở public API; password/JWT không có trong log/response lỗi.
+- [ ] Ma trận route chứng minh mọi API Admin/monitoring được bảo vệ cả GET và POST/PATCH; signed telemetry hợp lệ không cần JWT, JWT Admin không thay thế chữ ký P-256; health/readiness vẫn hoạt động không có token. Không có bảng users/route đăng ký/thêm Admin.
 - [ ] Retry cùng payload idempotent; cùng sequence nhưng nội dung khác trả conflict; gap/offline có chỉ báo đúng.
 - [ ] `/docs` và `api-v1.md` phản ánh endpoint/enum thực tế; API trả 4xx/5xx có cấu trúc, không lộ stack trace.
 - [ ] Đăng ký được device trước shipment/key, list thấy `has_public_key=false`, `current_shipment_id=null`; không nhận telemetry khi thiếu assignment hoặc key. Sau cấp key đúng, cùng device gửi được mẫu signed v1.
-- [ ] Hai admin gán đồng thời một device sang hai chuyến chỉ có một request thành công, request còn lại `409`; nhiều device gán cùng shipment được phép. Auth thiếu/sai bị chặn ở Backend; không chỉ ẩn nút UI.
+- [ ] Hai request của cùng Admin gán đồng thời một device sang hai chuyến chỉ có một request thành công, request còn lại `409`; nhiều device gán cùng shipment được phép. JWT thiếu/sai bị chặn ở Backend; không chỉ ẩn nút UI.
 
 ### Phase 3 — MySQL Persistence, Shipments & Backend GPS Simulation
 
@@ -528,8 +564,8 @@ PEM trên là placeholder, phải thay bằng public key thật khi gọi. `201`
 
 - [ ] Cấu hình SQLAlchemy/driver MySQL tương thích + Alembic; migration được quản lý theo phiên bản, không dựa `create_all()` để upgrade production.
 - [ ] Xây dựng schema tối thiểu theo bảng dưới đây; dùng `UTC`, index/filter theo shipment/device/time, transaction và khóa unique chống race condition.
-- [ ] Tạo **revision Alembic mới nối sau `20261109_02`** khi triển khai, không sửa revision đã áp dụng: thêm `devices.device_name` (backfill tên bằng `id` cho dòng cũ rồi đặt NOT NULL), giữ nguyên mọi ID/key/receipt/batch. Rà và báo các device có nhiều assignment active để admin chọn quan hệ đúng trước khi bật ràng buộc; không tự chọn/xóa lịch sử.
-- [ ] Trên MySQL thêm generated nullable column `active_device_id = CASE WHEN active THEN device_id ELSE NULL END` và UNIQUE cho cột này trong `device_assignments`, bảo đảm một dòng active/device nhưng nhiều dòng inactive hợp lệ. Kết hợp khóa dòng device trong service và map vi phạm unique thành `409 DEVICE_ALREADY_ASSIGNED`; test tương đương cho SQLite cô lập nếu cần. Không đặt UNIQUE trực tiếp lên `device_id` của bảng quan hệ vì sẽ cản lịch sử chuyến cũ.
+- [ ] Tái sử dụng revision **`20261115_03_device_registration.py`** đã có sau `20261109_02`, không sửa revision đã áp dụng: kiểm chứng backfill `device_name`, bảo toàn ID/key/receipt/batch và xử lý nhiều assignment active cũ có kiểm soát. Thay JWT không cần migration tài khoản/users hoặc session DB; chỉ tạo revision tiếp nếu phát hiện nhu cầu schema thực tế.
+- [ ] Kiểm chứng generated nullable column `active_device_id = CASE WHEN active THEN device_id ELSE NULL END` và UNIQUE trong revision `20261115_03`/model hiện có trên MySQL: một dòng active/device, nhiều dòng inactive. Giữ khóa dòng service và map unique violation thành `409 DEVICE_ALREADY_ASSIGNED`; không thêm migration/UNIQUE trực tiếp lên `device_id` làm mất lịch sử. SQLite test không thay kiểm chứng MySQL.
 - [ ] Đảm bảo dữ liệu **accepted** được commit vào MySQL trước khi enqueue anchoring/insurance; không phụ thuộc RPC để ghi telemetry.
 - [ ] Implement đầy đủ API `shipments`, `telemetry history`, `events`, `insurance status`; seed 2–3 shipment phục vụ Frontend.
 - [ ] Giữ `route_simulator.py`: nội suy vị trí dự đoán được từ tọa độ gốc, gắn `backend_simulated` và `progress_pct`; không cho ESP32 ghi đè.
@@ -552,7 +588,7 @@ PEM trên là placeholder, phải thay bằng public key thật khi gọi. `201`
 | `shipment_events` | Gap/violation/integrity/insurance events, evidence references và audit timestamp hiện có |
 | `integration_outbox` | Tác vụ anchor/insurance bền vững, idempotency key unique, payload transaction, retry/backoff; giữ cách lưu hiện tại |
 
-Schema mới chỉ cần thêm tên device và ràng buộc assignment; `has_public_key`/`current_shipment_id` được suy ra trong view. Heartbeat, gap lifecycle đầy đủ hoặc bảng insurance/transaction riêng chỉ bổ sung khi có nhu cầu đã chốt ở phase tương ứng; không dựng lại chúng cho yêu cầu đăng ký demo. Giữ monetary integer VND, không dùng float cho số tiền.
+Tái sử dụng schema/revision đăng ký đã có tên device và ràng buộc assignment; `has_public_key`/`current_shipment_id` suy ra trong view. JWT không cần users/session table. Heartbeat, gap lifecycle hoặc bảng insurance/transaction riêng chỉ bổ sung khi có nhu cầu thực tế ở phase tương ứng; không dựng lại cho đăng ký demo. Giữ monetary integer VND, không float cho số tiền.
 
 **Index:** giữ UNIQUE sequence ở `signed_telemetry_receipts`, `shipments.code`, batch leaf/membership và outbox idempotency hiện có; bổ sung unique assignment active như trên. Tối ưu `(shipment_id, received_at)`, `(device_id, received_at)` theo query thực tế; dùng tên cột `sealed_at`/`occurred_at` đúng model thay vì đặt index vào cột không có.
 
@@ -585,11 +621,12 @@ Schema mới chỉ cần thêm tên device và ràng buộc assignment; `has_pub
 
 ### Phase 5 — Blockchain Adapter, Batch Anchoring & On-chain Verification
 
-**Điều kiện bên ngoài:** Member 2 bàn giao **Data Integrity Contract ABI, Insurance Contract ABI, contract addresses, RPC, chain ID, event definitions, `batch_key`/`shipment_key` encoding, authorized anchorer/oracle, script deploy và `blockchain/INTEGRATION.md`**. Có thể viết mock adapter trước nhưng không gọi hợp đồng thật bằng tham số tự đoán.
+**Điều kiện bên ngoài:** Member 2 bàn giao **ABI xuất từ Remix đúng source đã deploy, hai contract addresses Sepolia, token address/ABI nếu dùng, chain ID `11155111`, receipt/tx hash deployment, compiler/dependency settings, constructor args, events, ID encoding, authorized anchorer/Oracle, confirmations và manifest/runbook Remix**. NTK tạo Alchemy app Ethereum Sepolia, giữ RPC URL thật trong Backend secret. Không cần script deploy hay node local; mock adapter mở khóa unit test trước khi có deployment thật.
 
 **Việc cần làm**
 
 - [ ] Viết `backend/app/integrations/blockchain_adapter.py` có interface tách `anchor_batch`, `get_batch`, `verify_batch`, `report_violation`, `get_tx_receipt`, `read_events`.
+- [ ] Tái sử dụng Web3.py hiện có, kết nối `Web3(Web3.HTTPProvider(settings.blockchain_rpc_url))`; kiểm tra `w3.eth.chain_id == 11155111`, bytecode và signer roles trên đúng addresses. Cập nhật defaults/`.env.example`/runbook khỏi localhost; không tự bật gửi tx khi chưa đủ cấu hình. Giữ tên `BLOCKCHAIN_CONTRACT_ADDRESS`, `BLOCKCHAIN_ORACLE_PRIVATE_KEY`, `BACKEND_ANCHORER_PRIVATE_KEY` đang được code đọc.
 - [ ] Kết nối Data Integrity Contract để `anchorBatch(...)` và so sánh `bytes32` root; check sender role, chain ID/ABI/address đúng môi trường.
 - [ ] Persist transaction lifecycle `PREPARED → SUBMITTED → MINED_SUCCESS/FAILED → CONFIRMED` và chuyển thành các `anchor_status` được publish qua API.
 - [ ] Khi RPC timeout không rõ tx đã phát đi chưa, kiểm tra tx hash / nonce / trạng thái `batch_key` trên chain **trước khi gửi lại**. Đảm bảo 1 batch chỉ anchor một lần trên chain, tránh nonce race bằng queue/lock phù hợp.
@@ -600,7 +637,7 @@ Schema mới chỉ cần thêm tên device và ràng buộc assignment; `has_pub
 
 **Definition of Done**
 
-- [ ] Dùng local chain/testnet, tạo một batch → tx được xác nhận → root đọc lại khớp → `DATA_ANCHORED`.
+- [ ] Trên **Sepolia qua Alchemy**, batch Python → `anchorBatch` → receipt `status=1` + event + đủ confirmations → `getBatch/verifyBatch` khớp root/metadata → `DATA_ANCHORED`; lưu tx hash và link `https://sepolia.etherscan.io/tx/<tx_hash>` thật. Test mock/local lịch sử không thay gate này.
 - [ ] Cùng `batch_id` retry không sinh nhiều anchor; RPC failure/restart không mất telemetry/outbox.
 - [ ] Pending/reverted/failed được thể hiện riêng; tamper sau anchor tạo `DATA_INTEGRITY_FAILED`.
 
@@ -618,11 +655,15 @@ Schema mới chỉ cần thêm tên device và ràng buộc assignment; `has_pub
 - [x] Phân biệt `INSURANCE_TRIGGERED`, `EVIDENCE_PENDING`, payout `pending`, `paid/confirmed` và `failed` trong shipment/event metadata.
 - [x] Chạy virtual clock ở local/test để minh họa 15 phút; E2E dùng signed telemetry, Merkle batch và hai contract thật trên Hardhat.
 
+> Các checkbox đã tick trong Phase 6 là kết quả **local/Hardhat lịch sử**, giữ nguyên; không xác nhận payout Sepolia hay luồng JWT mới.
+
+- [ ] **Mới:** chạy lại evidence → Oracle → payout trên Sepolia bằng pytest/Web3.py opt-in; giữ liên tục 15 phút, `received_at`, gate `MATCHED + DATA_ANCHORED`, không gap và idempotency. Virtual clock chỉ dùng dev/test; không dùng RPC time-travel trên Sepolia hoặc sửa clock production.
+
 **Definition of Done**
 
 - [x] 14 phút vi phạm không payout; 15 phút với dữ liệu liên tục + evidence đúng điều kiện chỉ trigger một lần.
 - [x] Sample bình thường, thiếu chuỗi, chữ ký sai, data tamper hoặc anchor pending không tự động payout.
-- [ ] Testnet payout demo chỉ được ghi `CONFIRMED` khi transaction thực sự thành công và contract state/event khớp; có tx metadata đầy đủ.
+- [ ] **Sepolia** payout demo chỉ ghi `CONFIRMED` khi receipt thực sự thành công, `InsurancePaid`/policy state/balance khớp; có tx/Etherscan metadata riêng, không dùng checkbox Hardhat phía trên làm bằng chứng.
 
 ### Phase 7 — Public FastAPI Deployment on Render
 
@@ -637,7 +678,7 @@ Schema mới chỉ cần thêm tên device và ràng buộc assignment; `has_pub
 - [ ] Khóa phiên bản Python/dependencies; kiểm thử bằng đúng build/start command; lưu hướng dẫn vào `docs/deployment/render.md`.
 - [x] Tạo `/api/v1/health` trả `status`, `database`/`blockchain` ở mức `ok/degraded/unavailable` (không lộ connection string); có `/api/v1/ready` cho DB-readiness. Blueprint dùng `/api/v1/health` làm HTTP health check.
 - [ ] Cấu hình **external managed MySQL** bằng `DATABASE_URL`, connection pool nhỏ hợp lý, TLS/SSL theo provider, timeout/reconnect, migration trước khi bật phiên bản mới, backup/restore test theo gói dịch vụ.
-- [ ] Secret trong **Render Environment Variables** hoặc secret management: Oracle/anchorer private key, DB credential, RPC key, admin auth secret. `.env.example` chỉ chứa placeholder; kiểm tra Git history không lộ secret.
+- [ ] Secret trong **Render Environment Variables**: Oracle/anchorer private key, DB credential, Alchemy RPC URL, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `JWT_SECRET_KEY`; TTL cấu hình rõ. Thay production guard API key cũ bằng guard JWT/credential; bỏ biến Admin API key trong Render/Blueprint/`.env.example` khi triển khai auth mới. Không ghi secret vào logs, docs hoặc frontend.
 - [x] CORS dùng explicit allowlist, không wildcard/credentials; `APP_ENV` tách local/test/production và `/api/v1/demo/*` không được đăng ký trong production.
 - [ ] Gắn `PUBLIC_API_BASE_URL` từ URL **Render thực tế đã được cấp sau deploy**; cập nhật tài liệu + cung cấp cho Member 3. Không hardcode URL ví dụ trong build/README như thể đó là môi trường thật.
 - [ ] Kiểm tra HTTPS (bao gồm ESP32 TLS), OpenAPI nếu được cho phép, health, DB migrations và ít nhất một request từ ESP32/simulator **qua URL public**.
@@ -650,18 +691,27 @@ Schema mới chỉ cần thêm tên device và ràng buộc assignment; `has_pub
 APP_ENV=development
 DATABASE_URL=mysql+pymysql://<user>:<password>@<host>:3306/<database>
 CORS_ORIGINS=http://localhost:5173,https://<your-frontend-domain>
-BLOCKCHAIN_ENABLED=false
-BLOCKCHAIN_RPC_URL=<testnet-rpc-url>
-BLOCKCHAIN_CHAIN_ID=<chain-id>
+ADMIN_USERNAME=<single-admin-username>
+ADMIN_PASSWORD=<set-as-secret-in-environment>
+JWT_SECRET_KEY=<random-secret-at-least-32-bytes>
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+# Bật true sau khi nhận deployment/roles/ABI thật và vượt preflight; local mock dùng false.
+BLOCKCHAIN_ENABLED=true
+BLOCKCHAIN_NETWORK=sepolia
+BLOCKCHAIN_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+BLOCKCHAIN_CHAIN_ID=11155111
 DATA_INTEGRITY_CONTRACT_ADDRESS=<data-integrity-address>
 BLOCKCHAIN_CONTRACT_ADDRESS=<insurance-contract-address>
 BACKEND_ANCHORER_PRIVATE_KEY=<set-as-secret-in-environment>
 BLOCKCHAIN_ORACLE_PRIVATE_KEY=<set-as-secret-in-environment>
-ADMIN_API_KEY=<set-as-secret-in-environment>
+BLOCKCHAIN_ABI_PATH=backend/app/integrations/abi/ColdChainInsurance.json
+DATA_INTEGRITY_ABI_PATH=backend/app/integrations/abi/ColdChainDataIntegrity.json
+BLOCKCHAIN_CONFIRMATIONS=2
+BLOCKCHAIN_RECEIPT_TIMEOUT_SECONDS=120
 PUBLIC_API_BASE_URL=https://<your-render-service>.onrender.com/api/v1
 ```
 
-> Đừng commit `.env` chứa giá trị thật. `PUBLIC_API_BASE_URL` trong ví dụ **không phải URL thực**. Tên cấu hình cuối cùng phải khớp code; tránh nhầm Oracle private key và ESP32 device key.
+> Mẫu **thiết kế mới**, không phải `.env` đã chạy: `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `JWT_SECRET_KEY`, `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` cần thêm vào settings. Các tên Blockchain còn lại đã khớp `config.py`; 2 confirmations/120 giây là mức demo đề xuất, NTK/NTD xác minh rồi khóa trước smoke test. Không đổi sang alias `INSURANCE_CONTRACT_ADDRESS`/`BACKEND_ORACLE_PRIVATE_KEY` vì Backend chưa đọc chúng. Token address/ABI ghi trong manifest Sepolia của NTD; runtime hiện không đọc `DEMO_TOKEN_CONTRACT_ADDRESS`, chỉ thêm nếu có consumer cụ thể cùng config/test. Alchemy API key vẫn cần, chỉ bỏ credential Admin API key. Private key ví Ethereum tách khỏi P-256 thiết bị. Không commit `.env`; URL public/address/secret trên đều là placeholder.
 
 **Handoff cho Member 3:**
 
@@ -686,7 +736,8 @@ VITE_API_BASE_URL=https://<your-render-service>.onrender.com/api/v1
 - [ ] Unit test: canonicalization, signature verification, gap/replay, Merkle root, timestamp, route simulation, 15-minute policy, idempotency.
 - [ ] API integration test: device registration/revocation, signed ingestion, MySQL migrations, batch membership, verify endpoint, CORS/auth/rate limit.
 - [ ] Test luồng §3.6: đăng ký ID/tên → tạo shipment/code/UUID → gán → script cấp key → signed ingest; kiểm tra trùng ID/code, sai UUID, thiếu/khác assignment, thiếu/revoked/sai curve key và gán đồng thời. Không làm lại module Merkle/Oracle; dùng test regression hiện có để phát hiện tác động tích hợp.
-- [ ] Local chain/testnet test: anchor receipt + root verify, chain pending/revert/reorg nếu testnet hỗ trợ, no double payout, insurance paid event check.
+- [ ] Pytest/Web3.py integration với contract đã deploy Remix trên Sepolia: anchor + root verify, roles, duplicate batch/payout, expiry/funding và receipt/events/balance. Port scenario từ `test_blockchain_local.py`/`test_integrity_anchor_local.py` sang suite opt-in Sepolia; giữ file local cũ là legacy, không yêu cầu chạy node để chạy suite mới.
+- [ ] Default unit/API tests dùng mock RPC/contract, không mạng/khóa ví/gas. Đề xuất marker `sepolia` cùng cờ `RUN_SEPOLIA_TESTS=1` (chưa có): mặc định skip, kiểm tra chain/address/key/balance trước, isolated IDs/policy mỗi lần; chạy tường minh `python -m pytest -m sepolia` sau khi thêm marker. Giao dịch thật chỉ trong đợt smoke/E2E có chủ đích; mock timeout/429/pending/reorg/revert và restart, không cố ép testnet xảy ra lỗi.
 - [ ] E2E cùng Member 3: toàn bộ trạng thái thiết bị, batch, anchoring, payout và cảnh báo hiện đúng; Frontend không tự suy ra verified/confirmed.
 - [ ] Rehearse trên public URL và DB/demo seed riêng; có fallback simulator đã ký khi ESP32 mất mạng.
 - [ ] Kiểm tra negative flows (invalid sig, duplicate, gap, offline, MySQL tamper, hash mismatch, RPC down, chain pending).
@@ -725,9 +776,9 @@ Yêu cầu bàn giao để mở khóa **Phase 5 và Phase 6 on-chain**:
 - [ ] `anchorBatch(...)`, `getBatch/verifyBatch(...)`, `reportViolation(...)` method signature **chính xác**, tham số/ABI encode và examples.
 - [ ] Quy tắc `batch_key`, `shipment_key`, `BatchAnchored`, `InsurancePaid` event schemas, role/permission của anchorer và Oracle.
 - [ ] Sample tx, cách đọc receipt/event/on-chain state, replay/duplicate protection và các failure cases.
-- [ ] Deployment scripts, Hardhat tests, fixtures kiểm tra root và `blockchain/INTEGRATION.md`.
+- [ ] Hồ sơ compile/deploy Remix: Solidity full version, optimizer/runs, EVM target, dependency versions, constructor args, source revision/checksum, manifest `deployments/sepolia.json` chỉ sau deploy thật; Remix test suite + pytest/Web3.py scenario map, fixtures root và `blockchain/INTEGRATION.md` cập nhật.
 
-**Acceptance gate:** Member 1 chạy ít nhất một anchor + readback root và một insurance flow trên local chain trước khi phụ thuộc testnet/public.
+**Acceptance gate mới:** Member 1 chạy ít nhất một anchor + receipt/event + root readback và một insurance payout/balance check **trên Sepolia qua Alchemy** với ABI từ Remix. Mock tests mở khóa phát triển, không thay bằng chứng demo chính thức; Hardhat local chỉ là lịch sử.
 
 ### 5.3. Member 1 → Member 3 (Frontend & QA)
 
@@ -789,10 +840,14 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 | T23 | Bỏ gán rồi đổi chuyến | History/batch cũ không đổi, counter tiếp tục; payload chuyến cũ bị chặn khi assignment không còn active |
 | T24 | Provisioning hai device, nhầm private PEM, retry upload | Hai cặp key khác nhau, private PEM bị từ chối, upload retry không tự sinh/ghi đè khóa; không secret trong Git/UI/DB/log |
 | T25 | Trùng device ID/code và admin credential sai | `409 DEVICE_EXISTS`/`DUPLICATE_SHIPMENT_CODE`; thao tác admin không đủ quyền bị chặn |
+| T26 | Login đúng/sai, brute force và auth config thiếu | JWT có TTL/subject đúng; sai 401, rate limit 429; thiếu cấu hình fail closed, không log password/token |
+| T27 | Bearer thiếu/expired/tampered/sai subject/alg/thiếu exp, chỉ gửi header API key cũ | Mọi API Admin đọc/ghi/verify/retry/reconcile bị chặn; không fallback auth cũ |
+| T28 | ESP32 không có JWT / Admin chỉ có JWT | Signed telemetry hợp lệ vẫn nhận; JWT không thay ECDSA hoặc cấp role contract; không register/thêm Admin |
+| T29 | Alchemy lỗi 429/timeout, tx pending/revert, sai chain/address/ABI, thiếu gas | Mock RPC kiểm tra outbox/reconcile/nonce; Sepolia opt-in đối chiếu receipt/event/state, không success chỉ từ hash |
 
 ### 6.2. Demo theo thứ tự nên trình bày
 
-- [ ] **Mở Dashboard:** shipment hiện vị trí `backend_simulated`, policy nhiệt độ, trạng thái cảm biến và public Backend URL đang hoạt động.
+- [ ] **Đăng nhập rồi mở Dashboard:** duy nhất Admin login nhận JWT; shipment hiện vị trí `backend_simulated`, policy nhiệt độ, trạng thái cảm biến và public Backend URL đang hoạt động. Hết hạn đăng nhập lại; Logout xóa token ở UI.
 - [ ] **Chuẩn bị bằng Admin UI:** đăng ký `ESP32-001`/tên → tạo mã chuyến `SHIP-001` (lưu UUID trả về) → chọn device/chuyến và gán. UI thấy "Chưa cấp public key". Trên máy tin cậy chạy script, nạp `config.h` qua USB, đăng ký public key qua `/keys`; UI refetch thấy "Đã có public key", không hiển thị private key.
 - [ ] **Gửi signed telemetry:** ESP32/simulator gửi HTTPS; API trả signature hợp lệ, timestamp server, sequence tăng.
 - [ ] **Chữ ký sai / duplicate / gap / offline:** hiện số liệu xác thực và cảnh báo khác nhau; không tạo payout từ dữ liệu thiếu.
@@ -807,7 +862,7 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 
 - Không dùng dữ liệu giả có nhãn “real sensor” nếu đang chạy simulator; không dùng blockchain hash để tuyên bố độ chính xác vật lý của nhiệt độ.
 - Không đánh dấu `InsurancePaid` nếu chưa có receipt và bằng chứng contract thực thi payout; không sử dụng token demo như VND thật.
-- Chụp kết quả ở local chain/testnet và bản ghi MySQL/API để người xem có thể đối chiếu evidence từng bước.
+- Chụp kết quả **Sepolia `11155111`**, receipt/events và bản ghi MySQL/API; ảnh local/Hardhat trước đây phải có nhãn lịch sử, không dùng làm bằng chứng deploy mới.
 - Nếu một bước chưa tích hợp, trình bày minh bạch là **mock/pending** thay vì mô tả như đã chạy thực tế.
 
 ---
@@ -821,6 +876,7 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 - [ ] Mỗi ESP32 có cặp khóa riêng; script tạo key local không overwrite; `config.h` chứa khóa thật bị Git bỏ qua. Không có private key trong React, API request/response, MySQL, Blockchain, screenshot hay log; xử lý cấp khóa bằng USB, không cần PKI/OTA.
 - [ ] HTTPS + certificate verification trên ESP32 và Frontend; không dùng HTTP public, không disable SSL validation.
 - [ ] Admin auth, permissions, validation, rate limit/body limit, CORS allowlist, hạn chế request log dữ liệu nhạy cảm.
+- [ ] Một Admin qua env/JWT, fail closed, chữ ký/expiry/subject/alg được kiểm tra; không Admin API key/header cũ, không user/role/session table; login rate limit và HTTPS. CORS cho phép Bearer nhưng không cấp quyền.
 - [ ] Unique sequence/idempotency, anomaly audit, time skew check, anti-replay, last-seen monitoring.
 - [ ] Parameterized SQL/ORM, migration versioning, least-privilege DB user, connection TLS/backup/restore.
 - [ ] Block explorer/event/receipt verification thay vì tin `transaction_hash` tồn tại.
@@ -835,6 +891,8 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 - [ ] Batch sealing/reverification có transaction và concurrency control; chống nhiều worker cùng anchor một batch.
 - [ ] Log correlation IDs theo `device_id`, `shipment_id`, `batch_id`, `evidence_id`, `tx_hash` (không log secret).
 
+Tóm tắt workflow thay thế, package NTD → NTK, công việc Sepolia và rủi ro/test: [NTD §12](ROADMAP_NTD_BLOCKCHAIN_SMART_CONTRACT.md#12-tóm-tắt-chuyển-đổi-và-rủi-ro-cần-kiểm-thử--dùng-chung-ba-roadmap).
+
 ---
 
 ## 8. Danh sách deliverables và trạng thái thực hiện
@@ -844,6 +902,7 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 | Firmware DHT22 + `config.example.h` + provisioning Python/USB guide | Member 1 | Cặp key riêng/device, chỉ public key qua API, file thật gitignored, signed fixture verified |
 | Simulator nhiều kịch bản có ký số | Member 1 | Chạy T01–T06 và T16 không cần ESP32 |
 | FastAPI register/list/assign/key + shipments/telemetry API | Member 1 | Contract §3.6, auth, bước độc lập, một assignment active và signed ingest có test |
+| Login + JWT dependency + config/runbook chuyển đổi | Member 1 | §3.2.1, T26–T28, không API key Admin/fallback, không users table, monitoring và Admin routes đều được bảo vệ |
 | External MySQL schema + Alembic migrations | Member 1 | Fresh DB migrate/restart/restore thành công |
 | Canonicalization/Merkle Service | Member 1 | Golden fixtures cùng Member 2, tamper detection |
 | Blockchain Adapter 2 contract | Member 1 | On-chain anchor, verify, insurance gọi đúng ABI |
@@ -855,7 +914,7 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 | `docs/deployment/render.md` | Member 1 | Build/start/env/migration/troubleshooting/cold start |
 | E2E test + demo runbook | Members 1–3 | Test matrix có minh chứng và checklist chạy lại |
 
-**Chưa thể đánh dấu hoàn tất từ thay đổi tài liệu:** code baseline và tiến độ lịch sử nêu ở đầu file được giữ lại; script provisioning, DTO ID/tên, GET device list và constraint assignment mới vẫn là nhiệm vụ chưa triển khai. Board cross-test, MySQL production, URL Render/Frontend và testnet phải có bằng chứng riêng; không đưa placeholder thành thành tích đã triển khai.
+**Chưa thể đánh dấu hoàn tất từ thay đổi tài liệu:** tiến độ/checkbox lịch sử được giữ nguyên. Đối chiếu tĩnh hiện thấy DTO ID/tên, GET device list, DeviceOut/key status, `AdminSession` cho create/verify và revision `20261115_03` đã có code; không tự tick nhiệm vụ hoặc suy ra đã kiểm thử/deploy. Provisioning script, JWT và chuyển runtime sang Remix/Sepolia/Alchemy vẫn cần thực hiện; board, MySQL production và URL Render/Frontend cần bằng chứng riêng.
 
 ## 9. Các quyết định còn cần xác nhận / blockers trước khi thực thi
 
@@ -863,9 +922,10 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 2. **Crypto/provisioning:** P-256 + SHA-256, DER/Base64 và `key_id` đã có code; cần script local/USB, kiểm chứng key trên board thật, quy trình revoke/add key khi lộ.
 3. **Canonicalization/Hash:** Members 1–2 xác nhận `SIGNED-TELEMETRY-v1`, `MERKLE-v1`, `bytes32` `batch_key` và danh sách field được hash; không cho thay đổi ngầm.
 4. **Insurance evidence:** cả nhóm chốt `PAYOUT_REQUIRES_ANCHORED_EVIDENCE`, cách xử lý nếu vi phạm 15 phút nhưng một batch chưa anchor/verify được, max allowed gap.
-5. **Chain:** Member 2 cung cấp 2 ABI, address, event, RPC, chain ID, oracle/anchorer role, confirmations và giá trị demo token.
+5. **Chain đã chọn:** Ethereum Sepolia `11155111`, Remix + MetaMask deploy, Alchemy RPC do NTK tạo. Còn thiếu deployment thật, ABI/settings/manifest, addresses/roles, confirmations và funding; không mở lại lựa chọn local Hardhat làm gate.
 6. **Production:** chọn external MySQL provider, vùng triển khai, TLS, backup, budget Render, domain thực tế/CORS; Free chỉ phù hợp demo, không phải monitoring SLA.
 7. **Tích hợp đăng ký:** triển khai DTO/view/migration §3.6 và cập nhật caller cùng lúc; cả ba roadmap đã được sửa đồng bộ trong lượt này, nhưng thay đổi tài liệu không thay thế kiểm thử code, MySQL hoặc xác nhận của từng owner.
+8. **Auth đã chọn:** một Admin/JWT §3.2.1; còn triển khai dependency/settings/login/limiter và client/script migration. `api-v1.md`, `backend/README.md`, `.env.example`, Render Blueprint và `docs/deployment/render.md`/`render-wokwi.md` phải bỏ yêu cầu API key Admin/local chain ở quy trình mới; các link đó hiện còn baseline cũ, không dùng làm chỉ dẫn auth/chain mục tiêu cho tới khi owner cập nhật.
 
 ---
 
@@ -883,4 +943,4 @@ Bàn giao **ngay từ Phase 0/3**, không chờ Blockchain:
 - Render — Health Checks: https://render.com/docs/health-checks
 - Render — Deploy for Free / ephemeral filesystem / cold start: https://render.com/docs/free
 
-*Lượt cập nhật này chỉnh sửa đồng bộ **ba file roadmap**, giữ phân công và tiến độ cũ; bổ sung công việc đơn giản hóa đăng ký/cấp khóa/gán chuyến. Không sửa source code, migration, API contract thực thi hoặc deploy. Merkle Tree, Data Integrity, Blockchain Anchoring và Insurance Oracle tiếp tục dùng thiết kế/code hiện có.*
+*Lượt cập nhật này chỉ sửa **ba roadmap**, giữ phân công, tiến độ, checkbox và bằng chứng Hardhat lịch sử. Thiết kế mới là một Admin/JWT và Remix + Sepolia + Alchemy + Web3.py; các nhiệm vụ chuyển đổi đều chưa được tự đánh dấu hoàn thành. Không sửa `.env`, source, ABI, migration, API/client thực thi hoặc deploy. Giữ `SIGNED-TELEMETRY-v1`, `MERKLE-v1`, quy tắc 15 phút, evidence, anti-replay và chống payout trùng.*
