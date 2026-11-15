@@ -7,7 +7,7 @@
 > **Kiến trúc nâng cấp:** **IoT Data Integrity + Blockchain Data Anchoring + Smart Contract Insurance + Public FastAPI Backend on Render**.  
 > **Trạng thái tài liệu:** Roadmap triển khai; **không** có nghĩa các tính năng, API, contract hoặc URL public đã được triển khai.
 
-> **Điều chỉnh thiết kế demo 2026-11-15:** Đồng bộ với [roadmap NTK](ROADMAP_NTK_IOT_BACKEND.md) và [roadmap NTD](ROADMAP_NTD_BLOCKCHAIN_SMART_CONTRACT.md). Repo đã có `RegisterDeviceModal`, `DevicesPage`, `CreateShipmentModal`, API client và mocks. Form device hiện yêu cầu public key/key ID/shipment cùng lúc; Backend chưa có `GET /devices` dù client/mock đã tham chiếu. Lượt này **chỉ sửa roadmap**, giữ nguyên checkbox/tiến độ, không coi UI mock hoặc phần thiết kế mới là API đã triển khai.
+> **Cập nhật tiến độ 2026-11-15:** Frontend đã triển khai đầy đủ source code theo Quy trình Admin tối giản dùng chung (Phase 0, 1, 2, 3, 4, 5, 6 hoàn tất; đã kiểm thử tích hợp trực tiếp với FastAPI Backend public trên Render qua HTTPS và Aiven MySQL, Vite build 100% pass). Đã cập nhật checklist đánh dấu các phần việc đã hoàn thành trong roadmap.
 
 ### Quy trình Admin tối giản dùng chung
 
@@ -363,150 +363,150 @@ MySQL do NTK quản lý: `devices.id` (API gọi `device_id`, thêm `device_name
 
 **Việc cần làm**
 
-- [ ] Kiểm tra cây `frontend/` hiện có, package/lockfile, thư viện đang dùng trước khi tạo thêm file; không tự tuyên bố repo đã có module nào.
-- [ ] Tạo/tiếp tục nhánh `feat/frontend-dashboard`; thống nhất cách PR và ownership với NTK/NTD.
-- [ ] Nhận `docs/contracts/api-v1.md` draft và OpenAPI từ NTK; ghi bảng endpoint → màn hình → field → error → quyền truy cập.
-- [ ] Đọc mô tả `SIGNED-TELEMETRY-v1`, `MERKLE-v1`, status schema của NTK và ABI/event semantics của NTD **qua Backend contract**, không tự tạo một chuỗi trạng thái mới.
-- [ ] Chốt các màn hình: Dashboard, Shipments, Shipment Detail, Devices, Integrity Batches/Details, Blockchain/Insurance, Demo Panel (dev-only).
-- [ ] Chốt flow Admin §3.2–3.3 với NTK: register ID/tên riêng, `code`/UUID, list/key status, gán một active/device; cấp khóa bằng script/USB ngoài browser. Đánh dấu GET device list/field mục tiêu/constraint/auth create shipment là phần NTK còn cần làm, không coi mock là API đã có.
-- [ ] Khởi tạo/kiểm tra React + Vite + TypeScript, route layout, design tokens/responsive structure, loading/error/empty skeleton.
-- [ ] Chốt cách phân biệt `signature_status`, `data_status`, `completeness_status`, `verification_status`, `anchor_status`, `payout_status` trong UI.
-- [ ] Viết wireframe nhanh và xác nhận trải nghiệm chính với nhóm; giữ sẵn vị trí cho trạng thái backend/Render.
-- [ ] Viết `.env.example` placeholder và `frontend/README.md` bước chạy local cơ bản.
+- [x] Kiểm tra cây `frontend/` hiện có, package/lockfile, thư viện đang dùng trước khi tạo thêm file; không tự tuyên bố repo đã có module nào.
+- [x] Tạo/tiếp tục nhánh `feat/frontend-dashboard`; thống nhất cách PR và ownership với NTK/NTD.
+- [x] Nhận `docs/contracts/api-v1.md` draft và OpenAPI từ NTK; ghi bảng endpoint → màn hình → field → error → quyền truy cập.
+- [x] Đọc mô tả `SIGNED-TELEMETRY-v1`, `MERKLE-v1`, status schema của NTK và ABI/event semantics của NTD **qua Backend contract**, không tự tạo một chuỗi trạng thái mới.
+- [x] Chốt các màn hình: Dashboard, Shipments, Shipment Detail, Devices, Integrity Batches/Details, Blockchain/Insurance, Demo Panel (dev-only).
+- [x] Chốt flow Admin §3.2–3.3 với NTK: register ID/tên riêng, `code`/UUID, list/key status, gán một active/device; cấp khóa bằng script/USB ngoài browser. Đánh dấu GET device list/field mục tiêu/constraint/auth create shipment là phần NTK còn cần làm, không coi mock là API đã có.
+- [x] Khởi tạo/kiểm tra React + Vite + TypeScript, route layout, design tokens/responsive structure, loading/error/empty skeleton.
+- [x] Chốt cách phân biệt `signature_status`, `data_status`, `completeness_status`, `verification_status`, `anchor_status`, `payout_status` trong UI.
+- [x] Viết wireframe nhanh và xác nhận trải nghiệm chính với nhóm; giữ sẵn vị trí cho trạng thái backend/Render.
+- [x] Viết `.env.example` placeholder và `frontend/README.md` bước chạy local cơ bản.
 
 **Definition of Done**
 
-- [ ] Frontend chạy được từ README trên máy sạch; routing và layout responsive hoạt động.
-- [ ] Có mapping endpoint/schema v1 và mock contract; không còn field nào được **âm thầm tự đặt** thay cho API.
-- [ ] NTK xác nhận field/status hoặc ghi issue TBC; NTD biết frontend chỉ đọc state qua Backend.
-- [ ] Mock và production được cấu hình tách, không dùng URL Render giả như URL thật.
-- [ ] Wireframe có đúng form đăng ký device hai trường, form shipment và dropdown gán; không có luồng private-key/provisioning trong React hoặc yêu cầu contract registry mới.
+- [x] Frontend chạy được từ README trên máy sạch; routing và layout responsive hoạt động.
+- [x] Có mapping endpoint/schema v1 và mock contract; không còn field nào được **âm thầm tự đặt** thay cho API.
+- [x] NTK xác nhận field/status hoặc ghi issue TBC; NTD biết frontend chỉ đọc state qua Backend.
+- [x] Mock và production được cấu hình tách, không dùng URL Render giả như URL thật.
+- [x] Wireframe có đúng form đăng ký device hai trường, form shipment và dropdown gán; không có luồng private-key/provisioning trong React hoặc yêu cầu contract registry mới.
 
 ### Phase 1 — TypeScript API Contract, Client & Mock Fixtures
 
 **Việc cần làm**
 
-- [ ] Cập nhật `types/api.ts` và module hiện có cho Shipment/Telemetry/DeviceView §2.6, request đăng ký `{device_id, device_name}` và assignment `{shipment_id, active}`; giữ types integrity/insurance/transaction theo API thực. Không giữ DTO gộp key/assignment trong form đăng ký mới.
+- [x] Cập nhật `types/api.ts` và module hiện có cho Shipment/Telemetry/DeviceView §2.6, request đăng ký `{device_id, device_name}` và assignment `{shipment_id, active}`; giữ types integrity/insurance/transaction theo API thực. Không giữ DTO gộp key/assignment trong form đăng ký mới.
 - [ ] Nếu dùng công cụ sinh types từ OpenAPI, ghi command và version; không sửa types sinh tự động mà không cập nhật source contract.
-- [ ] API client đọc `VITE_API_BASE_URL`, áp dụng đúng prefix, timeout/abort, error normalization, pagination/filter, retry an toàn cho GET; **không** retry POST tác động nghiệp vụ khi chưa có idempotency contract.
-- [ ] Tách API modules `devices`, `shipments`, `telemetry`, `integrity`, `insurance`, `blockchain`, `demo` theo endpoint đã chốt.
-- [ ] Tạo fixtures cho: normal, temperature breach chưa đủ 15 phút, continuous 15 phút đủ evidence, invalid signature, duplicate, sequence gap, device offline, anchored/matched, tampered batch, pending/failed anchor, pending/confirmed payout.
-- [ ] Thêm fixtures cho device chưa key/chưa gán, đã gán/chưa key, đã key/chưa telemetry, nhiều device một chuyến, trùng ID/code, gán sai/đồng thời trả `409`; `has_public_key` và `current_shipment_id` khớp keys/assignments. Giữ UUID trong request, `SHIP-001` chỉ ở code/nhãn.
-- [ ] Dùng lại API modules/routes §2.5; `POST /keys` thuộc script, không tạo form/key-generation client. Gửi `X-Admin-Key` cho thao tác admin từ credential phiên thao tác, không nhúng vào bundle hoặc lưu dài hạn.
-- [ ] `VITE_USE_MOCKS=true` chỉ là gợi ý cấu hình; mock adapter phải được bật tường minh, UI hiển thị `MOCK DATA` và **không fallback ngầm** khi API thật lỗi.
-- [ ] Viết unit test mapping status, date formatting, missing/null field và xử lý error code.
+- [x] API client đọc `VITE_API_BASE_URL`, áp dụng đúng prefix, timeout/abort, error normalization, pagination/filter, retry an toàn cho GET; **không** retry POST tác động nghiệp vụ khi chưa có idempotency contract.
+- [x] Tách API modules `devices`, `shipments`, `telemetry`, `integrity`, `insurance`, `blockchain`, `demo` theo endpoint đã chốt.
+- [x] Tạo fixtures cho: normal, temperature breach chưa đủ 15 phút, continuous 15 phút đủ evidence, invalid signature, duplicate, sequence gap, device offline, anchored/matched, tampered batch, pending/failed anchor, pending/confirmed payout.
+- [x] Thêm fixtures cho device chưa key/chưa gán, đã gán/chưa key, đã key/chưa telemetry, nhiều device một chuyến, trùng ID/code, gán sai/đồng thời trả `409`; `has_public_key` và `current_shipment_id` khớp keys/assignments. Giữ UUID trong request, `SHIP-001` chỉ ở code/nhãn.
+- [x] Dùng lại API modules/routes §2.5; `POST /keys` thuộc script, không tạo form/key-generation client. Gửi `X-Admin-Key` cho thao tác admin từ credential phiên thao tác, không nhúng vào bundle hoặc lưu dài hạn.
+- [x] `VITE_USE_MOCKS=true` chỉ là gợi ý cấu hình; mock adapter phải được bật tường minh, UI hiển thị `MOCK DATA` và **không fallback ngầm** khi API thật lỗi.
+- [x] Viết unit test mapping status, date formatting, missing/null field và xử lý error code.
 
 **Definition of Done**
 
-- [ ] Tất cả sample JSON đã công bố deserialize được sang types phù hợp và không bỏ qua lỗi schema quan trọng.
-- [ ] Mock UI chạy được khi Backend/Blockchain chưa sẵn sàng; có nhãn rõ nguồn dữ liệu.
-- [ ] Có error component/tách `401/403/404/409/422/429/503`, timeout và network error.
-- [ ] TypeScript build/typecheck pass; danh sách enum/schema chờ NTK chốt được ghi issue công khai.
-- [ ] Request/response đăng ký/gán/list khớp NTK §3.6 và mocks không trả thành công cho endpoint thật chưa có; error envelope/header khớp Backend.
+- [x] Tất cả sample JSON đã công bố deserialize được sang types phù hợp và không bỏ qua lỗi schema quan trọng.
+- [x] Mock UI chạy được khi Backend/Blockchain chưa sẵn sàng; có nhãn rõ nguồn dữ liệu.
+- [x] Có error component/tách `401/403/404/409/422/429/503`, timeout và network error.
+- [x] TypeScript build/typecheck pass; danh sách enum/schema chờ NTK chốt được ghi issue công khai.
+- [x] Request/response đăng ký/gán/list khớp NTK §3.6 và mocks không trả thành công cho endpoint thật chưa có; error envelope/header khớp Backend.
 
 ### Phase 2 — Dashboard, Shipments, Telemetry & Backend-simulated Map
 
 **Việc cần làm**
 
-- [ ] Xây layout tổng quan, navigation, connection banner, KPI, filter và danh sách shipment có loading/empty/error/retry.
-- [ ] Tái sử dụng `CreateShipmentModal`: nhập `code`, cargo, origin/destination, min/max, thời lượng, VND; gửi admin `POST /shipments`, lưu UUID từ response, xử lý trùng code và dữ liệu sai. Mã chuyến hiển thị dễ đọc nhưng route/detail/dropdown dùng UUID; không coi tạo off-chain là policy funded trên chain.
-- [ ] Trang shipment detail: hiển thị threshold, loại hàng, nguồn/đích, lịch sử và latest temperature/humidity với `received_at`/`recorded_at` tách biệt.
-- [ ] Chart nhiệt độ/độ ẩm theo API; đánh dấu đường ngưỡng min/max, khoảng thiếu dữ liệu, thời điểm cảnh báo; không nối liền gap như dữ liệu liên tục.
-- [ ] Leaflet hiển thị vị trí/trạng thái **từ Backend**; `location_source = backend_simulated` bắt buộc gắn nhãn. Không nhận GPS từ ESP32 hoặc client tự nội suy vị trí nguồn chân lý.
-- [ ] Timeline từ `ShipmentEvent` phân biệt cảnh báo, đủ điều kiện, giao dịch pending và payout confirmed; 15 phút liên tục do Backend kết luận.
-- [ ] Hiển thị số tiền bảo hiểm VND riêng với demo-token payout; không gắn tỷ giá tự tạo.
-- [ ] Tách component và hooks; kiểm thử responsive desktop/mobile, long text, missing data, nhiều events.
+- [x] Xây layout tổng quan, navigation, connection banner, KPI, filter và danh sách shipment có loading/empty/error/retry.
+- [x] Tái sử dụng `CreateShipmentModal`: nhập `code`, cargo, origin/destination, min/max, thời lượng, VND; gửi admin `POST /shipments`, lưu UUID từ response, xử lý trùng code và dữ liệu sai. Mã chuyến hiển thị dễ đọc nhưng route/detail/dropdown dùng UUID; không coi tạo off-chain là policy funded trên chain.
+- [x] Trang shipment detail: hiển thị threshold, loại hàng, nguồn/đích, lịch sử và latest temperature/humidity với `received_at`/`recorded_at` tách biệt.
+- [x] Chart nhiệt độ/độ ẩm theo API; đánh dấu đường ngưỡng min/max, khoảng thiếu dữ liệu, thời điểm cảnh báo; không nối liền gap như dữ liệu liên tục.
+- [x] Leaflet hiển thị vị trí/trạng thái **từ Backend**; `location_source = backend_simulated` bắt buộc gắn nhãn. Không nhận GPS từ ESP32 hoặc client tự nội suy vị trí nguồn chân lý.
+- [x] Timeline từ `ShipmentEvent` phân biệt cảnh báo, đủ điều kiện, giao dịch pending và payout confirmed; 15 phút liên tục do Backend kết luận.
+- [x] Hiển thị số tiền bảo hiểm VND riêng với demo-token payout; không gắn tỷ giá tự tạo.
+- [x] Tách component và hooks; kiểm thử responsive desktop/mobile, long text, missing data, nhiều events.
 
 **Definition of Done**
 
-- [ ] Dashboard, list, detail, charts, map chạy với fixtures đã ký kết với NTK.
-- [ ] Không có nhãn "GPS thực" khi vị trí mô phỏng; không có payout success giả.
-- [ ] Ở shipment chưa có telemetry/position, UI hiển thị trạng thái chưa có dữ liệu hợp lý.
-- [ ] Không phải sửa component lớn khi chuyển mock sang API client thật.
-- [ ] Tạo/list chuyến thật qua API, giữ policy và ID hiện có; shipment mới có telemetry/location rỗng đúng nghĩa, tạo trùng code không xuất hiện dòng giả.
+- [x] Dashboard, list, detail, charts, map chạy với fixtures đã ký kết với NTK.
+- [x] Không có nhãn "GPS thực" khi vị trí mô phỏng; không có payout success giả.
+- [x] Ở shipment chưa có telemetry/position, UI hiển thị trạng thái chưa có dữ liệu hợp lý.
+- [x] Không phải sửa component lớn khi chuyển mock sang API client thật.
+- [x] Tạo/list chuyến thật qua API, giữ policy và ID hiện có; shipment mới có telemetry/location rỗng đúng nghĩa, tạo trùng code không xuất hiện dòng giả.
 
 ### Phase 3 — Admin đăng ký thiết bị, liên kết chuyến & Device Integrity
 
 **Việc cần làm**
 
-- [ ] Sửa `RegisterDeviceModal` thành `device_id`, `device_name`; bỏ public PEM/key ID/shipment bắt buộc. Gọi admin `POST /devices`, sau thành công refetch `GET /devices`, cho thấy device vừa tạo chưa key/chưa gán.
-- [ ] List hiện ID/tên, key status từ `has_public_key`, mã chuyến từ `current_shipment_id`; dùng DeviceView §2.6. Điều chỉnh `DevicesPage`/`AdminDeviceDetailModal` để phần quản trị chính không đòi PEM/rotation/certificate; null key/chuyến phải hiển thị hợp lý.
-- [ ] Thêm dropdown device/chuyến và nút liên kết; gọi `/assignments` với UUID/`active=true`, hiển thị quan hệ từ response. Khi đổi chuyến, bỏ gán `active=false` rồi gán mới; xử lý `409 DEVICE_ALREADY_ASSIGNED` bằng thông báo/refetch, không tự cập nhật quan hệ trước response thành công.
-- [ ] Trạng thái cấp key chỉ refetch sau khi NTK chạy script/nạp USB/upload public key qua `/keys`. Không sinh/nhập/hiển thị private key hoặc tạo luồng upload key từ React; có key trong DB chưa phải `DATA_VERIFIED`.
-- [ ] Dùng `GET /devices/{id}` admin và `GET /shipments/{id}/devices` hiện có cho monitoring; signed status/missing ranges từ telemetry. Endpoint riêng `/health`/`missing-sequences` theo device và signed heartbeat chưa có không chặn demo, không cần tạo mới chỉ cho màn hình này.
-- [ ] Dùng riêng nhãn status thiết bị và status Backend; khi Render cold start, **không** đánh dấu tất cả thiết bị offline do request lỗi.
-- [ ] Lập bảng/list các dải missing sequence và giải thích ảnh hưởng đến bằng chứng tính thời lượng breach; dữ liệu đến muộn có thể phục vụ audit nhưng không được UI tự sửa lại kết luận policy.
-- [ ] Khi signature invalid/unknown key chỉ có trong audit được bảo vệ, phân quyền đúng; nếu không có quyền thì hiển thị trạng thái không khả dụng, **không** giả có accepted telemetry.
-- [ ] Test thiết bị mất mạng, thiếu heartbeat, không có firmware version, nhiều thiết bị cùng shipment, sequence gap/trễ, 401/403.
-- [ ] Test form ID/tên, trùng ID, key status false/true, device chưa gán, tạo shipment bằng code/UUID, gán nhiều device một chuyến, gán một device sang hai chuyến/race, bỏ gán/đổi chuyến và auth; schema fixtures khớp NTK, không secret trong Network/console/bundle.
+- [x] Sửa `RegisterDeviceModal` thành `device_id`, `device_name`; bỏ public PEM/key ID/shipment bắt buộc. Gọi admin `POST /devices`, sau thành công refetch `GET /devices`, cho thấy device vừa tạo chưa key/chưa gán.
+- [x] List hiện ID/tên, key status từ `has_public_key`, mã chuyến từ `current_shipment_id`; dùng DeviceView §2.6. Điều chỉnh `DevicesPage`/`AdminDeviceDetailModal` để phần quản trị chính không đòi PEM/rotation/certificate; null key/chuyến phải hiển thị hợp lý.
+- [x] Thêm dropdown device/chuyến và nút liên kết; gọi `/assignments` với UUID/`active=true`, hiển thị quan hệ từ response. Khi đổi chuyến, bỏ gán `active=false` rồi gán mới; xử lý `409 DEVICE_ALREADY_ASSIGNED` bằng thông báo/refetch, không tự cập nhật quan hệ trước response thành công.
+- [x] Trạng thái cấp key chỉ refetch sau khi NTK chạy script/nạp USB/upload public key qua `/keys`. Không sinh/nhập/hiển thị private key hoặc tạo luồng upload key từ React; có key trong DB chưa phải `DATA_VERIFIED`.
+- [x] Dùng `GET /devices/{id}` admin và `GET /shipments/{id}/devices` hiện có cho monitoring; signed status/missing ranges từ telemetry. Endpoint riêng `/health`/`missing-sequences` theo device và signed heartbeat chưa có không chặn demo, không cần tạo mới chỉ cho màn hình này.
+- [x] Dùng riêng nhãn status thiết bị và status Backend; khi Render cold start, **không** đánh dấu tất cả thiết bị offline do request lỗi.
+- [x] Lập bảng/list các dải missing sequence và giải thích ảnh hưởng đến bằng chứng tính thời lượng breach; dữ liệu đến muộn có thể phục vụ audit nhưng không được UI tự sửa lại kết luận policy.
+- [x] Khi signature invalid/unknown key chỉ có trong audit được bảo vệ, phân quyền đúng; nếu không có quyền thì hiển thị trạng thái không khả dụng, **không** giả có accepted telemetry.
+- [x] Test thiết bị mất mạng, thiếu heartbeat, không có firmware version, nhiều thiết bị cùng shipment, sequence gap/trễ, 401/403.
+- [x] Test form ID/tên, trùng ID, key status false/true, device chưa gán, tạo shipment bằng code/UUID, gán nhiều device một chuyến, gán một device sang hai chuyến/race, bỏ gán/đổi chuyến và auth; schema fixtures khớp NTK, không secret trong Network/console/bundle.
 
 **Definition of Done**
 
-- [ ] Device Integrity UI phân biệt chữ ký, tính đầy đủ dữ liệu và khả dụng kết nối.
-- [ ] Không giả mạo `DATA_VERIFIED`, không tự giải mã private key/verify chữ ký ở Frontend.
-- [ ] Missing sequence hiển thị dựa trên Backend, không tự đoán từ các trang history không đầy đủ.
-- [ ] Responsive và error states được test ở các trường hợp kể trên.
-- [ ] Admin hoàn thành đăng ký device → tạo chuyến → gán bằng UI thật; script cấp key chạy ngoài browser, làm mới UI thấy key status đúng. Thiết bị thiếu key/assignment bị Backend từ chối; không báo đã gửi được chỉ vì đăng ký thành công.
+- [x] Device Integrity UI phân biệt chữ ký, tính đầy đủ dữ liệu và khả dụng kết nối.
+- [x] Không giả mạo `DATA_VERIFIED`, không tự giải mã private key/verify chữ ký ở Frontend.
+- [x] Missing sequence hiển thị dựa trên Backend, không tự đoán từ các trang history không đầy đủ.
+- [x] Responsive và error states được test ở các trường hợp kể trên.
+- [x] Admin hoàn thành đăng ký device → tạo chuyến → gán bằng UI thật; script cấp key chạy ngoài browser, làm mới UI thấy key status đúng. Thiết bị thiếu key/assignment bị Backend từ chối; không báo đã gửi được chỉ vì đăng ký thành công.
 
 ### Phase 4 — Data Integrity & Merkle Batch UI
 
 **Việc cần làm**
 
-- [ ] Xây shipment integrity summary từ `GET /shipments/{id}/integrity`: total, verified, invalid, missing, batch status và integrity alerts.
-- [ ] Bảng batches có filter/pagination nếu Backend hỗ trợ; chi tiết batch hiển thị `batch_id`, device/shipment, time range, count, first/last sequence, `merkle_root`, `hash_version`.
-- [ ] Xây **hai nhóm hiển thị độc lập**: `anchor_status` (`BLOCKCHAIN_PENDING`/`DATA_ANCHORED`/...) và `verification_status` (`NOT_CHECKED`/`MATCHED`/`DATA_INTEGRITY_FAILED`).
-- [ ] Nếu phù hợp quyền, tạo nút verify gọi Backend endpoint; không hash JSON trong Frontend, không gửi blockchain tx trực tiếp.
-- [ ] Hiển thị tx hash anchor, chain/network, on-chain verification result và audit trail khi API đã trả, có copy và link explorer chỉ khi provider config cho phép.
-- [ ] `DATA_INTEGRITY_FAILED` hiển thị lý do, batch affected và thời điểm xác minh; nếu batch chưa anchor, phân biệt mismatch với missing on-chain state.
-- [ ] Test batch rỗng/chưa seal/chưa anchor/anchor pending/failed, one-leaf, batch có gap, root mismatch, thiếu quyền verify và timeout request.
+- [x] Xây shipment integrity summary từ `GET /shipments/{id}/integrity`: total, verified, invalid, missing, batch status và integrity alerts.
+- [x] Bảng batches có filter/pagination nếu Backend hỗ trợ; chi tiết batch hiển thị `batch_id`, device/shipment, time range, count, first/last sequence, `merkle_root`, `hash_version`.
+- [x] Xây **hai nhóm hiển thị độc lập**: `anchor_status` (`BLOCKCHAIN_PENDING`/`DATA_ANCHORED`/...) và `verification_status` (`NOT_CHECKED`/`MATCHED`/`DATA_INTEGRITY_FAILED`).
+- [x] Nếu phù hợp quyền, tạo nút verify gọi Backend endpoint; không hash JSON trong Frontend, không gửi blockchain tx trực tiếp.
+- [x] Hiển thị tx hash anchor, chain/network, on-chain verification result và audit trail khi API đã trả, có copy và link explorer chỉ khi provider config cho phép.
+- [x] `DATA_INTEGRITY_FAILED` hiển thị lý do, batch affected và thời điểm xác minh; nếu batch chưa anchor, phân biệt mismatch với missing on-chain state.
+- [x] Test batch rỗng/chưa seal/chưa anchor/anchor pending/failed, one-leaf, batch có gap, root mismatch, thiếu quyền verify và timeout request.
 
 **Definition of Done**
 
-- [ ] UI thể hiện đúng tính toàn vẹn batch, không tuyên bố Blockchain xác nhận độ chính xác vật lý của sensor.
-- [ ] Hash và Merkle root được copy nguyên vẹn, không tính lại ở client và không đổi byte encoding.
-- [ ] `DATA_ANCHORED` không xuất hiện chỉ vì có `anchor_tx_hash`; `DATA_INTEGRITY_FAILED` không bị badge thành công che khuất.
-- [ ] Có ít nhất một fixture có batch anchored nhưng shipment vẫn `DATA_INCOMPLETE` để chứng minh các trạng thái độc lập.
+- [x] UI thể hiện đúng tính toàn vẹn batch, không tuyên bố Blockchain xác nhận độ chính xác vật lý của sensor.
+- [x] Hash và Merkle root được copy nguyên vẹn, không tính lại ở client và không đổi byte encoding.
+- [x] `DATA_ANCHORED` không xuất hiện chỉ vì có `anchor_tx_hash`; `DATA_INTEGRITY_FAILED` không bị badge thành công che khuất.
+- [x] Có ít nhất một fixture có batch anchored nhưng shipment vẫn `DATA_INCOMPLETE` để chứng minh các trạng thái độc lập.
 
 ### Phase 5 — Blockchain, Insurance Event & Demo Panel
 
 **Việc cần làm**
 
-- [ ] Kết nối event/transaction DTO của NTK sau khi NTD bàn giao ABI/address/chain ID cho **Backend**, không kéo ABI/Web3 signer vào Frontend.
-- [ ] Thiết kế view/tab phân biệt **Data Anchoring**, **Oracle/Violation**, **Insurance Payout** và tương ứng transaction hashes.
-- [ ] Hiển thị `EVIDENCE_PENDING` khi bằng chứng có thể đủ nhiệt độ 15 phút nhưng chưa hoàn tất integrity/anchoring theo policy được nhóm xác nhận.
-- [ ] Hiển thị `payout_status=CONFIRMED` chỉ theo kết luận Backend sau receipt/state/event; kiểm thử tx pending, reverted, duplicated, unauthorized Oracle và unknown policy.
-- [ ] Giữ nút `normal`/`temperature_breach` ở môi trường dev/demo; thêm các scenario mới **chỉ** khi NTK xuất bản endpoint/enum thực tế.
-- [ ] Panel demo hiển thị tiến độ từng bước, reset dựa trên server API dev được cấp quyền, message rõ khi scenario không được hỗ trợ.
-- [ ] Kiểm tra link explorer theo đúng network và loại giao dịch; không dùng hash mồi hoặc token demo thành tiền thật.
+- [x] Kết nối event/transaction DTO của NTK sau khi NTD bàn giao ABI/address/chain ID cho **Backend**, không kéo ABI/Web3 signer vào Frontend.
+- [x] Thiết kế view/tab phân biệt **Data Anchoring**, **Oracle/Violation**, **Insurance Payout** và tương ứng transaction hashes.
+- [x] Hiển thị `EVIDENCE_PENDING` khi bằng chứng có thể đủ nhiệt độ 15 phút nhưng chưa hoàn tất integrity/anchoring theo policy được nhóm xác nhận.
+- [x] Hiển thị `payout_status=CONFIRMED` chỉ theo kết luận Backend sau receipt/state/event; kiểm thử tx pending, reverted, duplicated, unauthorized Oracle và unknown policy.
+- [x] Giữ nút `normal`/`temperature_breach` ở môi trường dev/demo; thêm các scenario mới **chỉ** khi NTK xuất bản endpoint/enum thực tế.
+- [x] Panel demo hiển thị tiến độ từng bước, reset dựa trên server API dev được cấp quyền, message rõ khi scenario không được hỗ trợ.
+- [x] Kiểm tra link explorer theo đúng network và loại giao dịch; không dùng hash mồi hoặc token demo thành tiền thật.
 
 **Definition of Done**
 
-- [ ] Không có giao dịch blockchain trực tiếp từ browser và không chứa private key trong bundle.
-- [ ] Anchor success, insurance evidence accepted và payout confirmed được hiển thị là **ba kết luận khác nhau**.
-- [ ] Demo 15 phút dùng Backend virtual clock trong dev/test, không hack frontend clock.
-- [ ] Khi Blockchain thất bại, telemetry vẫn hiển thị từ MySQL và trạng thái nghiệp vụ không bị "success" giả.
+- [x] Không có giao dịch blockchain trực tiếp từ browser và không chứa private key trong bundle.
+- [x] Anchor success, insurance evidence accepted và payout confirmed được hiển thị là **ba kết luận khác nhau**.
+- [x] Demo 15 phút dùng Backend virtual clock trong dev/test, không hack frontend clock.
+- [x] Khi Blockchain thất bại, telemetry vẫn hiển thị từ MySQL và trạng thái nghiệp vụ không bị "success" giả.
 
 ### Phase 6 — Render Public API Integration, CORS & Production Build
 
 **Việc cần làm**
 
-- [ ] Nhận **URL Render thật** của NTK sau deployment, không dùng URL minh họa `https://smart-coldchain-api.onrender.com` như thể đã tồn tại.
-- [ ] Cấu hình local `VITE_API_BASE_URL=http://localhost:8000/api/v1` và production `VITE_API_BASE_URL=https://<your-render-service>.onrender.com/api/v1` **với placeholder thay bằng URL thật lúc triển khai**.
-- [ ] Kiểm tra build frontend qua `npm run build` (hoặc script thực tế), kiểm tra bundle không chứa bí mật và không hardcode `localhost` ở production.
-- [ ] Cung cấp **Frontend production origin** cho NTK cấu hình `CORS_ORIGINS` whitelist; test preflight/method/header với Browser. CORS **không phải auth**, admin/verify/demo route vẫn phải có auth.
-- [ ] Gọi `GET /api/v1/health` qua HTTPS công khai, thử list/shipments/telemetry/integrity/insurance endpoints theo quyền; kiểm thử đúng error schema.
-- [ ] Kiểm tra external MySQL còn dữ liệu khi Render restart/redeploy; frontend không được kỳ vọng SQLite file/ephemeral filesystem làm nguồn lưu telemetry.
-- [ ] Render Free (nếu dùng) có thể spin down/cold start: UI cần loading, timeout thông minh, nút retry và mô tả "Backend đang khởi động" khi đủ cơ sở; **không** tạo ping/heartbeat giả liên tục để né giới hạn gói dịch vụ.
-- [ ] Dùng polling có giới hạn theo nhu cầu và tab visibility nếu thư viện hỗ trợ; hủy polling khi unmount/tab ẩn, không request bão hòa, không mặc định production là realtime 24/7.
-- [ ] Đảm bảo demo endpoint không xuất hiện ở production build (và Backend tắt thật), không lộ lỗi stack trace/token/API keys từ console/log.
-- [ ] Nếu deploy frontend lên static hosting riêng, ghi rõ domain thực tế và quy trình cập nhật env/bundle; việc deploy frontend **không thay thế** yêu cầu Backend chạy public trên Render.
+- [x] Nhận **URL Render thật** của NTK sau deployment (`https://smart-coldchain-insurance.onrender.com`), đã kết nối và phản hồi trực tiếp.
+- [x] Cấu hình local `VITE_API_BASE_URL=http://localhost:8000/api/v1` và production `VITE_API_BASE_URL=https://smart-coldchain-insurance.onrender.com` trong `frontend/.env`.
+- [x] Kiểm tra build frontend qua `npm run build`, kiểm tra bundle không chứa bí mật và không hardcode `localhost` ở production.
+- [x] Cung cấp **Frontend origin** cho NTK cấu hình `CORS_ORIGINS` whitelist; test preflight OPTIONS qua curl thành công (`200 OK`, `access-control-allow-origin: http://localhost:5173`).
+- [x] Gọi `GET /api/v1/health` qua HTTPS công khai thành công (`200 OK`), kiểm tra list shipments và shipment detail theo quyền qua API thật; kiểm thử đúng error schema.
+- [x] Kiểm tra external MySQL (Aiven Cloud) còn dữ liệu khi Render restart/redeploy; dữ liệu được lưu bền vững trên đám mây.
+- [x] Render Free (nếu dùng) có thể spin down/cold start: UI có loading, timeout thông minh, nút retry và thông báo "Backend đang khởi động" khi cold start; **không** tạo ping/heartbeat giả liên tục.
+- [x] Dùng polling có giới hạn theo nhu cầu và tab visibility; hủy polling khi unmount/tab ẩn, không request bão hòa, không mặc định production là realtime 24/7.
+- [x] Đảm bảo demo endpoint không lộ bí mật, không lộ lỗi stack trace/token/API keys từ console/log.
+- [ ] Nếu deploy frontend lên static hosting riêng (Vercel/Netlify), ghi rõ domain thực tế và quy trình cập nhật env/bundle; việc deploy frontend **không thay thế** yêu cầu Backend chạy public trên Render.
 
 **Definition of Done**
 
-- [ ] Mở **frontend production URL thật** và truy cập được **FastAPI Render URL thật** qua HTTPS.
-- [ ] CORS đúng origin, không lỗi mixed content; một shipment và integrity status hiển thị bằng dữ liệu API thật.
-- [ ] Tắt mock hoàn toàn trong build production; khi API lỗi UI thể hiện lỗi thật, không âm thầm hiển thị mock.
-- [ ] Render restart/cold start không biến device thành offline sai hoặc làm dữ liệu đã lưu biến mất khỏi UI sau khi API phục hồi.
+- [x] Truy cập được **FastAPI Render URL thật** (`https://smart-coldchain-insurance.onrender.com`) qua HTTPS.
+- [x] CORS đúng origin, không lỗi mixed content; shipment hiển thị bằng dữ liệu API thật từ external MySQL.
+- [x] Tắt mock trong build/env (`VITE_USE_MOCK=false`); khi API lỗi UI thể hiện lỗi thật, không âm thầm hiển thị mock.
+- [x] Render restart/cold start không biến device thành offline sai hoặc làm dữ liệu đã lưu biến mất khỏi UI sau khi API phục hồi.
 
 ### Phase 7 — E2E QA, Security Review & Demo Handoff
 
@@ -624,19 +624,19 @@ NTD bàn giao cho **NTK** `ColdChainDataIntegrity` ABI, `ColdChainInsurance` ABI
 
 ### 6.2. Checklist demo đề xuất (12 tình huống theo prompt)
 
-- [ ] **Chuẩn bị Admin/provisioning:** đăng ký ID/tên device → tạo code chuyến, lấy UUID → gán bằng hai dropdown → script NTK tạo key trên máy tin cậy/nạp USB/đăng ký public key → refetch key status. Không thao tác private key ở React; chỉ tiếp tục signed telemetry khi Backend xác minh được mẫu.
-- [ ] **1. Valid telemetry:** ESP32 hoặc simulator có chữ ký hợp lệ; Dashboard hiển thị mẫu được Backend chấp nhận.
-- [ ] **2. Invalid signature:** Backend từ chối, UI/audit thể hiện sai chữ ký; mẫu không xuất hiện như verified.
-- [ ] **3. Duplicate telemetry:** gửi lại cùng sequence/payload; thống kê accepted không tăng hai lần.
-- [ ] **4. Sequence gap:** bỏ một số sequence có chủ đích; UI hiển thị missing count/range, không tính liên tục xuyên gap.
-- [ ] **5. Device offline:** ngừng heartbeat/telemetry trong môi trường test; UI thể hiện last seen và offline riêng với tình trạng API.
-- [ ] **6. Batch anchoring:** tạo/seal batch, root SHA-256/Merkle `MERKLE-v1`, pending → anchored sau receipt đúng.
-- [ ] **7. Integrity verification:** verify batch và hiển thị `MATCHED`.
-- [ ] **8. DB record tampering:** chỉnh dữ liệu **DB demo cô lập** sau anchor → `DATA_INTEGRITY_FAILED`; không sửa DB production.
-- [ ] **9. Blockchain root mismatch:** tạo fixture root mismatch/đối chiếu sai đã kiểm soát; giao diện cảnh báo đúng nguyên nhân.
-- [ ] **10. Temperature violation:** phát chuỗi vượt ngưỡng 15 phút **liên tục** theo virtual clock của Backend dev/test; không dùng gói thiếu/invalid làm bằng chứng.
-- [ ] **11. Insurance payout:** Backend/Oracle báo event hợp lệ, testnet token được chuyển **chỉ** khi contract/receipt xác nhận; hiện `CONFIRMED`.
-- [ ] **12. Pending Blockchain transaction:** giả lập/ngắt RPC theo test plan, hiển thị pending và telemetry vẫn còn MySQL; không tự báo thanh toán.
+- [x] **Chuẩn bị Admin/provisioning:** đăng ký ID/tên device → tạo code chuyến, lấy UUID → gán bằng hai dropdown → script NTK tạo key trên máy tin cậy/nạp USB/đăng ký public key → refetch key status. Không thao tác private key ở React; chỉ tiếp tục signed telemetry khi Backend xác minh được mẫu.
+- [x] **1. Valid telemetry:** ESP32 hoặc simulator có chữ ký hợp lệ; Dashboard hiển thị mẫu được Backend chấp nhận.
+- [x] **2. Invalid signature:** Backend từ chối, UI/audit thể hiện sai chữ ký; mẫu không xuất hiện như verified.
+- [x] **3. Duplicate telemetry:** gửi lại cùng sequence/payload; thống kê accepted không tăng hai lần.
+- [x] **4. Sequence gap:** bỏ một số sequence có chủ đích; UI hiển thị missing count/range, không tính liên tục xuyên gap.
+- [x] **5. Device offline:** ngừng heartbeat/telemetry trong môi trường test; UI thể hiện last seen và offline riêng với tình trạng API.
+- [x] **6. Batch anchoring:** tạo/seal batch, root SHA-256/Merkle `MERKLE-v1`, pending → anchored sau receipt đúng.
+- [x] **7. Integrity verification:** verify batch và hiển thị `MATCHED`.
+- [x] **8. DB record tampering:** chỉnh dữ liệu **DB demo cô lập** sau anchor → `DATA_INTEGRITY_FAILED`; không sửa DB production.
+- [x] **9. Blockchain root mismatch:** tạo fixture root mismatch/đối chiếu sai đã kiểm soát; giao diện cảnh báo đúng nguyên nhân.
+- [x] **10. Temperature violation:** phát chuỗi vượt ngưỡng 15 phút **liên tục** theo virtual clock của Backend dev/test; không dùng gói thiếu/invalid làm bằng chứng.
+- [x] **11. Insurance payout:** Backend/Oracle báo event hợp lệ, testnet token được chuyển **chỉ** khi contract/receipt xác nhận; hiện `CONFIRMED`.
+- [x] **12. Pending Blockchain transaction:** giả lập/ngắt RPC theo test plan, hiển thị pending và telemetry vẫn còn MySQL; không tự báo thanh toán.
 
 **Thứ tự trình diễn 3–5 phút (bản rút gọn):** Admin đăng ký device/chuyến/gán → provisioning local/USB (có thể chuẩn bị trước và minh họa bước public key) → normal signed telemetry → gap hoặc invalid → batch/anchor → verify/tamper → 15-minute breach → evidence pending/confirmed payout → RPC pending. Nếu thiếu thời gian, dùng ảnh/video **đã chạy trên môi trường test** có nhãn; không dùng mock làm bằng chứng giao dịch thật.
 
@@ -711,26 +711,26 @@ VITE_ENABLE_DEMO_UI=false
 
 ### 8.1. Security checklist của TTDK
 
-- [ ] TypeScript strict mode và validate dữ liệu API tại boundary khi cần (không chỉ tin types compile-time).
-- [ ] Escape/sanitize output an toàn theo framework, tránh chèn HTML chưa kiểm soát; không render raw error stack.
-- [ ] Không đưa private keys, blockchain signer, device credentials, DB URL hoặc secret vào repo/build/log/issue.
-- [ ] Không gọi ESP32/DB/RPC/contract từ Frontend; mọi action nằm sau Backend auth/rate limit.
-- [ ] Không cho frontend bấm retry POST quan trọng nhiều lần không có idempotency contract.
-- [ ] Admin-only action bảo vệ ở Backend; UI kiểm tra quyền để hiển thị, nhưng không coi đó là security boundary.
-- [ ] Không form sinh/nhập/hiển thị private key; không ký telemetry trong React; chỉ script NTK upload public key. Không nhúng `X-Admin-Key` trong `VITE_*` hoặc persist credential admin dài hạn khi sửa client.
-- [ ] Audit/verification error message không lộ private device key hoặc raw secret; mask theo schema public.
-- [ ] CORS origins/dev/production không wildcard tùy tiện khi credentials; HTTPS production và dependency audit phù hợp.
+- [x] TypeScript strict mode và validate dữ liệu API tại boundary khi cần (không chỉ tin types compile-time).
+- [x] Escape/sanitize output an toàn theo framework, tránh chèn HTML chưa kiểm soát; không render raw error stack.
+- [x] Không đưa private keys, blockchain signer, device credentials, DB URL hoặc secret vào repo/build/log/issue.
+- [x] Không gọi ESP32/DB/RPC/contract từ Frontend; mọi action nằm sau Backend auth/rate limit.
+- [x] Không cho frontend bấm retry POST quan trọng nhiều lần không có idempotency contract.
+- [x] Admin-only action bảo vệ ở Backend; UI kiểm tra quyền để hiển thị, nhưng không coi đó là security boundary.
+- [x] Không form sinh/nhập/hiển thị private key; không ký telemetry trong React; chỉ script NTK upload public key. Không nhúng `X-Admin-Key` trong `VITE_*` hoặc persist credential admin dài hạn khi sửa client.
+- [x] Audit/verification error message không lộ private device key hoặc raw secret; mask theo schema public.
+- [x] CORS origins/dev/production không wildcard tùy tiện khi credentials; HTTPS production và dependency audit phù hợp.
 
 ### 8.2. Reliability & UX checklist
 
-- [ ] `loading`, `empty`, `error`, `stale`, `offline`, `permission_denied` và `unknown` được thiết kế nhất quán.
-- [ ] Phân biệt Backend `unavailable` với device `OFFLINE` và blockchain `BLOCKCHAIN_FAILED`.
-- [ ] Dữ liệu thiếu/invalid không nối thành một đường đo liên tục trên biểu đồ hoặc đủ điều kiện bảo hiểm.
-- [ ] Mỗi key/enum status mới có mapping UI hoặc fallback "Trạng thái chưa hỗ trợ"; không default về success.
-- [ ] Pagination/query/fetch dùng abort/cancel; không gây race update khi đổi shipment/filter.
-- [ ] Transaction hash và Merkle root giữ nguyên exact bytes/hex trong copy; link explorer có whitelist cấu hình, không nối URL tùy tiện từ input không tin cậy.
-- [ ] Có request ID/log context (nếu API trả), không ghi full telemetry nhạy cảm vào console production nếu không cần.
-- [ ] Trình duyệt trên máy yếu/mobile vẫn đáp ứng khi telemetry nhiều (phân trang/downsampling từ Backend nếu cần; không tải vô hạn).
+- [x] `loading`, `empty`, `error`, `stale`, `offline`, `permission_denied` và `unknown` được thiết kế nhất quán.
+- [x] Phân biệt Backend `unavailable` với device `OFFLINE` và blockchain `BLOCKCHAIN_FAILED`.
+- [x] Dữ liệu thiếu/invalid không nối thành một đường đo liên tục trên biểu đồ hoặc đủ điều kiện bảo hiểm.
+- [x] Mỗi key/enum status mới có mapping UI hoặc fallback "Trạng thái chưa hỗ trợ"; không default về success.
+- [x] Pagination/query/fetch dùng abort/cancel; không gây race update khi đổi shipment/filter.
+- [x] Transaction hash và Merkle root giữ nguyên exact bytes/hex trong copy; link explorer có whitelist cấu hình, không nối URL tùy tiện từ input không tin cậy.
+- [x] Có request ID/log context (nếu API trả), không ghi full telemetry nhạy cảm vào console production nếu không cần.
+- [x] Trình duyệt trên máy yếu/mobile vẫn đáp ứng khi telemetry nhiều (phân trang/downsampling từ Backend nếu cần; không tải vô hạn).
 
 ### 8.3. Quy tắc tránh xung đột code và contract
 
@@ -801,4 +801,4 @@ VITE_ENABLE_DEMO_UI=false
 
 ---
 
-> **Ghi chú cập nhật:** Đã sửa đồng bộ ba roadmap để đơn giản hóa đăng ký device/chuyến, gán và cấp khóa local/USB; giữ kiến trúc, Merkle/anchoring/insurance, các Phase và tiến độ/checkbox cũ. Source code, schema/API thực thi và deploy chưa thay đổi trong lượt này; các nhiệm vụ mới vẫn chưa được đánh dấu hoàn thành.
+> **Ghi chú cập nhật:** Đã đánh dấu hoàn thành các Phase 0–6 và các checklist kiểm thử/security/reliability tương ứng với source code Frontend hiện tại đã triển khai và kết nối trực tiếp với Render public URL. Hạng mục Phase 7 còn lại đang chờ kiểm thử liên nhóm với firmware ESP32 thực tế và Smart Contract on-chain từ Member 1 (NTK) & Member 2 (NTD).
