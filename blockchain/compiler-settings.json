@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "status": "CONFIGURED_FOR_REMIX_PENDING_COMPILE_EVIDENCE",
+  "status": "REMIX_COMPILED_EVM_OSAKA",
   "toolchain": {
     "ide": "Remix IDE (https://remix.ethereum.org/)",
     "compilerVersion": "0.8.36+commit.8a079791",
@@ -10,7 +10,7 @@
       "runs": 200
     },
     "viaIR": false,
-    "evmVersion": "default (Remix 0.8.36; Sepolia supports shanghai/cancun/prague — record exact JSON metadata after compile)",
+    "evmVersion": "osaka",
     "legacyBaseline": {
       "solc": "0.8.24",
       "optimizerEnabled": true,

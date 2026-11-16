@@ -13,7 +13,7 @@ Mở [Remix IDE](https://remix.ethereum.org/) và thiết lập tab **Solidity C
 | **Compiler** | `0.8.36+commit.8a079791` | Cả 3 file dùng `pragma solidity ^0.8.24;` nên tương thích trực tiếp |
 | **Language** | `Solidity` | — |
 | **Enable optimization** | **Bật (`true`)**, `200` runs | Khớp cấu hình baseline trong `compiler-settings.json` |
-| **EVM Version** | `default` *(hoặc `cancun` / `shanghai`)* | Sepolia hỗ trợ đầy đủ; ghi lại đúng giá trị đã chọn vào `deployments/sepolia.json` |
+| **EVM Version** | `osaka` *(default của `0.8.36`)* | Đã xác nhận compile & deploy thành công trên Sepolia |
 | **viaIR** | Tắt (`false`) | Không bật |
 
 ### Cách import source và pin OpenZeppelin `v5.6.1` (không sửa `.sol`)
@@ -72,4 +72,18 @@ Sau khi compile cả 3 contract trên Remix không có lỗi:
   2. `ColdChainDataIntegrity(_anchorer)` — truyền **địa chỉ public ví Anchorer** của Backend.
   3. `ColdChainInsurance(_payoutToken, _oracle)` — truyền địa chỉ `MockInsuranceToken` ở bước 1 và **địa chỉ public ví Oracle** của Backend.
 
-> **Lưu ý:** Sau khi deploy thật trên Sepolia, mới tạo `blockchain/deployments/sepolia.json` kèm `deployBlockNumber` (xem thêm `blockchain/NOTES_FOR_NTK_BACKEND_SEPOLIA.md`).
+> **Lưu ý:** Sau khi deploy thật trên Sepolia, dùng Python tooling (không cần Node.js/Hardhat) để tạo manifest và xác minh trạng thái:
+>
+> ```bash
+> pip install -r blockchain/requirements.txt
+>
+> # 1. Tạo blockchain/deployments/sepolia.json (không chứa secrets)
+> python blockchain/scripts_py/create_sepolia_manifest.py \
+>   --token-address 0x... --token-tx 0x... --token-block 123456 \
+>   --integrity-address 0x... --integrity-tx 0x... --integrity-block 123457 \
+>   --insurance-address 0x... --insurance-tx 0x... --insurance-block 123458 \
+>   --owner 0x... --anchorer 0x... --oracle 0x...
+>
+> # 2. Kiểm tra RPC Sepolia, bytecode và role on-chain
+> python blockchain/scripts_py/preflight_sepolia.py --manifest blockchain/deployments/sepolia.json
+> ```
