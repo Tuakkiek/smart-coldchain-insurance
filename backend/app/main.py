@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routes import router
@@ -27,10 +28,26 @@ from app.services.batch_service import BatchServiceError
 logger = logging.getLogger(__name__)
 
 
-def error_response(status_code: int, code: str, message: str, details: list | None = None) -> JSONResponse:
+def error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    details: list | None = None,
+    request: Request | None = None,
+) -> JSONResponse:
+    headers: dict[str, str] = {}
+    if request is not None:
+        origin = request.headers.get("origin")
+        settings = getattr(request.app.state, "settings", None)
+        if origin and settings and settings.cors_origins:
+            if "*" in settings.cors_origins or origin in settings.cors_origins:
+                headers["Access-Control-Allow-Origin"] = origin
+                headers["Access-Control-Allow-Credentials"] = "false"
+                headers["Vary"] = "Origin"
     return JSONResponse(
         status_code=status_code,
         content={"error": {"code": code, "message": message, "details": details or []}},
+        headers=headers if headers else None,
     )
 
 
@@ -166,10 +183,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def http_error(_request: Request, exc: StarletteHTTPException):
         return error_response(exc.status_code, "HTTP_ERROR", str(exc.detail))
 
+    @app.exception_handler(SQLAlchemyError)
+    async def database_error(request: Request, exc: SQLAlchemyError):
+        req_id = getattr(request.state, "request_id", "unknown")
+        logger.exception("Database error request_id=%s", req_id, exc_info=exc)
+        return error_response(503, "DATABASE_UNAVAILABLE", "Cơ sở dữ liệu tạm thời không khả dụng", request=request)
+
     @app.exception_handler(Exception)
     async def internal_error(request: Request, exc: Exception):
-        logger.exception("Unhandled API error request_id=%s", request.state.request_id, exc_info=exc)
-        return error_response(500, "INTERNAL_ERROR", "Lỗi nội bộ")
+        req_id = getattr(request.state, "request_id", "unknown")
+        logger.exception("Unhandled API error request_id=%s", req_id, exc_info=exc)
+        return error_response(500, "INTERNAL_ERROR", "Lỗi nội bộ", request=request)
 
     app.include_router(router)
     if settings.app_env == "development":
