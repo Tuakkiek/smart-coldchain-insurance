@@ -364,9 +364,9 @@ ColdChainDataIntegrity: [
 	{
 		"inputs": [
 			{
-				"internalType": "uint256",
-				"name": "initialSupply",
-				"type": "uint256"
+				"internalType": "address",
+				"name": "_anchorer",
+				"type": "address"
 			}
 		],
 		"stateMutability": "nonpayable",
@@ -375,97 +375,69 @@ ColdChainDataIntegrity: [
 	{
 		"inputs": [
 			{
-				"internalType": "address",
-				"name": "spender",
-				"type": "address"
-			},
-			{
-				"internalType": "uint256",
-				"name": "allowance",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "needed",
-				"type": "uint256"
+				"internalType": "bytes32",
+				"name": "batchKey",
+				"type": "bytes32"
 			}
 		],
-		"name": "ERC20InsufficientAllowance",
+		"name": "ColdChain__BatchAlreadyExists",
 		"type": "error"
 	},
 	{
 		"inputs": [
 			{
-				"internalType": "address",
-				"name": "sender",
-				"type": "address"
-			},
-			{
-				"internalType": "uint256",
-				"name": "balance",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "needed",
-				"type": "uint256"
+				"internalType": "bytes32",
+				"name": "batchKey",
+				"type": "bytes32"
 			}
 		],
-		"name": "ERC20InsufficientBalance",
-		"type": "error"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "approver",
-				"type": "address"
-			}
-		],
-		"name": "ERC20InvalidApprover",
-		"type": "error"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "receiver",
-				"type": "address"
-			}
-		],
-		"name": "ERC20InvalidReceiver",
-		"type": "error"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "sender",
-				"type": "address"
-			}
-		],
-		"name": "ERC20InvalidSender",
-		"type": "error"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "spender",
-				"type": "address"
-			}
-		],
-		"name": "ERC20InvalidSpender",
+		"name": "ColdChain__BatchNotFound",
 		"type": "error"
 	},
 	{
 		"inputs": [],
-		"name": "MockToken__CallerNotOwner",
+		"name": "ColdChain__CallerNotAnchorer",
 		"type": "error"
 	},
 	{
 		"inputs": [],
-		"name": "MockToken__ZeroAddress",
+		"name": "ColdChain__CallerNotOwner",
+		"type": "error"
+	},
+	{
+		"inputs": [],
+		"name": "ColdChain__InvalidBatchKey",
+		"type": "error"
+	},
+	{
+		"inputs": [],
+		"name": "ColdChain__InvalidMerkleRoot",
+		"type": "error"
+	},
+	{
+		"inputs": [],
+		"name": "ColdChain__InvalidRecordCount",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint64",
+				"name": "firstSequence",
+				"type": "uint64"
+			},
+			{
+				"internalType": "uint64",
+				"name": "lastSequence",
+				"type": "uint64"
+			}
+		],
+		"name": "ColdChain__InvalidSequenceRange",
+		"type": "error"
+	},
+	{
+		"inputs": [],
+		"name": "ColdChain__ZeroAddress",
 		"type": "error"
 	},
 	{
@@ -474,23 +446,17 @@ ColdChainDataIntegrity: [
 			{
 				"indexed": true,
 				"internalType": "address",
-				"name": "owner",
+				"name": "previousAnchorer",
 				"type": "address"
 			},
 			{
 				"indexed": true,
 				"internalType": "address",
-				"name": "spender",
+				"name": "newAnchorer",
 				"type": "address"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "value",
-				"type": "uint256"
 			}
 		],
-		"name": "Approval",
+		"name": "AnchorerUpdated",
 		"type": "event"
 	},
 	{
@@ -498,132 +464,175 @@ ColdChainDataIntegrity: [
 		"inputs": [
 			{
 				"indexed": true,
-				"internalType": "address",
-				"name": "from",
-				"type": "address"
+				"internalType": "bytes32",
+				"name": "batchKey",
+				"type": "bytes32"
 			},
 			{
 				"indexed": true,
-				"internalType": "address",
-				"name": "to",
-				"type": "address"
+				"internalType": "bytes32",
+				"name": "shipmentKey",
+				"type": "bytes32"
+			},
+			{
+				"indexed": true,
+				"internalType": "bytes32",
+				"name": "deviceKey",
+				"type": "bytes32"
 			},
 			{
 				"indexed": false,
-				"internalType": "uint256",
-				"name": "value",
-				"type": "uint256"
+				"internalType": "bytes32",
+				"name": "merkleRoot",
+				"type": "bytes32"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint32",
+				"name": "recordCount",
+				"type": "uint32"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "anchoredBy",
+				"type": "address"
 			}
 		],
-		"name": "Transfer",
+		"name": "BatchAnchored",
 		"type": "event"
 	},
 	{
 		"inputs": [
 			{
-				"internalType": "address",
-				"name": "owner",
-				"type": "address"
+				"internalType": "bytes32",
+				"name": "_batchKey",
+				"type": "bytes32"
 			},
 			{
-				"internalType": "address",
-				"name": "spender",
-				"type": "address"
-			}
-		],
-		"name": "allowance",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "spender",
-				"type": "address"
+				"internalType": "bytes32",
+				"name": "_shipmentKey",
+				"type": "bytes32"
 			},
 			{
-				"internalType": "uint256",
-				"name": "value",
-				"type": "uint256"
-			}
-		],
-		"name": "approve",
-		"outputs": [
-			{
-				"internalType": "bool",
-				"name": "",
-				"type": "bool"
-			}
-		],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "account",
-				"type": "address"
-			}
-		],
-		"name": "balanceOf",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "decimals",
-		"outputs": [
-			{
-				"internalType": "uint8",
-				"name": "",
-				"type": "uint8"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "to",
-				"type": "address"
+				"internalType": "bytes32",
+				"name": "_deviceKey",
+				"type": "bytes32"
 			},
 			{
-				"internalType": "uint256",
-				"name": "amount",
-				"type": "uint256"
+				"internalType": "bytes32",
+				"name": "_merkleRoot",
+				"type": "bytes32"
+			},
+			{
+				"internalType": "uint64",
+				"name": "_firstSequence",
+				"type": "uint64"
+			},
+			{
+				"internalType": "uint64",
+				"name": "_lastSequence",
+				"type": "uint64"
+			},
+			{
+				"internalType": "uint32",
+				"name": "_recordCount",
+				"type": "uint32"
 			}
 		],
-		"name": "mint",
+		"name": "anchorBatch",
 		"outputs": [],
 		"stateMutability": "nonpayable",
 		"type": "function"
 	},
 	{
 		"inputs": [],
-		"name": "name",
+		"name": "anchorer",
 		"outputs": [
 			{
-				"internalType": "string",
+				"internalType": "address",
 				"name": "",
-				"type": "string"
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "bytes32",
+				"name": "_batchKey",
+				"type": "bytes32"
+			}
+		],
+		"name": "batchExists",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "exists",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "bytes32",
+				"name": "_batchKey",
+				"type": "bytes32"
+			}
+		],
+		"name": "getBatch",
+		"outputs": [
+			{
+				"components": [
+					{
+						"internalType": "bytes32",
+						"name": "shipmentKey",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "deviceKey",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "merkleRoot",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "uint64",
+						"name": "firstSequence",
+						"type": "uint64"
+					},
+					{
+						"internalType": "uint64",
+						"name": "lastSequence",
+						"type": "uint64"
+					},
+					{
+						"internalType": "uint32",
+						"name": "recordCount",
+						"type": "uint32"
+					},
+					{
+						"internalType": "uint64",
+						"name": "anchoredAt",
+						"type": "uint64"
+					},
+					{
+						"internalType": "address",
+						"name": "anchoredBy",
+						"type": "address"
+					}
+				],
+				"internalType": "struct ColdChainDataIntegrity.Batch",
+				"name": "",
+				"type": "tuple"
 			}
 		],
 		"stateMutability": "view",
@@ -643,82 +652,40 @@ ColdChainDataIntegrity: [
 		"type": "function"
 	},
 	{
-		"inputs": [],
-		"name": "symbol",
-		"outputs": [
-			{
-				"internalType": "string",
-				"name": "",
-				"type": "string"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "totalSupply",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
 		"inputs": [
 			{
 				"internalType": "address",
-				"name": "to",
+				"name": "_newAnchorer",
 				"type": "address"
-			},
-			{
-				"internalType": "uint256",
-				"name": "value",
-				"type": "uint256"
 			}
 		],
-		"name": "transfer",
-		"outputs": [
-			{
-				"internalType": "bool",
-				"name": "",
-				"type": "bool"
-			}
-		],
+		"name": "setAnchorer",
+		"outputs": [],
 		"stateMutability": "nonpayable",
 		"type": "function"
 	},
 	{
 		"inputs": [
 			{
-				"internalType": "address",
-				"name": "from",
-				"type": "address"
+				"internalType": "bytes32",
+				"name": "_batchKey",
+				"type": "bytes32"
 			},
 			{
-				"internalType": "address",
-				"name": "to",
-				"type": "address"
-			},
-			{
-				"internalType": "uint256",
-				"name": "value",
-				"type": "uint256"
+				"internalType": "bytes32",
+				"name": "_candidateRoot",
+				"type": "bytes32"
 			}
 		],
-		"name": "transferFrom",
+		"name": "verifyBatch",
 		"outputs": [
 			{
 				"internalType": "bool",
-				"name": "",
+				"name": "matchResult",
 				"type": "bool"
 			}
 		],
-		"stateMutability": "nonpayable",
+		"stateMutability": "view",
 		"type": "function"
 	}
 ]
