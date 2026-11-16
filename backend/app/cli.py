@@ -23,6 +23,7 @@ from app.services.blockchain_outbox import configured_coordinator
 from app.services.integrity_anchor_service import configured_integrity_coordinator
 from app.services.insurance_evidence import configured_evidence_coordinator
 from app.services.batch_service import verify_batch
+from app.services.auth import initialize_admin
 
 
 DEMO_SHIPMENTS = [
@@ -138,6 +139,9 @@ def main() -> None:
             if args.command not in {"retry-blockchain", "retry-integrity"}:
                 upgrade_schema(engine)
                 print("Database schema ready.")
+                with make_session_factory(engine)() as session:
+                    initialize_admin(session, settings)
+                print("Single Admin account ready (existing credentials preserved).")
             if args.command == "seed-demo":
                 seed_demo(make_session_factory(engine))
             if args.command == "retry-blockchain":

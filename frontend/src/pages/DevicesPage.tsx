@@ -947,7 +947,7 @@ export const DevicesPage: React.FC = () => {
                   icon={<ShieldCheck size={14} />}
                   style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-xs)' }}
                 >
-                  Xem chi tiết bảo mật (X-Admin-Key View) →
+                  Xem chi tiết quản trị thiết bị →
                 </Button>
               </div>
             </Card>

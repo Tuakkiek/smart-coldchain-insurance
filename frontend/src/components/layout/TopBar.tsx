@@ -1,6 +1,9 @@
 import React from 'react';
-import { Menu } from 'lucide-react';
+import { LogOut, Menu } from 'lucide-react';
 import { ConnectionStatus } from '../feedback/ConnectionStatus';
+import { Button } from '../ui/Button';
+import { useAuth } from '../../auth/AuthProvider';
+import { endSession } from '../../auth/session';
 
 interface TopBarProps {
   onMenuToggle?: () => void;
@@ -8,6 +11,7 @@ interface TopBarProps {
 }
 
 export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, onRefresh }) => {
+  const { session } = useAuth();
   return (
     <header
       style={{
@@ -38,6 +42,7 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, onRefresh }) => {
           <Menu size={20} />
         </button>
         <span
+          className="topbar-description"
           style={{
             fontSize: 'var(--text-sm)',
             fontWeight: 500,
@@ -50,6 +55,13 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, onRefresh }) => {
 
       <div className="flex-row items-center gap-4">
         <ConnectionStatus onModeChange={onRefresh} />
+        <div className="admin-session-control">
+          <span className="admin-session-name" title={session?.username}>{session?.username}</span>
+          <Button size="sm" variant="secondary" icon={<LogOut size={15} aria-hidden="true" />}
+            onClick={() => endSession()}>
+            Đăng xuất
+          </Button>
+        </div>
       </div>
     </header>
   );

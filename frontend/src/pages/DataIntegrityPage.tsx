@@ -23,7 +23,7 @@ import {
   IntegritySummaryOut,
   BatchVerifyResultOut,
 } from '../types/api';
-import { apiClient, ApiError } from '../api/client';
+import { ApiError } from '../api/client';
 import {
   Layers,
   ShieldCheck,
@@ -135,10 +135,9 @@ export const DataIntegrityPage: React.FC = () => {
     setVerificationResult(null);
     setVerifyError(null);
 
-    const adminKey = apiClient.getAdminKey() || undefined;
 
     try {
-      const result = await verifyBatch(batchId, adminKey);
+      const result = await verifyBatch(batchId);
       if (isMountedRef.current) {
         setVerificationResult(result);
         const isTampered = result.verification_status === 'DATA_INTEGRITY_FAILED';
