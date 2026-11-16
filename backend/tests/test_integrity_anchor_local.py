@@ -40,6 +40,9 @@ def test_signed_batch_is_anchored_and_read_back_on_local_chain(tmp_path):
 
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'integrity-chain.db').as_posix()}",
+        admin_username="admin",
+        admin_password="test-admin-password-12345",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
         integrity_batch_max_records=1,
         blockchain_enabled=True,
         blockchain_network="hardhat",

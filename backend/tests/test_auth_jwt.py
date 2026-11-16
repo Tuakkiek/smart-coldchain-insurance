@@ -316,7 +316,12 @@ def test_old_x_admin_key_header_is_completely_rejected(auth_api):
 
 
 def test_settings_has_no_admin_api_key():
-    settings = Settings(database_url="sqlite://")
+    settings = Settings(
+        database_url="sqlite://",
+        admin_username=VALID_USERNAME,
+        admin_password=VALID_PASSWORD,
+        jwt_secret_key=VALID_SECRET,
+    )
     assert not hasattr(settings, "admin_api_key")
 
 
@@ -487,3 +492,282 @@ def test_cors_preflight_allows_authorization(auth_api):
     allowed_headers = preflight.headers.get("access-control-allow-headers", "").lower()
     assert "authorization" in allowed_headers
     assert "content-type" in allowed_headers
+
+
+# --- Regression & Coverage Tests for Requirements 1, 2, 3 ---
+
+
+# 1. Direct Settings & Environment Startup Fail-Closed Coverage
+@pytest.mark.parametrize("app_env", ["development", "production"])
+def test_direct_settings_missing_all_auth_fails_closed(app_env):
+    """Calling Settings without auth credentials fails closed regardless of APP_ENV."""
+    with pytest.raises(ValueError, match="ADMIN_USERNAME"):
+        Settings(
+            database_url="sqlite://",
+            app_env=app_env,
+            cors_origins=("https://coldchain.example.com",) if app_env == "production" else (),
+        )
+
+
+@pytest.mark.parametrize("kwargs,error_match", [
+    ({"admin_username": ""}, "ADMIN_USERNAME"),
+    ({"admin_username": "   "}, "ADMIN_USERNAME"),
+    ({"admin_username": "<admin>"}, "ADMIN_USERNAME"),
+    ({"admin_username": "placeholder"}, "ADMIN_USERNAME"),
+    ({"admin_password": ""}, "ADMIN_PASSWORD"),
+    ({"admin_password": "   "}, "ADMIN_PASSWORD"),
+    ({"admin_password": "<your-demo-password>"}, "ADMIN_PASSWORD"),
+    ({"admin_password": "changeme"}, "ADMIN_PASSWORD"),
+    ({"admin_password": "password"}, "ADMIN_PASSWORD"),
+    ({"jwt_secret_key": ""}, "JWT_SECRET_KEY"),
+    ({"jwt_secret_key": "short"}, "JWT_SECRET_KEY"),
+    ({"jwt_secret_key": "a" * 31}, "JWT_SECRET_KEY"),
+    ({"jwt_secret_key": "<your-secret-key>"}, "JWT_SECRET_KEY"),
+    ({"jwt_secret_key": "<your-jwt-secret-key-at-least-32-bytes-placeholder>"}, "JWT_SECRET_KEY"),
+    ({"jwt_access_token_expire_minutes": 0}, "JWT_ACCESS_TOKEN_EXPIRE_MINUTES"),
+    ({"jwt_access_token_expire_minutes": -5}, "JWT_ACCESS_TOKEN_EXPIRE_MINUTES"),
+])
+def test_direct_settings_missing_or_invalid_field_fails_closed(kwargs, error_match):
+    """Direct Settings instantiation rejects any missing, empty, placeholder or weak field."""
+    valid_base = {
+        "database_url": "sqlite://",
+        "admin_username": VALID_USERNAME,
+        "admin_password": VALID_PASSWORD,
+        "jwt_secret_key": VALID_SECRET,
+        "jwt_access_token_expire_minutes": 30,
+    }
+    valid_base.update(kwargs)
+    with pytest.raises(ValueError, match=error_match):
+        Settings(**valid_base)
+
+
+def test_create_app_fails_closed_if_unconfigured_via_env(monkeypatch):
+    """create_app() without arguments fails closed if environment variables are missing."""
+    monkeypatch.delenv("ADMIN_USERNAME", raising=False)
+    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+    with pytest.raises(ValueError, match="ADMIN_USERNAME"):
+        create_app()
+
+
+def test_no_default_test_secrets_in_runtime_module():
+    """Verify DEFAULT_TEST_* constants are removed from app.core.config."""
+    import app.core.config as config_mod
+    assert not hasattr(config_mod, "DEFAULT_TEST_ADMIN_USERNAME")
+    assert not hasattr(config_mod, "DEFAULT_TEST_ADMIN_PASSWORD")
+    assert not hasattr(config_mod, "DEFAULT_TEST_JWT_SECRET")
+
+
+def test_valid_auth_config_direct_and_env_works():
+    """Valid auth configuration succeeds directly and via load_settings()."""
+    # Direct
+    direct = Settings(
+        database_url="sqlite://",
+        admin_username="valid_admin",
+        admin_password="ValidAdminPassword123!",
+        jwt_secret_key="a" * 32,
+    )
+    assert direct.admin_username == "valid_admin"
+
+    # Environment
+    loaded = load_settings()
+    assert loaded.admin_username == VALID_USERNAME
+
+
+# 2. Unicode and Password Whitespace Handling
+UNICODE_USERNAME = "quản_trị_viên"
+UNICODE_PASSWORD = "MậtKhẩu_BảoMật_@2026_ĐặcBiệt"
+UNICODE_SECRET = "chuỗi_khóa_bí_mật_chứa_tiếng_việt_ít_nhất_32_bytes_chuẩn!"
+
+
+@pytest.fixture
+def unicode_auth_api(tmp_path):
+    settings = Settings(
+        database_url=f"sqlite:///{(tmp_path / 'unicode_auth.db').as_posix()}",
+        admin_username=UNICODE_USERNAME,
+        admin_password=UNICODE_PASSWORD,
+        jwt_secret_key=UNICODE_SECRET,
+        jwt_access_token_expire_minutes=30,
+        cors_origins=("http://localhost:5173",),
+    )
+    app = create_app(settings)
+    Base.metadata.create_all(app.state.engine)
+    with TestClient(app) as client:
+        yield client, app, settings
+    app.state.engine.dispose()
+
+
+def test_login_success_with_unicode_credentials(unicode_auth_api):
+    client, _app, settings = unicode_auth_api
+    response = client.post("/api/v1/auth/login", json={
+        "username": UNICODE_USERNAME,
+        "password": UNICODE_PASSWORD,
+    })
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    assert token
+
+    # Protected route with Unicode token succeeds
+    shipment_resp = client.post(
+        "/api/v1/shipments",
+        json=TEST_SHIPMENT,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert shipment_resp.status_code == 201
+
+
+def test_login_wrong_unicode_credentials_returns_401_no_500(unicode_auth_api):
+    client, _app, _settings = unicode_auth_api
+    # Wrong Unicode password
+    resp1 = client.post("/api/v1/auth/login", json={
+        "username": UNICODE_USERNAME,
+        "password": "SaiMậtKhẩu_Unicode",
+    })
+    assert resp1.status_code == 401
+    assert resp1.headers.get("www-authenticate") == "Bearer"
+    assert resp1.json()["error"]["code"] == "UNAUTHORIZED"
+
+    # Wrong Unicode username
+    resp2 = client.post("/api/v1/auth/login", json={
+        "username": "người_dùng_khác",
+        "password": UNICODE_PASSWORD,
+    })
+    assert resp2.status_code == 401
+    assert resp2.headers.get("www-authenticate") == "Bearer"
+    assert resp2.json()["error"]["code"] == "UNAUTHORIZED"
+
+    # ASCII wrong credentials against Unicode config returns 401, not 500
+    resp3 = client.post("/api/v1/auth/login", json={
+        "username": "ascii_user",
+        "password": "ascii_password",
+    })
+    assert resp3.status_code == 401
+
+
+def test_jwt_sub_unicode_matching_and_rejection(unicode_auth_api):
+    client, _app, settings = unicode_auth_api
+    # Token with correct Unicode sub works
+    valid_token = create_access_token(UNICODE_USERNAME, settings.jwt_secret_key)
+    res_ok = client.get("/api/v1/shipments", headers={"Authorization": f"Bearer {valid_token}"})
+    assert res_ok.status_code == 200
+
+    # Token with different Unicode sub is rejected safely with 401 (not 500)
+    forged_token = create_access_token("kẻ_mạo_danh_tiếng_việt", settings.jwt_secret_key)
+    res_fail = client.get("/api/v1/shipments", headers={"Authorization": f"Bearer {forged_token}"})
+    assert res_fail.status_code == 401
+    assert res_fail.headers.get("www-authenticate") == "Bearer"
+
+
+def test_password_whitespace_exact_preservation(tmp_path):
+    """Password leading/trailing whitespace must be preserved exactly and not trimmed."""
+    password_with_spaces = "   Exact Password With Spaces   "
+    settings = Settings(
+        database_url=f"sqlite:///{(tmp_path / 'spaces_auth.db').as_posix()}",
+        admin_username="admin",
+        admin_password=password_with_spaces,
+        jwt_secret_key=VALID_SECRET,
+    )
+    app = create_app(settings)
+    Base.metadata.create_all(app.state.engine)
+    with TestClient(app) as client:
+        # Exact password with spaces succeeds
+        ok = client.post("/api/v1/auth/login", json={
+            "username": "admin",
+            "password": password_with_spaces,
+        })
+        assert ok.status_code == 200
+
+        # Stripped password must FAIL with 401 (not considered equivalent)
+        stripped = client.post("/api/v1/auth/login", json={
+            "username": "admin",
+            "password": password_with_spaces.strip(),
+        })
+        assert stripped.status_code == 401
+        assert stripped.json()["error"]["code"] == "UNAUTHORIZED"
+
+        # Extra space password must FAIL with 401
+        extra = client.post("/api/v1/auth/login", json={
+            "username": "admin",
+            "password": " " + password_with_spaces,
+        })
+        assert extra.status_code == 401
+
+        # All-whitespace password is rejected as validation error (422)
+        blank = client.post("/api/v1/auth/login", json={
+            "username": "admin",
+            "password": "     ",
+        })
+        assert blank.status_code == 422
+        assert blank.json()["error"]["code"] == "VALIDATION_ERROR"
+    app.state.engine.dispose()
+
+
+# 3. Cross-Origin CORS and Retry-After Exposure
+def test_cors_exposes_retry_after_and_x_request_id_on_rate_limit(auth_api):
+    client, app, _settings = auth_api
+    app.state.login_rate_limiter.reset()
+    allowed_origin = "http://localhost:5173"
+
+    # Make 5 failed attempts from allowed origin
+    for _ in range(5):
+        resp = client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": "wrong"},
+            headers={"Origin": allowed_origin},
+        )
+        assert resp.status_code == 401
+        assert resp.headers.get("access-control-allow-origin") == allowed_origin
+
+    # 6th attempt triggers 429
+    blocked = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"Origin": allowed_origin},
+    )
+    assert blocked.status_code == 429
+    assert blocked.headers.get("access-control-allow-origin") == allowed_origin
+
+    # Check Retry-After header
+    assert "retry-after" in blocked.headers
+    retry_after = int(blocked.headers["retry-after"])
+    assert 1 <= retry_after <= 60
+
+    # Check Access-Control-Expose-Headers exposes BOTH Retry-After and X-Request-ID
+    exposed = blocked.headers.get("access-control-expose-headers", "")
+    exposed_lower = [h.strip().lower() for h in exposed.split(",")]
+    assert "retry-after" in exposed_lower
+    assert "x-request-id" in exposed_lower
+
+
+def test_cors_disallowed_origin_rejected(auth_api):
+    client, app, _settings = auth_api
+    app.state.login_rate_limiter.reset()
+    disallowed_origin = "http://untrusted-attacker.com"
+
+    # Attempt login from disallowed origin
+    resp = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"Origin": disallowed_origin},
+    )
+    # Origin is not allowed, so Access-Control-Allow-Origin must NOT be returned for disallowed origin
+    assert resp.headers.get("access-control-allow-origin") != disallowed_origin
+
+
+def test_cors_preflight_login_endpoint(auth_api):
+    client, _app, _settings = auth_api
+    allowed_origin = "http://localhost:5173"
+
+    preflight = client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": allowed_origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,authorization",
+        },
+    )
+    assert preflight.status_code == 200
+    assert preflight.headers.get("access-control-allow-origin") == allowed_origin
+    allowed_headers = [h.strip().lower() for h in preflight.headers.get("access-control-allow-headers", "").split(",")]
+    assert "content-type" in allowed_headers
+    assert "authorization" in allowed_headers

@@ -65,6 +65,9 @@ def test_signed_anchored_violation_pays_once_on_local_chain(tmp_path):
     integrity_address = web3.eth.wait_for_transaction_receipt(deploy_hash).contractAddress
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'chain.db').as_posix()}",
+        admin_username="admin",
+        admin_password="test-admin-password-12345",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
         integrity_batch_max_age_minutes=5,
         max_sample_gap_seconds=300,
         blockchain_enabled=True,

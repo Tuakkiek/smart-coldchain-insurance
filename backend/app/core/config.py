@@ -15,12 +15,10 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainInsurance.json"
 DEFAULT_INTEGRITY_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainDataIntegrity.json"
 
-DEFAULT_TEST_ADMIN_USERNAME = "admin"
-DEFAULT_TEST_ADMIN_PASSWORD = "test-admin-password-12345"
-DEFAULT_TEST_JWT_SECRET = "test-jwt-secret-key-at-least-32-chars-long!"
 
-
-def is_placeholder(val: str) -> bool:
+def is_placeholder(val: str | None) -> bool:
+    if not val or not isinstance(val, str):
+        return True
     cleaned = val.strip()
     if not cleaned:
         return True
@@ -43,9 +41,9 @@ def is_placeholder(val: str) -> bool:
 
 
 def validate_auth_config(
-    admin_username: str,
-    admin_password: str,
-    jwt_secret_key: str,
+    admin_username: str | None,
+    admin_password: str | None,
+    jwt_secret_key: str | None,
     jwt_access_token_expire_minutes: int,
 ) -> None:
     if not admin_username or is_placeholder(admin_username):
@@ -54,7 +52,7 @@ def validate_auth_config(
         raise ValueError("ADMIN_PASSWORD is required and cannot be empty or placeholder")
     if not jwt_secret_key or is_placeholder(jwt_secret_key) or len(jwt_secret_key.encode("utf-8")) < 32:
         raise ValueError("JWT_SECRET_KEY must be at least 32 bytes and cannot be a placeholder")
-    if jwt_access_token_expire_minutes <= 0:
+    if type(jwt_access_token_expire_minutes) is not int or jwt_access_token_expire_minutes <= 0:
         raise ValueError("JWT_ACCESS_TOKEN_EXPIRE_MINUTES must be positive")
 
 
@@ -65,9 +63,9 @@ class Settings:
     log_level: str = "INFO"
     cors_origins: tuple[str, ...] = ()
     sensor_gap_minutes: int = 5
-    admin_username: str = DEFAULT_TEST_ADMIN_USERNAME
-    admin_password: str = DEFAULT_TEST_ADMIN_PASSWORD
-    jwt_secret_key: str = DEFAULT_TEST_JWT_SECRET
+    admin_username: str = ""
+    admin_password: str = ""
+    jwt_secret_key: str = ""
     jwt_access_token_expire_minutes: int = 30
     trusted_proxies: tuple[str, ...] = ("127.0.0.1", "::1")
     max_request_body_bytes: int = 8192

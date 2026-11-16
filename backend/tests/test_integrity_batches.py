@@ -63,6 +63,9 @@ def signed(key, shipment_id: str, sequence: int, temperature: float = 5.0) -> di
 def integrity_api(tmp_path):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'integrity.db').as_posix()}",
+        admin_username="admin",
+        admin_password="test-admin-password-12345",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
         integrity_batch_max_records=3,
         integrity_batch_max_age_minutes=5,
     ))

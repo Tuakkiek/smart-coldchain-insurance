@@ -35,6 +35,9 @@ ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 def setup_api(tmp_path):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'signed.db').as_posix()}",
+        admin_username="admin",
+        admin_password="test-admin-password-12345",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
     ))
     Base.metadata.create_all(app.state.engine)
     app.state.clock = VirtualClock(datetime(2026, 11, 5, 12, tzinfo=timezone.utc))
@@ -166,7 +169,12 @@ def test_sequence_gap_breaks_breach_and_never_dispatches_payout(setup_api):
 
 def test_production_requires_signed_payload(tmp_path):
     app = create_app(Settings(
-        database_url=f"sqlite:///{(tmp_path / 'prod.db').as_posix()}", app_env="production",
+        database_url=f"sqlite:///{(tmp_path / 'prod.db').as_posix()}",
+        app_env="production",
+        admin_username="admin",
+        admin_password="test-admin-password-12345",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
+        cors_origins=("https://coldchain.example.com",),
     ))
     Base.metadata.create_all(app.state.engine)
     with TestClient(app) as client:

@@ -24,7 +24,7 @@ Thiết lập xác thực Admin duy nhất qua biến môi trường trong `back
 - `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`: Thời gian hiệu lực token (mặc định 30 phút).
 - `TRUSTED_PROXIES`: Danh sách IP proxy tin cậy (mặc định `127.0.0.1,::1`) để phân giải client IP chống giả mạo header `X-Forwarded-For`.
 
-*Lưu ý: Cơ chế `ADMIN_API_KEY` và header `X-Admin-Key` cũ đã bị xóa hoàn toàn khỏi backend. Backend không hỗ trợ dùng song song API key và JWT hoặc bỏ qua xác thực khi thiếu cấu hình. Cấu hình thiếu, rỗng hoặc chứa giá trị placeholder sẽ kích hoạt fail-closed ngay khi ứng dụng khởi động.*
+*Lưu ý: Cơ chế `ADMIN_API_KEY` và header `X-Admin-Key` cũ đã bị xóa hoàn toàn khỏi backend. Backend không hỗ trợ dùng song song API key và JWT hoặc bỏ qua xác thực khi thiếu cấu hình. Toàn bộ credential và secret test mặc định đã bị loại bỏ khỏi runtime; cấu hình thiếu, rỗng hoặc chứa giá trị placeholder sẽ kích hoạt fail-closed ngay khi ứng dụng khởi động hoặc khởi tạo Settings trực tiếp.*
 
 Admin đăng nhập lấy Bearer token:
 ```bash
@@ -36,7 +36,7 @@ Response `200 OK`:
 ```json
 {"access_token":"<jwt_token>","token_type":"bearer"}
 ```
-Endpoint login được bảo vệ bởi rate limiter 5 lần/phút/IP (trả về `429 Too Many Requests` cùng header `Retry-After` khi vượt quá).
+Endpoint login được bảo vệ bởi rate limiter 5 lần/phút/IP (trả về `429 Too Many Requests` với mã lỗi `RATE_LIMITED` cùng header `Retry-After` khi vượt quá). CORS expose cả `X-Request-ID` và `Retry-After` cho các origin hợp lệ. So sánh credential thực hiện theo UTF-8 constant-time, hỗ trợ Unicode đầy đủ và bảo toàn nguyên văn khoảng trắng của mật khẩu.
 
 Trên MySQL hiện có, sao lưu dữ liệu rồi chạy `python -m app.cli upgrade-db` từ `backend/`; với DB mới dùng `python -m app.cli init-db`. Cả hai chạy tới head **`20261115_03`**, gồm các revision signed telemetry/Merkle trước đó, thêm `devices.device_name` (backfill bằng ID) và unique generated-column index `uq_device_assignment_active`. Không sửa revision cũ.
 
@@ -83,7 +83,7 @@ mặc định 8192 và `SIGNED_RATE_LIMIT_PER_MINUTE` mặc định 120; giới 
 được lưu theo thiết bị, còn rate limit IP nên bổ sung ở gateway khi public.
 `GET /api/v1/shipments/{shipment_id}/devices` cho Frontend đọc trạng thái
 `UNKNOWN/ONLINE/OFFLINE` từ thời điểm nhận mẫu signed cuối cùng; retry mẫu
-cũ không làm thiết bị "online" giả. Header `X-Request-ID` có ở mọi response.
+cũ không làm thiết bị "online" giả. Header `X-Request-ID` có ở mọi response; CORS cấu hình expose cả `X-Request-ID` và `Retry-After`.
 
 ### Migration khi quan hệ cũ bị xung đột
 

@@ -212,7 +212,11 @@ def decode_and_verify_token(
         ) from exc
 
     sub = payload.get("sub")
-    if not isinstance(sub, str) or not secrets.compare_digest(sub, expected_username):
+    if (
+        not isinstance(sub, str)
+        or not isinstance(expected_username, str)
+        or not secrets.compare_digest(sub.encode("utf-8"), expected_username.encode("utf-8"))
+    ):
         logger.warning("JWT subject mismatch")
         raise AuthError(
             401,
@@ -226,6 +230,14 @@ def decode_and_verify_token(
 
 def authenticate_admin(username: str, password: str, settings: Settings) -> bool:
     """Constant-time check of admin credentials against configured environment settings."""
-    username_match = secrets.compare_digest(username, settings.admin_username)
-    password_match = secrets.compare_digest(password, settings.admin_password)
+    if not isinstance(username, str) or not isinstance(password, str):
+        return False
+    username_match = secrets.compare_digest(
+        username.encode("utf-8"),
+        settings.admin_username.encode("utf-8"),
+    )
+    password_match = secrets.compare_digest(
+        password.encode("utf-8"),
+        settings.admin_password.encode("utf-8"),
+    )
     return username_match and password_match
