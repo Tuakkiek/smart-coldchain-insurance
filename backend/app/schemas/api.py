@@ -316,7 +316,7 @@ class IntegrityVerifyOut(IntegrityBatchOut):
 
 
 class IntegritySummaryOut(BaseModel):
-    shipment_id: str
+    shipment_id: str | None = None
     batch_count: int
     record_count: int
     verification_status: Literal["NOT_CHECKED", "MATCHED", "DATA_INTEGRITY_FAILED"]
