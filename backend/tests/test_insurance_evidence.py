@@ -95,6 +95,9 @@ def _signed(key, shipment_id, sequence):
 def _setup(tmp_path):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'phase6.db').as_posix()}",
+        admin_username="admin",
+        admin_password="test-admin-password-12345",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
         max_sample_gap_seconds=300,
         payout_requires_anchored_evidence=True,
     ))

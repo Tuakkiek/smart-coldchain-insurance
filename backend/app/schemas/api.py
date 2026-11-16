@@ -17,11 +17,18 @@ class LoginIn(StrictBody):
     username: str = Field(min_length=1, max_length=100)
     password: str = Field(min_length=1, max_length=256)
 
-    @field_validator("username", "password")
+    @field_validator("username")
     @classmethod
-    def nonblank(cls, value: str) -> str:
+    def nonblank_username(cls, value: str) -> str:
         value = value.strip()
         if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def nonblank_password(cls, value: str) -> str:
+        if not value or not value.strip():
             raise ValueError("must not be blank")
         return value
 

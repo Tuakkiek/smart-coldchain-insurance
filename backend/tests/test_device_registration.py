@@ -20,6 +20,9 @@ from test_signed_ingestion import ADMIN, SHIPMENT, signed
 def registry_api(tmp_path):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'registry.db').as_posix()}",
+        admin_username="admin",
+        admin_password="test-admin-password-12345",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
         integrity_batch_max_records=1,
         cors_origins=("http://localhost:5173",),
     ))
@@ -246,8 +249,8 @@ def test_openapi_and_browser_admin_header_match_the_new_contract(registry_api):
 
 def test_unconfigured_admin_api_fails_closed():
     with pytest.raises(ValueError, match="JWT_SECRET_KEY"):
-        Settings(database_url="sqlite://", jwt_secret_key="")
+        Settings(database_url="sqlite://", admin_username="admin", admin_password="valid-test-password-12345", jwt_secret_key="")
     with pytest.raises(ValueError, match="ADMIN_USERNAME"):
-        Settings(database_url="sqlite://", admin_username="")
+        Settings(database_url="sqlite://", admin_username="", admin_password="valid-test-password-12345", jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!")
     with pytest.raises(ValueError, match="ADMIN_PASSWORD"):
-        Settings(database_url="sqlite://", admin_password="")
+        Settings(database_url="sqlite://", admin_username="admin", admin_password="", jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!")

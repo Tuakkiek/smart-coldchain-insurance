@@ -33,7 +33,12 @@ ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 @pytest.fixture
 def api(tmp_path):
     database_url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
-    app = create_app(Settings(database_url=database_url))
+    app = create_app(Settings(
+        database_url=database_url,
+        admin_username="admin",
+        admin_password="test-admin-password-12345",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
+    ))
     Base.metadata.create_all(app.state.engine)
     with TestClient(app, headers=ADMIN) as client:
         yield client, app
@@ -246,7 +251,12 @@ def test_demo_uses_same_policy_and_is_disabled_in_production(api, tmp_path):
     assert client.get(f"/api/v1/shipments/{long_policy['id']}/telemetry").json() == {"items": []}
 
     production = create_app(Settings(
-        database_url=f"sqlite:///{(tmp_path / 'production.db').as_posix()}", app_env="production",
+        database_url=f"sqlite:///{(tmp_path / 'production.db').as_posix()}",
+        app_env="production",
+        admin_username="admin",
+        admin_password="test-admin-password-12345",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
+        cors_origins=("https://coldchain.example.com",),
     ))
     with TestClient(production) as prod_client:
         assert prod_client.post(route, json={"scenario": "normal"}).status_code == 404

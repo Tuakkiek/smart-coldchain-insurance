@@ -80,6 +80,9 @@ class FakeGateway:
 def run_breach(tmp_path, gateway_mode):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'chain.db').as_posix()}",
+        admin_username="admin",
+        admin_password="test-admin-password-12345",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
         payout_requires_anchored_evidence=False,
     ))
     Base.metadata.create_all(app.state.engine)

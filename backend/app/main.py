@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routes import router
-from app.core.config import Settings, load_settings
+from app.core.config import Settings, load_settings, validate_auth_config
 from app.core.database import make_engine, make_session_factory
 from app.services.shipments import DuplicateShipmentCode, ShipmentNotFound
 from app.services.clock import SYSTEM_CLOCK
@@ -47,6 +47,7 @@ def error_response(
             if "*" in settings.cors_origins or origin in settings.cors_origins:
                 headers["Access-Control-Allow-Origin"] = origin
                 headers["Access-Control-Allow-Credentials"] = "false"
+                headers["Access-Control-Expose-Headers"] = "X-Request-ID, Retry-After"
                 headers["Vary"] = "Origin"
     return JSONResponse(
         status_code=status_code,
@@ -121,6 +122,12 @@ class RequestIdMiddleware:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
+    validate_auth_config(
+        settings.admin_username,
+        settings.admin_password,
+        settings.jwt_secret_key,
+        settings.jwt_access_token_expire_minutes,
+    )
     logging.basicConfig(level=getattr(logging, settings.log_level, logging.INFO))
     app = FastAPI(title="Smart Cold Chain Insurance API", version="1.0.0")
     app.state.settings = settings
@@ -146,7 +153,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_credentials=False,
             allow_methods=["GET", "POST", "PATCH"],
             allow_headers=["Content-Type", "Authorization"],
-            expose_headers=["X-Request-ID"],
+            expose_headers=["X-Request-ID", "Retry-After"],
         )
 
     @app.exception_handler(AuthError)
