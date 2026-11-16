@@ -17,9 +17,10 @@ import { SimulatedRouteMap } from '../components/data-display/SimulatedRouteMap'
 import { TelemetryChart } from '../components/data-display/TelemetryChart';
 import { EventTimeline } from '../components/data-display/EventTimeline';
 import { getShipmentById, getShipmentTelemetry } from '../api/shipments';
-import { getDeviceHealth, getShipmentDevices } from '../api/devices';
+import { getShipmentDevices } from '../api/devices';
 import { getShipmentEvents } from '../api/events';
 import { getIntegrityBatches, verifyBatch } from '../api/integrity';
+import { apiClient } from '../api/client';
 import {
   ShipmentOut,
   TelemetryOut,
@@ -70,6 +71,8 @@ export const ShipmentDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [isStale, setIsStale] = useState(false);
+  const [staleError, setStaleError] = useState<string | null>(null);
 
   // Send Telemetry Modal
   const [isSendTelemetryOpen, setIsSendTelemetryOpen] = useState(false);
@@ -78,6 +81,7 @@ export const ShipmentDetailPage: React.FC = () => {
   // Batch Verification & Detail Modals
   const [verifyingBatchId, setVerifyingBatchId] = useState<string | null>(null);
   const [verificationResult, setVerificationResult] = useState<BatchVerifyResultOut | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [isVerifyingLoading, setIsVerifyingLoading] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState<IntegrityBatch | null>(null);
@@ -106,20 +110,24 @@ export const ShipmentDetailPage: React.FC = () => {
       let devHealth: DeviceHealthOut | null = null;
 
       if (primaryDevice) {
+        const hasTelemetry = shipmentData.latest_telemetry !== null;
+        let missingCount: number | null = null;
+        if (shipmentData.latest_telemetry?.completeness_status === 'COMPLETE') {
+          missingCount = 0;
+        } else if (shipmentData.latest_telemetry?.missing_sequences) {
+          missingCount = 1;
+        }
         devHealth = {
           device_id: primaryDevice.device_id,
-          last_sequence_number: primaryDevice.last_sequence_number,
-          missing_sequence_count: 0,
+          last_sequence_number: hasTelemetry
+            ? (primaryDevice.last_sequence_number || shipmentData.latest_telemetry?.sequence_number || null)
+            : null,
+          missing_sequence_count: missingCount,
           last_heartbeat_at: primaryDevice.last_seen_at,
           last_seen_at: primaryDevice.last_seen_at,
           online_status: primaryDevice.telemetry_status,
           firmware_version: null,
         };
-      } else if (shipmentData.latest_telemetry?.device_id) {
-        // Fallback khi thiết bị chưa có assignment chính thức nhưng đã gửi telemetry
-        devHealth = await getDeviceHealth(shipmentData.latest_telemetry.device_id).catch(
-          () => null
-        );
       }
 
       if (isMountedRef.current) {
@@ -129,10 +137,17 @@ export const ShipmentDetailPage: React.FC = () => {
         setDeviceHealth(devHealth);
         setShipmentDevices(devicesData.items);
         setBatches(batchesData.items);
+        setIsStale(false);
+        setStaleError(null);
       }
     } catch (err: unknown) {
-      if (isMountedRef.current && !isBackground) {
-        setError(err instanceof Error ? err.message : 'Lỗi tải chi tiết lô hàng');
+      if (isMountedRef.current) {
+        if (!isBackground) {
+          setError(err instanceof Error ? err.message : 'Lỗi tải chi tiết lô hàng');
+        } else {
+          setIsStale(true);
+          setStaleError(err instanceof Error ? err.message : 'Lỗi kết nối khi polling');
+        }
       }
     } finally {
       if (isMountedRef.current) {
@@ -143,16 +158,19 @@ export const ShipmentDetailPage: React.FC = () => {
   };
 
   const handleVerifyBatch = async (batchId: string) => {
-    const targetBatch = batches.find((b) => b.batch_id === batchId);
     setVerifyingBatchId(batchId);
     setIsVerifyingLoading(true);
     setIsVerifyModalOpen(true);
     setVerificationResult(null);
+    setVerifyError(null);
+
+    const adminKey = apiClient.getAdminKey() || undefined;
 
     try {
-      const result = await verifyBatch(batchId);
+      const result = await verifyBatch(batchId, adminKey);
       if (isMountedRef.current) {
         setVerificationResult(result);
+        const isTampered = result.verification_status === 'DATA_INTEGRITY_FAILED';
         setBatches((prev) =>
           prev.map((b) =>
             b.batch_id === batchId
@@ -160,8 +178,9 @@ export const ShipmentDetailPage: React.FC = () => {
                   ...b,
                   verification_status: result.verification_status,
                   last_verified_at: result.verified_at,
-                  tamper_detected: !result.matched,
-                  failure_reason: !result.matched ? result.message : null,
+                  verified_at: result.verified_at,
+                  tamper_detected: isTampered,
+                  failure_reason: isTampered ? result.message : null,
                 }
               : b
           )
@@ -172,16 +191,8 @@ export const ShipmentDetailPage: React.FC = () => {
         const errorMsg =
           err instanceof Error
             ? err.message
-            : 'Lỗi kết nối khi gửi yêu cầu xác minh tới Backend';
-        setVerificationResult({
-          batch_id: batchId,
-          verification_status: 'DATA_INTEGRITY_FAILED',
-          recalculated_root: '0x0000000000000000000000000000000000000000000000000000000000000000',
-          expected_root: targetBatch?.merkle_root || '0x...',
-          matched: false,
-          verified_at: new Date().toISOString(),
-          message: `Không thể hoàn tất xác minh: ${errorMsg}`,
-        });
+            : 'Lỗi kết nối hoặc quyền truy cập khi gửi yêu cầu xác minh tới Backend';
+        setVerifyError(errorMsg);
       }
     } finally {
       if (isMountedRef.current) {
@@ -339,6 +350,30 @@ export const ShipmentDetailPage: React.FC = () => {
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {isStale && (
+        <div
+          style={{
+            padding: 'var(--space-2) var(--space-4)',
+            backgroundColor: '#FFFBEB',
+            border: '1px solid #FCD34D',
+            borderRadius: 'var(--radius-md)',
+            color: '#92400E',
+            fontSize: 'var(--text-xs)',
+            marginBottom: 'var(--space-4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span>
+            ⚠️ <strong>Dữ liệu chưa cập nhật:</strong> Quá trình polling nền gặp sự cố ({staleError}). Đang hiển thị dữ liệu từ lần tải gần nhất.
+          </span>
+          <Button size="sm" variant="secondary" onClick={() => fetchData(false)}>
+            Thử lại ngay
+          </Button>
         </div>
       )}
 
@@ -606,7 +641,7 @@ export const ShipmentDetailPage: React.FC = () => {
                     {shipment.latest_telemetry && shipment.latest_telemetry.device_id === dev.device_id && (
                       <div style={{ marginBottom: 'var(--space-2)' }}>
                         <SignatureStatusBadge
-                          status={shipment.latest_telemetry.signature_status || 'VALID'}
+                          status={shipment.latest_telemetry.signature_status || (shipment.latest_telemetry ? 'UNSIGNED' : 'UNKNOWN')}
                         />
                       </div>
                     )}
@@ -668,14 +703,14 @@ export const ShipmentDetailPage: React.FC = () => {
                     <Cpu size={16} /> {shipment.latest_telemetry.device_id}
                   </div>
                   <DeviceOnlineBadge
-                    status={deviceHealth?.online_status || 'ONLINE'}
+                    status={deviceHealth?.online_status || 'UNKNOWN'}
                     lastHeartbeat={deviceHealth?.last_heartbeat_at}
                   />
                 </div>
 
                 <div style={{ marginBottom: 'var(--space-2)' }}>
                   <SignatureStatusBadge
-                    status={shipment.latest_telemetry.signature_status || 'VALID'}
+                    status={shipment.latest_telemetry.signature_status || (shipment.latest_telemetry ? 'UNSIGNED' : 'UNKNOWN')}
                   />
                 </div>
 
@@ -1153,8 +1188,12 @@ export const ShipmentDetailPage: React.FC = () => {
       {/* Verification & Detail Modals */}
       <BatchVerificationModal
         isOpen={isVerifyModalOpen}
-        onClose={() => setIsVerifyModalOpen(false)}
+        onClose={() => {
+          setIsVerifyModalOpen(false);
+          setVerifyError(null);
+        }}
         result={verificationResult}
+        error={verifyError}
         batch={batches.find((b) => b.batch_id === verifyingBatchId) || selectedBatch}
         loading={isVerifyingLoading}
       />

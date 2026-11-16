@@ -331,19 +331,25 @@ export const MerkleBatchTable: React.FC<MerkleBatchTableProps> = ({
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Clock size={12} style={{ color: 'var(--color-text-tertiary)' }} />
                         <span>
-                          {new Date(batch.batch_start_time).toLocaleTimeString('vi-VN', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}{' '}
+                          {batch.batch_start_time
+                            ? new Date(batch.batch_start_time).toLocaleTimeString('vi-VN', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : '—'}{' '}
                           –{' '}
-                          {new Date(batch.batch_end_time).toLocaleTimeString('vi-VN', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          {batch.batch_end_time
+                            ? new Date(batch.batch_end_time).toLocaleTimeString('vi-VN', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : '—'}
                         </span>
                       </div>
                       <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
-                        {new Date(batch.batch_start_time).toLocaleDateString('vi-VN')}
+                        {batch.batch_start_time
+                          ? new Date(batch.batch_start_time).toLocaleDateString('vi-VN')
+                          : (batch.sealed_at ? new Date(batch.sealed_at).toLocaleDateString('vi-VN') : '—')}
                       </div>
                     </td>
 
@@ -356,7 +362,7 @@ export const MerkleBatchTable: React.FC<MerkleBatchTableProps> = ({
                         className="font-mono"
                         style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}
                       >
-                        #{batch.first_sequence_number} – #{batch.last_sequence_number}
+                        #{batch.first_sequence ?? batch.first_sequence_number} – #{batch.last_sequence ?? batch.last_sequence_number}
                       </div>
                     </td>
 
@@ -410,7 +416,7 @@ export const MerkleBatchTable: React.FC<MerkleBatchTableProps> = ({
                     <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                       <VerificationStatusBadge
                         status={batch.verification_status}
-                        lastVerifiedAt={batch.last_verified_at}
+                        lastVerifiedAt={batch.verified_at ?? batch.last_verified_at}
                       />
                     </td>
 

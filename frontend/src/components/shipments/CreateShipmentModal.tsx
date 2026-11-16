@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ShipmentCreatePayload, ShipmentOut } from '../../types/api';
 import { createShipment } from '../../api/shipments';
 import { Button } from '../ui/Button';
-import { ApiError } from '../../api/client';
+import { apiClient, ApiError } from '../../api/client';
 import {
   PackagePlus,
   X,
@@ -13,6 +13,7 @@ import {
   Sparkles,
   AlertCircle,
   RefreshCw,
+  Lock,
 } from 'lucide-react';
 
 interface CreateShipmentModalProps {
@@ -108,6 +109,8 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [adminKey, setAdminKey] = useState<string>(apiClient.getAdminKey() || '');
+  const [saveAdminKey, setSaveAdminKey] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -200,6 +203,16 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
     e.preventDefault();
     if (!validate()) return;
 
+    const trimmedKey = adminKey.trim();
+    if (!trimmedKey) {
+      setApiError('Vui lòng nhập X-Admin-Key (Khóa quản trị của máy chủ Backend)');
+      return;
+    }
+
+    if (saveAdminKey) {
+      apiClient.setAdminKey(trimmedKey);
+    }
+
     setSubmitting(true);
     setApiError(null);
 
@@ -223,7 +236,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
     };
 
     try {
-      const created = await createShipment(payload);
+      const created = await createShipment(payload, trimmedKey);
       onSuccess(created);
       onClose();
     } catch (err: unknown) {
@@ -885,6 +898,73 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
                 </strong>
               </span>
             </div>
+          </div>
+
+          {/* X-Admin-Key Authentication Section */}
+          <div
+            style={{
+              padding: 'var(--space-3) var(--space-4)',
+              backgroundColor: 'var(--color-surface-secondary)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--space-2)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <label
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 600,
+                  color: 'var(--color-text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <Lock size={12} style={{ color: 'var(--color-accent)' }} />
+                X-Admin-Key (Khóa quản trị Backend) *
+              </label>
+              <label
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--color-text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={saveAdminKey}
+                  onChange={(e) => setSaveAdminKey(e.target.checked)}
+                />
+                Lưu vào trình duyệt
+              </label>
+            </div>
+            <input
+              type="password"
+              value={adminKey}
+              onChange={(e) => setAdminKey(e.target.value)}
+              placeholder="Nhập ADMIN_API_KEY cấu hình ở Backend..."
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--color-border)',
+                fontSize: 'var(--text-sm)',
+                backgroundColor: 'var(--color-surface)',
+                fontFamily: 'monospace',
+              }}
+            />
           </div>
 
           {/* Footer Actions */}
