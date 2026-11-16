@@ -338,8 +338,10 @@ Idempotency hiện có: cùng `(device_id, sequence_number)` và cùng canonical
 
 API integrity hiện có:
 
-- `GET /api/v1/shipments/{shipment_id}/integrity`: tổng số batch/record cùng trạng thái verification và anchoring tổng hợp.
-- `GET /api/v1/shipments/{shipment_id}/batches`: danh sách batch đã seal.
+- `GET /api/v1/integrity/summary`: tổng số batch/record cùng trạng thái verification và anchoring toàn hệ thống (shipment_id là null).
+- `GET /api/v1/batches`: danh sách toàn bộ Merkle batch đã seal trong hệ thống.
+- `GET /api/v1/shipments/{shipment_id}/integrity`: tổng số batch/record cùng trạng thái verification và anchoring tổng hợp theo chuyến hàng.
+- `GET /api/v1/shipments/{shipment_id}/batches`: danh sách batch đã seal theo chuyến hàng.
 - `POST /api/v1/shipments/{shipment_id}/batches/seal`: đóng phần telemetry ký số chưa được batch; yêu cầu `X-Admin-Key`, body `{"device_id":"ESP32-001","force":true}`.
 - `GET /api/v1/batches/{batch_id}`: metadata và Merkle root bất biến.
 - `POST /api/v1/batches/{batch_id}/anchor`: yêu cầu `X-Admin-Key`; dispatch/retry đúng outbox và signed transaction đã lưu.
