@@ -23,7 +23,10 @@ from app.services.clock import VirtualClock
 from app.services.telemetry_protocol import canonical_signed_bytes
 
 
-ADMIN = {"X-Admin-Key": "integrity-test-admin"}
+from app.services.auth import create_access_token
+
+ADMIN_TOKEN = create_access_token("admin", "test-jwt-secret-key-at-least-32-chars-long!")
+ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 SHIPMENT = {
     "code": "INTEGRITY-TEST",
     "cargo_type": "vaccine",
@@ -60,7 +63,6 @@ def signed(key, shipment_id: str, sequence: int, temperature: float = 5.0) -> di
 def integrity_api(tmp_path):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'integrity.db').as_posix()}",
-        admin_api_key=ADMIN["X-Admin-Key"],
         integrity_batch_max_records=3,
         integrity_batch_max_age_minutes=5,
     ))
@@ -70,16 +72,16 @@ def integrity_api(tmp_path):
     pem = key.public_key().public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("ascii")
-    with TestClient(app) as client:
-        shipment_id = client.post("/api/v1/shipments", headers=ADMIN, json=SHIPMENT).json()["id"]
-        registered = client.post("/api/v1/devices", headers=ADMIN, json={
+    with TestClient(app, headers=ADMIN) as client:
+        shipment_id = client.post("/api/v1/shipments", json=SHIPMENT).json()["id"]
+        registered = client.post("/api/v1/devices", json={
             "device_id": "ESP32-INTEGRITY",
             "device_name": "Integrity sensor",
         })
         assert registered.status_code == 201
-        assert client.post("/api/v1/devices/ESP32-INTEGRITY/assignments", headers=ADMIN,
+        assert client.post("/api/v1/devices/ESP32-INTEGRITY/assignments",
                            json={"shipment_id": shipment_id, "active": True}).status_code == 200
-        assert client.post("/api/v1/devices/ESP32-INTEGRITY/keys", headers=ADMIN,
+        assert client.post("/api/v1/devices/ESP32-INTEGRITY/keys",
                            json={"key_id": "key-v1", "public_key_pem": pem}).status_code == 201
         yield client, app, key, shipment_id
     app.state.engine.dispose()
@@ -222,8 +224,8 @@ def test_global_batches_and_summary_endpoints(integrity_api):
 
 def test_admin_auth_and_verify_contract(integrity_api):
     client, _app, key, shipment_id = integrity_api
-    # 1. createShipment requires X-Admin-Key
-    no_auth_shipment = client.post("/api/v1/shipments", json={
+    # 1. createShipment requires Bearer JWT auth
+    no_auth_shipment = client.post("/api/v1/shipments", headers={"Authorization": ""}, json={
         "code": "SHIP-NO-AUTH",
         "cargo_type": "vaccine",
         "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
@@ -235,14 +237,31 @@ def test_admin_auth_and_verify_contract(integrity_api):
     assert no_auth_shipment.status_code == 401
     assert no_auth_shipment.json()["error"]["code"] == "UNAUTHORIZED"
 
+    # Old X-Admin-Key header does not grant access
+    old_key_shipment = client.post(
+        "/api/v1/shipments",
+        headers={"Authorization": "", "X-Admin-Key": "integrity-test-admin"},
+        json={
+            "code": "SHIP-OLD-KEY",
+            "cargo_type": "vaccine",
+            "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
+            "destination": {"name": "B", "latitude": 11.0, "longitude": 106.0},
+            "temp_min_c": 2.0,
+            "temp_max_c": 8.0,
+            "insured_amount_vnd": 5000000,
+        },
+    )
+    assert old_key_shipment.status_code == 401
+    assert old_key_shipment.headers.get("www-authenticate") == "Bearer"
+
     # 2. Ingest signed telemetry & auto-seal batch
     for seq in (1, 2, 3):
         client.post(f"/api/v1/shipments/{shipment_id}/telemetry", json=signed(key, shipment_id, seq))
     batch = client.get(f"/api/v1/shipments/{shipment_id}/batches").json()["items"][0]
     batch_id = batch["batch_id"]
 
-    # 3. verifyBatch requires X-Admin-Key
-    no_auth_verify = client.post(f"/api/v1/batches/{batch_id}/verify")
+    # 3. verifyBatch requires Bearer JWT auth
+    no_auth_verify = client.post(f"/api/v1/batches/{batch_id}/verify", headers={"Authorization": ""})
     assert no_auth_verify.status_code == 401
     assert no_auth_verify.json()["error"]["code"] == "UNAUTHORIZED"
 

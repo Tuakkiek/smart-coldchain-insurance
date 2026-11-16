@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -29,13 +28,6 @@ class IngestionError(Exception):
     def __init__(self, status_code: int, code: str, message: str):
         self.status_code, self.code, self.message = status_code, code, message
         super().__init__(message)
-
-
-def require_admin(provided: str | None, expected: str) -> None:
-    if not expected:
-        raise IngestionError(503, "ADMIN_NOT_CONFIGURED", "Admin API is not configured")
-    if not provided or not hmac.compare_digest(provided, expected):
-        raise IngestionError(401, "UNAUTHORIZED", "Admin API key is invalid")
 
 
 def _identity(value: str, name: str) -> str:

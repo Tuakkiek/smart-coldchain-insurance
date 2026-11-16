@@ -23,6 +23,7 @@ from app.services.integrity_anchor_service import configured_integrity_coordinat
 from app.services.insurance_evidence import configured_evidence_coordinator
 from app.services.signed_ingestion import IngestionError
 from app.services.batch_service import BatchServiceError
+from app.services.auth import AuthError, LoginRateLimiter
 
 
 logger = logging.getLogger(__name__)
@@ -34,8 +35,11 @@ def error_response(
     message: str,
     details: list | None = None,
     request: Request | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     headers: dict[str, str] = {}
+    if extra_headers:
+        headers.update(extra_headers)
     if request is not None:
         origin = request.headers.get("origin")
         settings = getattr(request.app.state, "settings", None)
@@ -130,6 +134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.blockchain,
         app.state.integrity_blockchain,
     )
+    app.state.login_rate_limiter = LoginRateLimiter(max_attempts=5, window_seconds=60)
 
     app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(RequestIdMiddleware)
@@ -140,8 +145,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_origins=list(settings.cors_origins),
             allow_credentials=False,
             allow_methods=["GET", "POST", "PATCH"],
-            allow_headers=["Content-Type", "X-Admin-Key"],
+            allow_headers=["Content-Type", "Authorization"],
             expose_headers=["X-Request-ID"],
+        )
+
+    @app.exception_handler(AuthError)
+    async def auth_error(request: Request, exc: AuthError):
+        return error_response(
+            exc.status_code,
+            exc.code,
+            exc.message,
+            request=request,
+            extra_headers=exc.headers,
         )
 
     @app.exception_handler(RequestValidationError)

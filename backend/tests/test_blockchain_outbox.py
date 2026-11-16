@@ -14,6 +14,10 @@ from app.main import create_app
 from app.models import ShipmentEvent, Telemetry
 from app.services.blockchain_outbox import BlockchainCoordinator
 from app.services.clock import VirtualClock
+from app.services.auth import create_access_token
+
+ADMIN_TOKEN = create_access_token("admin", "test-jwt-secret-key-at-least-32-chars-long!")
+ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
 SHIPMENT = {
@@ -77,7 +81,6 @@ def run_breach(tmp_path, gateway_mode):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'chain.db').as_posix()}",
         payout_requires_anchored_evidence=False,
-        admin_api_key="outbox-test-admin",
     ))
     Base.metadata.create_all(app.state.engine)
     app.state.clock = VirtualClock(datetime(2026, 11, 4, tzinfo=timezone.utc))
@@ -85,9 +88,8 @@ def run_breach(tmp_path, gateway_mode):
     setattr(gateway, gateway_mode, True)
     coordinator = BlockchainCoordinator("localhost", gateway, receipt_timeout_seconds=1)
     app.state.blockchain = coordinator
-    with TestClient(app) as client:
-        shipment = client.post("/api/v1/shipments", headers={"X-Admin-Key": "outbox-test-admin"},
-                               json=SHIPMENT).json()
+    with TestClient(app, headers=ADMIN) as client:
+        shipment = client.post("/api/v1/shipments", json=SHIPMENT).json()
         shipment_id = shipment["id"]
         response = client.post(
             f"/api/v1/demo/shipments/{shipment_id}/scenario",
@@ -137,7 +139,7 @@ def test_rpc_failure_preserves_telemetry_and_retry_succeeds(tmp_path):
         gateway.fail_prepare = False
         with app.state.session_factory() as session:
             coordinator.dispatch(session, shipment_id)
-        with TestClient(app) as client:
+        with TestClient(app, headers=ADMIN) as client:
             updated = client.get(f"/api/v1/shipments/{shipment_id}").json()
             events_after = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
         assert updated["insurance"]["payout_status"] == "paid"
@@ -158,7 +160,7 @@ def test_retry_rebroadcasts_same_signed_transaction(tmp_path):
             coordinator.dispatch(session, shipment_id)
         assert gateway.prepare_calls == 1
         assert gateway.broadcasts == ["0xdeadbeef"]
-        with TestClient(app) as client:
+        with TestClient(app, headers=ADMIN) as client:
             assert client.get(f"/api/v1/shipments/{shipment_id}").json()["insurance"]["payout_status"] == "paid"
     finally:
         app.state.engine.dispose()

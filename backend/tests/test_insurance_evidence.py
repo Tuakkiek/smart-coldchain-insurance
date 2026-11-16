@@ -19,7 +19,10 @@ from app.services.insurance_evidence import InsuranceEvidenceCoordinator
 from app.services.telemetry_protocol import canonical_signed_bytes
 
 
-ADMIN = {"X-Admin-Key": "phase6-admin"}
+from app.services.auth import create_access_token
+
+ADMIN_TOKEN = create_access_token("admin", "test-jwt-secret-key-at-least-32-chars-long!")
+ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 PAYOUT_TX = "0x" + "cd" * 32
 ANCHOR_TX = "0x" + "ab" * 32
 
@@ -92,7 +95,6 @@ def _signed(key, shipment_id, sequence):
 def _setup(tmp_path):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'phase6.db').as_posix()}",
-        admin_api_key=ADMIN["X-Admin-Key"],
         max_sample_gap_seconds=300,
         payout_requires_anchored_evidence=True,
     ))
@@ -111,7 +113,7 @@ def _setup(tmp_path):
         serialization.Encoding.PEM,
         serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("ascii")
-    client = TestClient(app)
+    client = TestClient(app, headers=ADMIN)
     shipment_id = client.post("/api/v1/shipments", headers=ADMIN, json={
         "code": "PHASE6-EVIDENCE",
         "cargo_type": "vaccine",
@@ -184,6 +186,7 @@ def test_anchor_pending_blocks_payout_then_confirmed_evidence_releases_once(tmp_
 
         assert client.post(
             f"/api/v1/shipments/{shipment_id}/insurance/reconcile",
+            headers={"Authorization": ""},
         ).status_code == 401
         assert client.post(
             f"/api/v1/shipments/{shipment_id}/insurance/reconcile", headers=ADMIN,

@@ -15,6 +15,48 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainInsurance.json"
 DEFAULT_INTEGRITY_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainDataIntegrity.json"
 
+DEFAULT_TEST_ADMIN_USERNAME = "admin"
+DEFAULT_TEST_ADMIN_PASSWORD = "test-admin-password-12345"
+DEFAULT_TEST_JWT_SECRET = "test-jwt-secret-key-at-least-32-chars-long!"
+
+
+def is_placeholder(val: str) -> bool:
+    cleaned = val.strip()
+    if not cleaned:
+        return True
+    lower = cleaned.lower()
+    if "<" in lower and ">" in lower:
+        return True
+    placeholders = {
+        "placeholder",
+        "changeme",
+        "your-demo-password",
+        "your-admin-password",
+        "your-password",
+        "your-secret-key",
+        "admin123",
+        "replace-me",
+        "secret",
+        "password",
+    }
+    return lower in placeholders
+
+
+def validate_auth_config(
+    admin_username: str,
+    admin_password: str,
+    jwt_secret_key: str,
+    jwt_access_token_expire_minutes: int,
+) -> None:
+    if not admin_username or is_placeholder(admin_username):
+        raise ValueError("ADMIN_USERNAME is required and cannot be empty or placeholder")
+    if not admin_password or is_placeholder(admin_password):
+        raise ValueError("ADMIN_PASSWORD is required and cannot be empty or placeholder")
+    if not jwt_secret_key or is_placeholder(jwt_secret_key) or len(jwt_secret_key.encode("utf-8")) < 32:
+        raise ValueError("JWT_SECRET_KEY must be at least 32 bytes and cannot be a placeholder")
+    if jwt_access_token_expire_minutes <= 0:
+        raise ValueError("JWT_ACCESS_TOKEN_EXPIRE_MINUTES must be positive")
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -23,7 +65,11 @@ class Settings:
     log_level: str = "INFO"
     cors_origins: tuple[str, ...] = ()
     sensor_gap_minutes: int = 5
-    admin_api_key: str = ""
+    admin_username: str = DEFAULT_TEST_ADMIN_USERNAME
+    admin_password: str = DEFAULT_TEST_ADMIN_PASSWORD
+    jwt_secret_key: str = DEFAULT_TEST_JWT_SECRET
+    jwt_access_token_expire_minutes: int = 30
+    trusted_proxies: tuple[str, ...] = ("127.0.0.1", "::1")
     max_request_body_bytes: int = 8192
     signed_rate_limit_per_minute: int = 120
     max_sample_gap_seconds: int = 300
@@ -43,6 +89,14 @@ class Settings:
     blockchain_confirmations: int = 1
     blockchain_receipt_timeout_seconds: int = 15
     public_api_base_url: str = ""
+
+    def __post_init__(self) -> None:
+        validate_auth_config(
+            self.admin_username,
+            self.admin_password,
+            self.jwt_secret_key,
+            self.jwt_access_token_expire_minutes,
+        )
 
 
 def _mysql_url() -> URL:
@@ -83,15 +137,34 @@ def load_settings() -> Settings:
     app_env = os.getenv("APP_ENV", "development").strip().lower()
     if app_env not in {"development", "test", "production"}:
         raise ValueError("APP_ENV must be development, test or production")
-    admin_api_key = os.getenv("ADMIN_API_KEY", "")
+
+    admin_username = os.getenv("ADMIN_USERNAME", "").strip()
+    admin_password = os.getenv("ADMIN_PASSWORD", "")
+    jwt_secret_key = os.getenv("JWT_SECRET_KEY", "")
+    raw_expire = os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30").strip()
+    try:
+        jwt_access_token_expire_minutes = int(raw_expire)
+    except ValueError as exc:
+        raise ValueError("JWT_ACCESS_TOKEN_EXPIRE_MINUTES must be an integer") from exc
+
+    raw_trusted_proxies = os.getenv("TRUSTED_PROXIES", "127.0.0.1,::1")
+    trusted_proxies = tuple(
+        p.strip() for p in raw_trusted_proxies.split(",") if p.strip()
+    )
+
+    validate_auth_config(
+        admin_username,
+        admin_password,
+        jwt_secret_key,
+        jwt_access_token_expire_minutes,
+    )
+
     cors_origins = tuple(
         origin.strip().rstrip("/")
         for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
         if origin.strip()
     )
     if app_env == "production":
-        if len(admin_api_key) < 32:
-            raise ValueError("ADMIN_API_KEY must contain at least 32 characters in production")
         if not cors_origins or "*" in cors_origins:
             raise ValueError("CORS_ORIGINS must be an explicit allowlist in production")
     enabled_text = os.getenv("BLOCKCHAIN_ENABLED", "false").lower()
@@ -161,7 +234,11 @@ def load_settings() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         cors_origins=cors_origins,
         sensor_gap_minutes=sensor_gap_minutes,
-        admin_api_key=admin_api_key,
+        admin_username=admin_username,
+        admin_password=admin_password,
+        jwt_secret_key=jwt_secret_key,
+        jwt_access_token_expire_minutes=jwt_access_token_expire_minutes,
+        trusted_proxies=trusted_proxies,
         max_request_body_bytes=max_request_body_bytes,
         signed_rate_limit_per_minute=signed_rate_limit_per_minute,
         max_sample_gap_seconds=max_sample_gap_seconds,

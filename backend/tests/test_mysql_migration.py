@@ -70,12 +70,12 @@ def test_database_url_takes_precedence_and_uses_pymysql(monkeypatch):
 
 def test_production_requires_admin_secret_and_explicit_cors(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("ADMIN_API_KEY", "short")
+    monkeypatch.setenv("JWT_SECRET_KEY", "short")
     monkeypatch.setenv("CORS_ORIGINS", "https://frontend.example.com")
-    with pytest.raises(ValueError, match="ADMIN_API_KEY"):
+    with pytest.raises(ValueError, match="JWT_SECRET_KEY"):
         load_settings()
 
-    monkeypatch.setenv("ADMIN_API_KEY", "a" * 32)
+    monkeypatch.setenv("JWT_SECRET_KEY", "a" * 32)
     monkeypatch.setenv("CORS_ORIGINS", "*")
     with pytest.raises(ValueError, match="CORS_ORIGINS"):
         load_settings()

@@ -17,13 +17,30 @@ adapters are configured. Verification alone does not imply anchoring or payout.
 
 ## Phase 2 — đăng ký thiết bị và nhận telemetry có chữ ký
 
-Đặt `ADMIN_API_KEY` là chuỗi ngẫu nhiên dài trong `backend/.env`. Trên MySQL hiện có,
-sao lưu dữ liệu rồi chạy `python -m app.cli upgrade-db` từ `backend/`; với DB mới dùng
-`python -m app.cli init-db`. Cả hai chạy tới head **`20261115_03`**, gồm các revision
-signed telemetry/Merkle trước đó, thêm `devices.device_name` (backfill bằng ID)
-và unique generated-column index `uq_device_assignment_active`. Không sửa revision cũ.
+Thiết lập xác thực Admin duy nhất qua biến môi trường trong `backend/.env`:
+- `ADMIN_USERNAME`: Tên đăng nhập của tài khoản Admin duy nhất.
+- `ADMIN_PASSWORD`: Mật khẩu tài khoản Admin.
+- `JWT_SECRET_KEY`: Khóa bí mật HMAC-SHA256 (chuỗi ngẫu nhiên tối thiểu 32 byte / 256 bit).
+- `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`: Thời gian hiệu lực token (mặc định 30 phút).
+- `TRUSTED_PROXIES`: Danh sách IP proxy tin cậy (mặc định `127.0.0.1,::1`) để phân giải client IP chống giả mạo header `X-Forwarded-For`.
 
-Quy trình admin mới, mọi thao tác ghi bên dưới đều có header `X-Admin-Key`:
+*Lưu ý: Cơ chế `ADMIN_API_KEY` và header `X-Admin-Key` cũ đã bị xóa hoàn toàn khỏi backend. Backend không hỗ trợ dùng song song API key và JWT hoặc bỏ qua xác thực khi thiếu cấu hình. Cấu hình thiếu, rỗng hoặc chứa giá trị placeholder sẽ kích hoạt fail-closed ngay khi ứng dụng khởi động.*
+
+Admin đăng nhập lấy Bearer token:
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"<ADMIN_USERNAME>","password":"<ADMIN_PASSWORD>"}'
+```
+Response `200 OK`:
+```json
+{"access_token":"<jwt_token>","token_type":"bearer"}
+```
+Endpoint login được bảo vệ bởi rate limiter 5 lần/phút/IP (trả về `429 Too Many Requests` cùng header `Retry-After` khi vượt quá).
+
+Trên MySQL hiện có, sao lưu dữ liệu rồi chạy `python -m app.cli upgrade-db` từ `backend/`; với DB mới dùng `python -m app.cli init-db`. Cả hai chạy tới head **`20261115_03`**, gồm các revision signed telemetry/Merkle trước đó, thêm `devices.device_name` (backfill bằng ID) và unique generated-column index `uq_device_assignment_active`. Không sửa revision cũ.
+
+Quy trình admin mới, mọi thao tác quản trị và giám sát đều yêu cầu header `Authorization: Bearer <access_token>`:
 
 1. **Đăng ký device** qua `POST /api/v1/devices`, chỉ hai trường:
 
@@ -52,8 +69,8 @@ Quy trình admin mới, mọi thao tác ghi bên dưới đều có header `X-Ad
    chưa chứng minh đã nạp firmware đúng; xác nhận bằng mẫu signed đầu tiên.
 
 DTO đăng ký gộp cũ không còn được nhận. Frontend phải chuyển sang form ID/tên và gọi
-assignment riêng, gửi admin header khi tạo shipment/list device; các endpoint đọc monitoring
-vẫn như cũ. `POST /batches/{batch_id}/verify` cũng yêu cầu admin. Không thêm alias `/assign`
+assignment riêng, gửi header `Authorization: Bearer <access_token>` khi tạo shipment, list device,
+hay xem dữ liệu telemetry/events/batches. `POST /batches/{batch_id}/verify` cũng yêu cầu admin JWT. Không thêm alias `/assign`
 hoặc `/public-key`, không thay protocol/ABI/logic bảo hiểm.
 
 Admin vẫn có thể thêm/revoke key, revoke device và bật/tắt assignment trong `/docs`.
@@ -190,7 +207,8 @@ Telemetry ký số hợp lệ được nhóm riêng theo `(shipment_id, device_i
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/shipments/<shipment-id>/batches/seal \
-  -H "Content-Type: application/json" -H "X-Admin-Key: <admin-key>" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
   -d '{"device_id":"ESP32-001","force":true}'
 ```
 
@@ -206,9 +224,9 @@ Sau khi lấy code mới, chạy `./.venv/Scripts/python.exe -m app.cli upgrade-
 ./.venv/Scripts/python.exe -m app.cli retry-integrity --batch-id <UUID_BATCH>
 ```
 
-Hoặc gọi `POST /api/v1/batches/{batch_id}/anchor` với `X-Admin-Key`. Backend lưu transaction hash và raw signed transaction trong outbox trước khi broadcast, không trả raw transaction qua API, kiểm tra chain ID/code/role, chờ receipt đủ `BLOCKCHAIN_CONFIRMATIONS`, rồi so sánh shipment/device key, root, sequence bounds và record count đọc từ contract. RPC timeout giữ trạng thái pending và retry cùng transaction; receipt revert/readback mismatch fail closed.
+Hoặc gọi `POST /api/v1/batches/{batch_id}/anchor` với `Authorization: Bearer <access_token>`. Backend lưu transaction hash và raw signed transaction trong outbox trước khi broadcast, không trả raw transaction qua API, kiểm tra chain ID/code/role, chờ receipt đủ `BLOCKCHAIN_CONFIRMATIONS`, rồi so sánh shipment/device key, root, sequence bounds và record count đọc từ contract. RPC timeout giữ trạng thái pending và retry cùng transaction; receipt revert/readback mismatch fail closed.
 
-Khi một anchor được xác nhận, Backend verify lại batch và tự reconcile evidence. Có thể chạy thủ công `POST /api/v1/shipments/{shipment_id}/insurance/reconcile` với `X-Admin-Key`; endpoint idempotent và không tạo payout thứ hai.
+Khi một anchor được xác nhận, Backend verify lại batch và tự reconcile evidence. Có thể chạy thủ công `POST /api/v1/shipments/{shipment_id}/insurance/reconcile` với `Authorization: Bearer <access_token>`; endpoint idempotent và không tạo payout thứ hai.
 
 ## Tích hợp Blockchain (Phase 5)
 
