@@ -82,14 +82,19 @@ class MockAdapter {
     if (batch.tamper_detected || batch.batch_id === 'BATCH-20261107-003') {
       batch.verification_status = 'DATA_INTEGRITY_FAILED';
       batch.last_verified_at = verifiedAt;
+      batch.verified_at = verifiedAt;
       batch.tamper_detected = true;
 
       const recalculatedRoot =
         '0x99aa887766554433221100ffeeddccbbaa99887766554433221100ffeeddccbb';
 
       return {
+        ...batch,
         batch_id: batch.batch_id,
         verification_status: 'DATA_INTEGRITY_FAILED',
+        calculated_root: recalculatedRoot,
+        merkle_root: batch.merkle_root,
+        on_chain_match: false,
         recalculated_root: recalculatedRoot,
         expected_root: batch.merkle_root,
         matched: false,
@@ -101,11 +106,16 @@ class MockAdapter {
     } else {
       batch.verification_status = 'MATCHED';
       batch.last_verified_at = verifiedAt;
+      batch.verified_at = verifiedAt;
       batch.tamper_detected = false;
 
       return {
+        ...batch,
         batch_id: batch.batch_id,
         verification_status: 'MATCHED',
+        calculated_root: batch.merkle_root,
+        merkle_root: batch.merkle_root,
+        on_chain_match: batch.anchor_status === 'DATA_ANCHORED' ? true : null,
         recalculated_root: batch.merkle_root,
         expected_root: batch.merkle_root,
         matched: true,
@@ -210,15 +220,15 @@ class MockAdapter {
       assigned_shipment_id: null,
       assigned_shipment_code: null,
       signature_status: 'UNKNOWN_KEY',
-      completeness_status: 'OFFLINE',
+      completeness_status: 'UNKNOWN',
       registered_at: new Date().toISOString(),
       health: {
         device_id: trimmedId,
-        last_sequence_number: 0,
-        missing_sequence_count: 0,
+        last_sequence_number: null,
+        missing_sequence_count: null,
         last_heartbeat_at: null,
         last_seen_at: null,
-        online_status: 'OFFLINE',
+        online_status: 'UNKNOWN',
         firmware_version: 'v1.2.0',
       },
     };

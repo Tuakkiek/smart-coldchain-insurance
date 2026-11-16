@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { BatchVerifyResultOut, IntegrityBatch } from '../../types/api';
 import { Button } from '../ui/Button';
-import { VerificationStatusBadge } from '../data-display/StatusBadge';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -18,6 +17,7 @@ interface BatchVerificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   result: BatchVerifyResultOut | null;
+  error?: string | null;
   batch?: IntegrityBatch | null;
   loading?: boolean;
 }
@@ -26,6 +26,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
   isOpen,
   onClose,
   result,
+  error,
   batch,
   loading = false,
 }) => {
@@ -39,8 +40,15 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const isMatched = result?.matched ?? false;
+  const isMatched = result?.verification_status === 'MATCHED';
   const isFailed = result?.verification_status === 'DATA_INTEGRITY_FAILED';
+
+  let headerBg = 'var(--color-surface-secondary)';
+  if (error) {
+    headerBg = '#FFFBEB';
+  } else if (isFailed) {
+    headerBg = '#FFF1F2';
+  }
 
   return (
     <div
@@ -81,11 +89,13 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            backgroundColor: isFailed ? '#FFF1F2' : 'var(--color-surface-secondary)',
+            backgroundColor: headerBg,
           }}
         >
           <div className="flex-row items-center gap-2">
-            {isFailed ? (
+            {error ? (
+              <AlertTriangle size={22} style={{ color: '#D97706' }} />
+            ) : isFailed ? (
               <ShieldAlert size={22} style={{ color: '#E11D48' }} />
             ) : (
               <ShieldCheck size={22} style={{ color: 'var(--color-success)' }} />
@@ -95,10 +105,12 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                 style={{
                   fontSize: 'var(--text-md)',
                   fontWeight: 600,
-                  color: isFailed ? '#9F1239' : 'var(--color-text-primary)',
+                  color: error ? '#92400E' : isFailed ? '#9F1239' : 'var(--color-text-primary)',
                 }}
               >
-                Kết quả Kiểm tra Tính toàn vẹn Merkle Batch
+                {error
+                  ? 'Lỗi Yêu Cầu Xác Minh Merkle Batch'
+                  : 'Kết quả Kiểm tra Tính toàn vẹn Merkle Batch'}
               </div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
                 Mã Batch: <span className="font-mono">{result?.batch_id || batch?.batch_id}</span>
@@ -151,6 +163,55 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                 Hệ thống đang duyệt toàn bộ accepted telemetry của batch từ MySQL, tính toán cây Merkle theo chuẩn MERKLE-v1 và đối chiếu với Root đã neo on-chain.
               </p>
             </div>
+          ) : error ? (
+            /* Error State Banner (Network/Auth/Server error) */
+            <div
+              style={{
+                padding: 'var(--space-4)',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: '#FFFBEB',
+                border: '1px solid #FCD34D',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <AlertTriangle size={24} style={{ color: '#D97706', flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <div
+                  style={{
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 700,
+                    color: '#92400E',
+                  }}
+                >
+                  KHÔNG THỂ THỰC HIỆN XÁC MINH
+                </div>
+                <div
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color: '#78350F',
+                    marginTop: '4px',
+                    lineHeight: '18px',
+                  }}
+                >
+                  {error}
+                </div>
+                <div
+                  style={{
+                    fontSize: '11px',
+                    color: '#92400E',
+                    marginTop: '8px',
+                    lineHeight: '16px',
+                    padding: '6px 8px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+                    borderRadius: 'var(--radius-sm)',
+                  }}
+                >
+                  <strong>Lưu ý:</strong> Lỗi kết nối, hết thời gian chờ hoặc quyền truy cập (401/403) không đồng nghĩa dữ liệu bị can thiệp (tamper). Trạng thái toàn vẹn của batch được giữ nguyên theo kết luận backend.
+                </div>
+              </div>
+            </div>
           ) : result ? (
             <>
               {/* Status Outcome Banner */}
@@ -178,7 +239,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                       color: isFailed ? '#9F1239' : 'var(--color-success)',
                     }}
                   >
-                    {isFailed ? 'PHÁT HIỆN SAI LỆCH TOÀN VẸN (INTEGRITY FAILED)' : 'XÁC MINH TOÀN VẸN THÀNH CÔNG (MATCHED)'}
+                    {isFailed ? 'PHÁT HIỆN SAI LỆCH TOÀN VẸN (DATA_INTEGRITY_FAILED)' : 'XÁC MINH TOÀN VẸN THÀNH CÔNG (MATCHED)'}
                   </div>
                   <div
                     style={{
@@ -209,7 +270,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                   ĐỐI CHIẾU MERKLE ROOT (CHUẨN 0x + 64 KÝ TỰ HEX)
                 </div>
 
-                {/* Expected On-chain Root */}
+                {/* Expected Merkle Root */}
                 <div>
                   <div
                     style={{
@@ -221,9 +282,9 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                       marginBottom: '4px',
                     }}
                   >
-                    <span>1. Merkle Root đã neo on-chain (Kỳ vọng):</span>
+                    <span>1. Merkle Root đã lưu trữ (Kỳ vọng):</span>
                     <button
-                      onClick={() => copyToClipboard(result.expected_root, 'expected')}
+                      onClick={() => copyToClipboard(result.expected_root || result.merkle_root, 'expected')}
                       style={{
                         background: 'none',
                         border: 'none',
@@ -252,7 +313,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                       lineHeight: '16px',
                     }}
                   >
-                    {result.expected_root}
+                    {result.expected_root || result.merkle_root}
                   </div>
                 </div>
 
@@ -271,7 +332,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                   >
                     <span>2. Merkle Root tính lại từ Database (Thực tế):</span>
                     <button
-                      onClick={() => copyToClipboard(result.recalculated_root, 'recalculated')}
+                      onClick={() => copyToClipboard(result.recalculated_root || result.calculated_root || '', 'recalculated')}
                       style={{
                         background: 'none',
                         border: 'none',
@@ -301,7 +362,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                       lineHeight: '16px',
                     }}
                   >
-                    {result.recalculated_root}
+                    {result.recalculated_root || result.calculated_root || 'N/A'}
                   </div>
                 </div>
 
@@ -316,14 +377,14 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                     borderTop: '1px solid var(--color-border-subtle)',
                   }}
                 >
-                  <span style={{ color: 'var(--color-text-tertiary)' }}>Kết luận đối chiếu:</span>
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>Kết luận đối chiếu database:</span>
                   {isMatched ? (
                     <span style={{ color: 'var(--color-success)', fontWeight: 600 }}>
                       ✓ Trùng khớp hoàn toàn (MATCHED)
                     </span>
                   ) : (
                     <span style={{ color: '#E11D48', fontWeight: 700 }}>
-                      ✗ Sai lệch dữ liệu (DATA_INTEGRITY_FAILED)
+                      ✗ Phát hiện sai lệch (DATA_INTEGRITY_FAILED)
                     </span>
                   )}
                 </div>
@@ -341,13 +402,19 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                 <div>
                   <span style={{ color: 'var(--color-text-tertiary)' }}>Thời điểm xác minh:</span>
                   <div style={{ fontWeight: 600, marginTop: '2px' }}>
-                    {new Date(result.verified_at).toLocaleString('vi-VN')}
+                    {result.verified_at ? new Date(result.verified_at).toLocaleString('vi-VN') : 'Vừa xác minh'}
                   </div>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--color-text-tertiary)' }}>Mạng Blockchain:</span>
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>Đối chiếu On-chain:</span>
                   <div style={{ fontWeight: 600, marginTop: '2px' }}>
-                    {result.network || 'Ethereum Localnet / Hardhat'}
+                    {result.on_chain_match === true ? (
+                      <span style={{ color: 'var(--color-success)' }}>✓ Đã đối chiếu & khớp trên Blockchain</span>
+                    ) : result.on_chain_match === false ? (
+                      <span style={{ color: '#E11D48' }}>✗ Sai lệch với Root trên Blockchain</span>
+                    ) : (
+                      <span style={{ color: 'var(--color-text-secondary)' }}>Chưa đối chiếu trên chain (Batch chưa neo)</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -368,7 +435,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
               >
                 <Info size={14} style={{ flexShrink: 0, marginTop: '1px' }} />
                 <span>
-                  <strong>Nguyên tắc Kiến trúc:</strong> Frontend gọi endpoint xác minh từ Backend qua REST API, không tự băm SHA-256 ở client và không lưu giữ khóa riêng tư (Private Key). Merkle root được lưu trữ bất biến trên Smart Contract và làm căn cứ đối chiếu tính toàn vẹn.
+                  <strong>Nguyên tắc Kiến trúc:</strong> Frontend gọi endpoint xác minh từ Backend qua REST API, không tự băm SHA-256 ở client và không lưu giữ khóa riêng tư (Private Key). Merkle root được lưu trữ bất biến và làm căn cứ đối chiếu tính toàn vẹn.
                 </span>
               </div>
             </>
@@ -393,4 +460,3 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
     </div>
   );
 };
-

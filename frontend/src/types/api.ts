@@ -13,7 +13,7 @@ export interface Place {
 
 export type LocationSource = 'backend_simulated';
 
-export type SignatureStatus = 'VALID' | 'INVALID' | 'UNKNOWN_KEY';
+export type SignatureStatus = 'VALID' | 'INVALID' | 'UNKNOWN_KEY' | 'UNSIGNED' | 'UNKNOWN';
 export type DataStatus = 'DATA_VERIFIED' | 'DATA_INCOMPLETE' | 'INVALID';
 export type CompletenessStatus = 'COMPLETE' | 'DATA_INCOMPLETE' | 'OFFLINE' | 'UNKNOWN';
 export type DeviceOnlineStatus = 'ONLINE' | 'OFFLINE' | 'DEGRADED' | 'UNKNOWN';
@@ -28,7 +28,7 @@ export interface MissingSequenceRange {
 export interface DeviceHealthOut {
   device_id: string;
   last_sequence_number: number | null;
-  missing_sequence_count: number;
+  missing_sequence_count: number | null;
   last_heartbeat_at: string | null;
   last_seen_at: string | null;
   online_status: DeviceOnlineStatus;
@@ -96,7 +96,10 @@ export interface DeviceItemOut {
   signature_status: SignatureStatus;
   completeness_status: CompletenessStatus;
   health: DeviceHealthOut;
-  registered_at: string;
+  registered_at?: string;
+  last_seen_at?: string | null;
+  missing_sequence_count?: number | null;
+  last_sequence?: number | null;
 }
 
 export interface DevicesOut {
@@ -113,25 +116,46 @@ export interface DeviceMissingSequencesOut {
 export type AnchorStatus = 'NOT_READY' | 'BLOCKCHAIN_PENDING' | 'DATA_ANCHORED' | 'BLOCKCHAIN_FAILED';
 export type VerificationStatus = 'NOT_CHECKED' | 'MATCHED' | 'DATA_INTEGRITY_FAILED';
 
+export interface IntegrityAnchorTransactionOut {
+  network?: string | null;
+  network_id?: string | null;
+  transaction_hash: string | null;
+  status?: 'PENDING' | 'SUBMITTED' | 'CONFIRMED' | 'FAILED';
+  attempt_count?: number;
+  last_error?: string | null;
+  submitted_at?: string | null;
+  confirmed_at?: string | null;
+  block_hash?: string | null;
+  block_number?: number | null;
+  anchored_at?: string | null;
+}
+
 export interface IntegrityBatch {
   batch_id: string;
   shipment_id: string;
   shipment_code?: string;
   device_id: string;
-  batch_start_time: string;
-  batch_end_time: string;
+  status?: 'SEALED';
+  first_sequence?: number;
+  last_sequence?: number;
+  first_sequence_number?: number;
+  last_sequence_number?: number;
   record_count: number;
-  first_sequence_number: number;
-  last_sequence_number: number;
   hash_version: string;
   merkle_root: string;
   anchor_status: AnchorStatus;
   verification_status: VerificationStatus;
-  anchor_tx_hash: string | null;
-  anchored_at: string | null;
-  last_verified_at: string | null;
+  sealed_at?: string;
+  verified_at?: string | null;
+  last_verified_at?: string | null;
+  anchor_transaction?: IntegrityAnchorTransactionOut | null;
+  anchor_tx_hash?: string | null;
   tamper_detected?: boolean;
   failure_reason?: string | null;
+  // Legacy UI compat fields if needed:
+  batch_start_time?: string;
+  batch_end_time?: string;
+  anchored_at?: string | null;
 }
 
 export interface IntegrityBatchesOut {
@@ -140,24 +164,29 @@ export interface IntegrityBatchesOut {
 }
 
 export interface IntegritySummaryOut {
-  total_records: number;
-  verified_records: number;
-  invalid_records: number;
-  missing_records: number;
-  total_batches: number;
-  anchored_batches: number;
-  failed_integrity_batches: number;
+  shipment_id?: string | null;
+  batch_count: number;
+  record_count: number;
+  verification_status: VerificationStatus;
+  anchor_status: AnchorStatus;
+  // Aliases for compat:
+  total_records?: number;
+  verified_records?: number;
+  invalid_records?: number;
+  missing_records?: number;
+  total_batches?: number;
+  anchored_batches?: number;
+  failed_integrity_batches?: number;
 }
 
-export interface BatchVerifyResultOut {
-  batch_id: string;
-  verification_status: VerificationStatus;
-  recalculated_root: string;
-  expected_root: string;
-  matched: boolean;
-  verified_at: string;
-  message: string;
+export interface BatchVerifyResultOut extends IntegrityBatch {
+  calculated_root: string | null;
+  on_chain_match: boolean | null;
+  expected_root?: string;
+  recalculated_root?: string;
+  matched?: boolean;
   network?: string;
+  message?: string;
 }
 
 export interface LocationOut {
@@ -176,6 +205,8 @@ export interface LatestTelemetryOut {
   recorded_at: string | null;
   received_at: string;
   signature_status?: SignatureStatus;
+  completeness_status?: CompletenessStatus;
+  missing_sequences?: Record<string, number> | null;
   data_status?: DataStatus;
 }
 

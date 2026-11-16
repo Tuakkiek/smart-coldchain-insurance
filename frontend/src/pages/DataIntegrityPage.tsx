@@ -7,7 +7,6 @@ import { LoadingState } from '../components/feedback/LoadingState';
 import { ErrorState } from '../components/feedback/ErrorState';
 import {
   BackendStatusAlert,
-  IntegrityPrincipleNotice,
 } from '../components/feedback/BackendStatusAlert';
 import { useBackendConnectionState } from '../components/feedback/ConnectionStatus';
 import { MerkleBatchTable } from '../components/integrity/MerkleBatchTable';
@@ -24,14 +23,13 @@ import {
   IntegritySummaryOut,
   BatchVerifyResultOut,
 } from '../types/api';
-import { ApiError } from '../api/client';
+import { apiClient, ApiError } from '../api/client';
 import {
   Layers,
   ShieldCheck,
   ShieldAlert,
   AlertTriangle,
   RefreshCw,
-  Hash,
   Database,
   Link as LinkIcon,
   CheckCircle2,
@@ -47,10 +45,13 @@ export const DataIntegrityPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isColdStart, setIsColdStart] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [isStale, setIsStale] = useState(false);
+  const [staleError, setStaleError] = useState<string | null>(null);
 
   // Verification State & Modal
   const [verifyingBatchId, setVerifyingBatchId] = useState<string | null>(null);
   const [verificationResult, setVerificationResult] = useState<BatchVerifyResultOut | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [isVerifyingLoading, setIsVerifyingLoading] = useState(false);
 
@@ -78,18 +79,25 @@ export const DataIntegrityPage: React.FC = () => {
       if (isMountedRef.current) {
         setBatches(batchesRes.items);
         setSummary(summaryRes);
+        setIsStale(false);
+        setStaleError(null);
       }
     } catch (err: unknown) {
       if (isMountedRef.current) {
-        if (err instanceof ApiError) {
-          setIsColdStart(!!err.isBackendColdStart);
-          setError(err.message);
+        if (!isBackground) {
+          if (err instanceof ApiError) {
+            setIsColdStart(!!err.isBackendColdStart);
+            setError(err.message);
+          } else {
+            setError(
+              err instanceof Error
+                ? err.message
+                : 'Lỗi không xác định khi tải danh sách Merkle Batch'
+            );
+          }
         } else {
-          setError(
-            err instanceof Error
-              ? err.message
-              : 'Lỗi không xác định khi tải danh sách Merkle Batch'
-          );
+          setIsStale(true);
+          setStaleError(err instanceof Error ? err.message : 'Lỗi kết nối khi polling nền');
         }
       }
     } finally {
@@ -121,16 +129,19 @@ export const DataIntegrityPage: React.FC = () => {
    * Action handler: "Kiểm tra lại tính toàn vẹn" (Verify batch)
    */
   const handleVerifyBatch = async (batchId: string) => {
-    const targetBatch = batches.find((b) => b.batch_id === batchId);
     setVerifyingBatchId(batchId);
     setIsVerifyingLoading(true);
     setIsVerifyModalOpen(true);
     setVerificationResult(null);
+    setVerifyError(null);
+
+    const adminKey = apiClient.getAdminKey() || undefined;
 
     try {
-      const result = await verifyBatch(batchId);
+      const result = await verifyBatch(batchId, adminKey);
       if (isMountedRef.current) {
         setVerificationResult(result);
+        const isTampered = result.verification_status === 'DATA_INTEGRITY_FAILED';
 
         // Update local batch list state with the new verification status
         setBatches((prev) =>
@@ -140,8 +151,9 @@ export const DataIntegrityPage: React.FC = () => {
                   ...b,
                   verification_status: result.verification_status,
                   last_verified_at: result.verified_at,
-                  tamper_detected: !result.matched,
-                  failure_reason: !result.matched ? result.message : null,
+                  verified_at: result.verified_at,
+                  tamper_detected: isTampered,
+                  failure_reason: isTampered ? result.message : null,
                 }
               : b
           )
@@ -155,29 +167,12 @@ export const DataIntegrityPage: React.FC = () => {
                   ...prev,
                   verification_status: result.verification_status,
                   last_verified_at: result.verified_at,
-                  tamper_detected: !result.matched,
-                  failure_reason: !result.matched ? result.message : null,
+                  verified_at: result.verified_at,
+                  tamper_detected: isTampered,
+                  failure_reason: isTampered ? result.message : null,
                 }
               : null
           );
-        }
-
-        // Update summary failed count if needed
-        if (summary) {
-          setSummary((prev) => {
-            if (!prev) return prev;
-            const updatedBatches = batches.map((b) =>
-              b.batch_id === batchId
-                ? { ...b, verification_status: result.verification_status }
-                : b
-            );
-            return {
-              ...prev,
-              failed_integrity_batches: updatedBatches.filter(
-                (b) => b.verification_status === 'DATA_INTEGRITY_FAILED'
-              ).length,
-            };
-          });
         }
       }
     } catch (err: unknown) {
@@ -185,16 +180,9 @@ export const DataIntegrityPage: React.FC = () => {
         const errorMsg =
           err instanceof Error
             ? err.message
-            : 'Lỗi kết nối khi gửi yêu cầu xác minh tới Backend';
-        setVerificationResult({
-          batch_id: batchId,
-          verification_status: 'DATA_INTEGRITY_FAILED',
-          recalculated_root: '0x0000000000000000000000000000000000000000000000000000000000000000',
-          expected_root: targetBatch?.merkle_root || '0x...',
-          matched: false,
-          verified_at: new Date().toISOString(),
-          message: `Không thể hoàn tất xác minh: ${errorMsg}`,
-        });
+            : 'Lỗi kết nối hoặc quyền truy cập khi gửi yêu cầu xác minh tới Backend';
+        setVerifyError(errorMsg);
+        // CRITICAL: Do NOT fabricate DATA_INTEGRITY_FAILED on API/network errors!
       }
     } finally {
       if (isMountedRef.current) {
@@ -245,7 +233,7 @@ export const DataIntegrityPage: React.FC = () => {
 
   const totalBatches = batches.length;
   const anchoredBatches = batches.filter((b) => b.anchor_status === 'DATA_ANCHORED').length;
-  const matchedBatches = batches.filter((b) => b.verification_status === 'MATCHED').length;
+  const totalRecordsCalculated = batches.reduce((acc, b) => acc + (b.record_count || 0), 0);
 
   return (
     <div>
@@ -263,27 +251,26 @@ export const DataIntegrityPage: React.FC = () => {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: 'var(--space-2)',
               fontSize: 'var(--text-xs)',
-              color: 'var(--color-text-secondary)',
               cursor: 'pointer',
+              color: 'var(--color-text-secondary)',
             }}
           >
             <input
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
-              style={{ cursor: 'pointer' }}
             />
-            <span>Tự động làm mới (10s)</span>
+            Tự động đồng bộ (10s)
           </label>
 
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => fetchData(true)}
+            onClick={() => fetchData(false)}
             loading={refreshing}
-            icon={<RefreshCw size={14} />}
+            icon={<RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />}
           >
             Làm mới
           </Button>
@@ -292,31 +279,11 @@ export const DataIntegrityPage: React.FC = () => {
 
       <PageHeader
         title="Toàn vẹn Dữ liệu & Merkle Batches"
-        description="Quan sát các batch dữ liệu cảm biến đã đóng niêm phong, Merkle root neo trên Blockchain và kiểm tra tính toàn vẹn chống can thiệp."
+        description="Quản lý tính toàn vẹn dữ liệu cảm biến và kiểm tra Merkle root neo on-chain."
         action={
           <div className="flex-row items-center gap-2">
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-pill)',
-                backgroundColor: failedBatches.length > 0 ? '#FFE4E6' : 'var(--color-success-soft)',
-                color: failedBatches.length > 0 ? '#E11D48' : 'var(--color-success)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-              }}
-            >
-              {failedBatches.length > 0 ? (
-                <>
-                  <ShieldAlert size={14} /> Có {failedBatches.length} batch sai lệch
-                </>
-              ) : (
-                <>
-                  <ShieldCheck size={14} /> Hệ thống toàn vẹn 100%
-                </>
-              )}
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
+              Chuẩn băm: <strong>MERKLE-v1</strong> • Chữ ký: <strong>ECDSA P-256</strong>
             </span>
           </div>
         }
@@ -330,6 +297,31 @@ export const DataIntegrityPage: React.FC = () => {
         retrying={refreshing}
       />
 
+      {/* Stale Polling Warning Banner */}
+      {isStale && (
+        <div
+          style={{
+            padding: 'var(--space-2) var(--space-4)',
+            backgroundColor: '#FFFBEB',
+            border: '1px solid #FCD34D',
+            borderRadius: 'var(--radius-md)',
+            color: '#92400E',
+            fontSize: 'var(--text-xs)',
+            marginBottom: 'var(--space-4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span>
+            ⚠️ <strong>Dữ liệu chưa cập nhật:</strong> Quá trình polling nền gặp sự cố ({staleError}). Đang hiển thị dữ liệu từ lần tải gần nhất.
+          </span>
+          <Button size="sm" variant="secondary" onClick={() => fetchData(false)}>
+            Thử lại ngay
+          </Button>
+        </div>
+      )}
+
       {/* 5 KPI Metric Cards */}
       <div
         className="metrics-grid"
@@ -339,24 +331,24 @@ export const DataIntegrityPage: React.FC = () => {
         }}
       >
         <MetricCard
-          title="Tổng số bản ghi"
-          value={summary?.total_records ?? 1250}
-          subtitle="Mẫu telemetry đã nhận"
+          title="Tổng số bản ghi trong batch"
+          value={summary?.record_count ?? totalRecordsCalculated}
+          subtitle="Mẫu telemetry đã gom vào batch"
           icon={<Database size={20} />}
         />
         <MetricCard
-          title="Bản ghi hợp lệ (Verified)"
-          value={summary?.verified_records ?? 1238}
-          subtitle="Chữ ký ECDSA P-256 đúng"
-          icon={<CheckCircle2 size={20} />}
-          accentColor="var(--color-success)"
+          title="Tổng số Merkle Batch"
+          value={summary?.batch_count ?? totalBatches}
+          subtitle="Batch đã niêm phong"
+          icon={<Layers size={20} />}
+          accentColor="var(--color-primary)"
         />
         <MetricCard
-          title="Bản ghi thiếu (Missing)"
-          value={summary?.missing_records ?? 17}
-          subtitle="Gap sequence được phát hiện"
-          icon={<AlertTriangle size={20} />}
-          accentColor={(summary?.missing_records ?? 0) > 0 ? 'var(--color-warning)' : undefined}
+          title="Trạng thái xác minh chung"
+          value={summary?.verification_status ?? (failedBatches.length > 0 ? 'DATA_INTEGRITY_FAILED' : batches.length > 0 ? 'MATCHED' : 'NOT_CHECKED')}
+          subtitle="Đối soát Merkle Root"
+          icon={<CheckCircle2 size={20} />}
+          accentColor={failedBatches.length > 0 ? 'var(--color-danger)' : 'var(--color-success)'}
         />
         <MetricCard
           title="Batch đã neo on-chain"
@@ -427,8 +419,12 @@ export const DataIntegrityPage: React.FC = () => {
       {/* Modals */}
       <BatchVerificationModal
         isOpen={isVerifyModalOpen}
-        onClose={() => setIsVerifyModalOpen(false)}
+        onClose={() => {
+          setIsVerifyModalOpen(false);
+          setVerifyError(null);
+        }}
         result={verificationResult}
+        error={verifyError}
         batch={batches.find((b) => b.batch_id === verifyingBatchId) || selectedBatch}
         loading={isVerifyingLoading}
       />

@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, ApiError } from './client';
 import { mockAdapter } from '../mocks/mockAdapter';
 import {
   ShipmentOut,
@@ -31,11 +31,25 @@ export async function getShipmentById(id: string): Promise<ShipmentOut> {
   return apiClient.get<ShipmentOut>(`/api/v1/shipments/${id}`);
 }
 
-export async function createShipment(payload: ShipmentCreatePayload): Promise<ShipmentOut> {
+export async function createShipment(
+  payload: ShipmentCreatePayload,
+  adminKey?: string
+): Promise<ShipmentOut> {
+  const key = adminKey || apiClient.getAdminKey();
+  if (!key) {
+    throw new ApiError(
+      'Chưa cấu hình X-Admin-Key. Vui lòng cung cấp Admin API Key để tạo lô hàng.',
+      401,
+      'UNAUTHORIZED'
+    );
+  }
+
   if (apiClient.isMockEnabled()) {
     return mockAdapter.createShipment(payload);
   }
-  return apiClient.post<ShipmentOut>('/api/v1/shipments', payload);
+  return apiClient.post<ShipmentOut>('/api/v1/shipments', payload, undefined, {
+    'X-Admin-Key': key,
+  });
 }
 
 export async function getShipmentTelemetry(shipmentId: string): Promise<TelemetryListOut> {
@@ -54,4 +68,3 @@ export async function postShipmentTelemetry(
   }
   return apiClient.post<TelemetryOut>(`/api/v1/shipments/${shipmentId}/telemetry`, payload);
 }
-

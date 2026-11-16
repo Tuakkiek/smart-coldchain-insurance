@@ -203,7 +203,7 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
               </div>
               <VerificationStatusBadge
                 status={batch.verification_status}
-                lastVerifiedAt={batch.last_verified_at}
+                lastVerifiedAt={batch.verified_at ?? batch.last_verified_at}
               />
             </div>
           </div>
@@ -271,41 +271,44 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
             <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>
               Giao dịch Neo Blockchain (Anchor Transaction Hash):
             </div>
-            {batch.anchor_tx_hash ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <div
-                  className="font-mono"
-                  style={{
-                    flex: 1,
-                    fontSize: '12px',
-                    padding: '8px 10px',
-                    backgroundColor: 'var(--color-surface)',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--color-border-subtle)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    color: 'var(--color-text-primary)',
-                  }}
-                  title={batch.anchor_tx_hash}
-                >
-                  {batch.anchor_tx_hash}
+            {(() => {
+              const txHash = batch.anchor_transaction?.transaction_hash || batch.anchor_tx_hash;
+              return txHash ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <div
+                    className="font-mono"
+                    style={{
+                      flex: 1,
+                      fontSize: '12px',
+                      padding: '8px 10px',
+                      backgroundColor: 'var(--color-surface)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-border-subtle)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      color: 'var(--color-text-primary)',
+                    }}
+                    title={txHash}
+                  >
+                    {txHash}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => copyToClipboard(txHash, 'tx')}
+                    icon={copiedKey === 'tx' ? <Check size={12} /> : <Copy size={12} />}
+                    style={{ fontSize: '11px', height: '28px' }}
+                  >
+                    {copiedKey === 'tx' ? 'Đã chép' : 'Chép'}
+                  </Button>
                 </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => copyToClipboard(batch.anchor_tx_hash || '', 'tx')}
-                  icon={copiedKey === 'tx' ? <Check size={12} /> : <Copy size={12} />}
-                  style={{ fontSize: '11px', height: '28px' }}
-                >
-                  {copiedKey === 'tx' ? 'Đã chép' : 'Chép'}
-                </Button>
-              </div>
-            ) : (
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-                Chưa có giao dịch on-chain (Batch đang thu thập hoặc đang chờ xác nhận).
-              </div>
-            )}
+              ) : (
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
+                  Chưa có giao dịch on-chain (Batch đang thu thập hoặc đang chờ xác nhận).
+                </div>
+              );
+            })()}
           </div>
 
           {/* Key Properties Grid */}
@@ -340,7 +343,7 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
                 <Hash size={13} /> Số bản ghi & Sequence:
               </div>
               <div style={{ fontWeight: 600, marginTop: '2px', color: 'var(--color-text-primary)' }}>
-                {batch.record_count} mẫu (#{batch.first_sequence_number} – #{batch.last_sequence_number})
+                {batch.record_count} mẫu (#{batch.first_sequence ?? batch.first_sequence_number} – #{batch.last_sequence ?? batch.last_sequence_number})
               </div>
             </div>
 
@@ -349,8 +352,8 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
                 <Clock size={13} /> Khoảng thời gian thu thập:
               </div>
               <div style={{ fontWeight: 600, marginTop: '2px', color: 'var(--color-text-primary)' }}>
-                {new Date(batch.batch_start_time).toLocaleTimeString('vi-VN')} –{' '}
-                {new Date(batch.batch_end_time).toLocaleTimeString('vi-VN')}
+                {batch.batch_start_time ? new Date(batch.batch_start_time).toLocaleTimeString('vi-VN') : '—'} –{' '}
+                {batch.batch_end_time ? new Date(batch.batch_end_time).toLocaleTimeString('vi-VN') : '—'}
               </div>
             </div>
           </div>
@@ -370,8 +373,8 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
           <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
             Xác minh lần cuối:{' '}
             <strong>
-              {batch.last_verified_at
-                ? new Date(batch.last_verified_at).toLocaleString('vi-VN')
+              {(batch.verified_at ?? batch.last_verified_at)
+                ? new Date(batch.verified_at ?? batch.last_verified_at!).toLocaleString('vi-VN')
                 : 'Chưa đối chiếu'}
             </strong>
           </div>

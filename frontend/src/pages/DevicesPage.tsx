@@ -17,10 +17,9 @@ import {
 import { LoadingState } from '../components/feedback/LoadingState';
 import { EmptyState } from '../components/feedback/EmptyState';
 import { useBackendConnectionState } from '../components/feedback/ConnectionStatus';
-import { getDevices, getDeviceMissingSequences } from '../api/devices';
+import { getDevices } from '../api/devices';
 import {
   DeviceItemOut,
-  DeviceMissingSequencesOut,
 } from '../types/api';
 import { ApiError } from '../api/client';
 import { RegisterDeviceModal } from '../components/devices/RegisterDeviceModal';
@@ -52,12 +51,12 @@ export const DevicesPage: React.FC = () => {
   const backendConnectionState = useBackendConnectionState();
   const [devices, setDevices] = useState<DeviceItemOut[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
-  const [missingData, setMissingData] = useState<DeviceMissingSequencesOut | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingMissing, setLoadingMissing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isColdStart, setIsColdStart] = useState(false);
+  const [isStale, setIsStale] = useState(false);
+  const [staleError, setStaleError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -84,30 +83,39 @@ export const DevicesPage: React.FC = () => {
   const fetchDevicesList = async (isBackground = false) => {
     if (!isBackground) {
       setLoading(true);
+      setError(null);
     } else {
       setRefreshing(true);
     }
-    setError(null);
     setIsColdStart(false);
 
     try {
       const res = await getDevices();
       if (isMountedRef.current) {
         setDevices(res.items);
+        setIsStale(false);
+        setStaleError(null);
         if (!selectedDeviceId && res.items.length > 0) {
           setSelectedDeviceId(res.items[0].device_id);
         }
       }
     } catch (err: unknown) {
       if (isMountedRef.current) {
-        if (err instanceof ApiError) {
-          setIsColdStart(!!err.isBackendColdStart);
-          setError(err.message);
+        if (!isBackground) {
+          if (err instanceof ApiError) {
+            setIsColdStart(!!err.isBackendColdStart);
+            setError(err.message);
+          } else {
+            setError(
+              err instanceof Error
+                ? err.message
+                : 'Lỗi không xác định khi tải danh sách thiết bị'
+            );
+          }
         } else {
-          setError(
-            err instanceof Error
-              ? err.message
-              : 'Lỗi không xác định khi tải danh sách thiết bị'
+          setIsStale(true);
+          setStaleError(
+            err instanceof Error ? err.message : 'Lỗi kết nối khi polling dữ liệu thiết bị'
           );
         }
       }
@@ -115,28 +123,6 @@ export const DevicesPage: React.FC = () => {
       if (isMountedRef.current) {
         setLoading(false);
         setRefreshing(false);
-      }
-    }
-  };
-
-  const fetchMissingRanges = async (deviceId: string) => {
-    setLoadingMissing(true);
-    try {
-      const res = await getDeviceMissingSequences(deviceId);
-      if (isMountedRef.current) {
-        setMissingData(res);
-      }
-    } catch {
-      if (isMountedRef.current) {
-        setMissingData({
-          device_id: deviceId,
-          total_missing: 0,
-          ranges: [],
-        });
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setLoadingMissing(false);
       }
     }
   };
@@ -157,12 +143,6 @@ export const DevicesPage: React.FC = () => {
       if (timer) clearInterval(timer);
     };
   }, [autoRefresh]);
-
-  useEffect(() => {
-    if (selectedDeviceId) {
-      fetchMissingRanges(selectedDeviceId);
-    }
-  }, [selectedDeviceId]);
 
   const copyPublicKey = (pem?: string) => {
     if (!pem) return;
@@ -215,7 +195,7 @@ export const DevicesPage: React.FC = () => {
   const invalidSigCount = devices.filter((d) => d.signature_status === 'INVALID').length;
   const unknownKeyCount = devices.filter((d) => d.signature_status === 'UNKNOWN_KEY').length;
   const gapCount = devices.filter(
-    (d) => d.completeness_status === 'DATA_INCOMPLETE' || d.health.missing_sequence_count > 0
+    (d) => d.completeness_status === 'DATA_INCOMPLETE' || (d.health.missing_sequence_count ?? 0) > 0
   ).length;
   const totalMissingPackets = devices.reduce(
     (sum, d) => sum + (d.health.missing_sequence_count || 0),
@@ -331,6 +311,31 @@ export const DevicesPage: React.FC = () => {
         onRetry={() => fetchDevicesList(false)}
         retrying={loading}
       />
+
+      {/* Stale Polling Warning Banner */}
+      {isStale && (
+        <div
+          style={{
+            padding: 'var(--space-2) var(--space-4)',
+            backgroundColor: '#FFFBEB',
+            border: '1px solid #FCD34D',
+            borderRadius: 'var(--radius-md)',
+            color: '#92400E',
+            fontSize: 'var(--text-xs)',
+            marginBottom: 'var(--space-4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span>
+            ⚠️ <strong>Dữ liệu chưa cập nhật:</strong> Quá trình polling nền gặp sự cố ({staleError}). Đang hiển thị danh sách thiết bị từ lần tải gần nhất.
+          </span>
+          <Button size="sm" variant="secondary" onClick={() => fetchDevicesList(false)}>
+            Thử lại ngay
+          </Button>
+        </div>
+      )}
 
       {/* Mandatory principle notice from Roadmap §3.3 */}
       <IntegrityPrincipleNotice />
@@ -728,7 +733,7 @@ export const DevicesPage: React.FC = () => {
                         <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                           <CompletenessBadge
                             status={dev.completeness_status}
-                            missingCount={dev.health.missing_sequence_count}
+                            missingCount={dev.health.missing_sequence_count ?? undefined}
                           />
                         </td>
 
@@ -967,7 +972,7 @@ export const DevicesPage: React.FC = () => {
                 </div>
                 <CompletenessBadge
                   status={selectedDevice.completeness_status}
-                  missingCount={selectedDevice.health.missing_sequence_count}
+                  missingCount={selectedDevice.health.missing_sequence_count ?? undefined}
                 />
               </div>
 
@@ -1021,12 +1026,19 @@ export const DevicesPage: React.FC = () => {
                       fontFamily: 'monospace',
                       marginTop: '2px',
                       color:
-                        selectedDevice.health.missing_sequence_count > 0
+                        (selectedDevice.missing_sequence_count ?? selectedDevice.health?.missing_sequence_count) !== null &&
+                        (selectedDevice.missing_sequence_count ?? selectedDevice.health?.missing_sequence_count) !== undefined &&
+                        (selectedDevice.missing_sequence_count ?? selectedDevice.health?.missing_sequence_count)! > 0
                           ? 'var(--color-warning)'
-                          : 'var(--color-success)',
+                          : selectedDevice.completeness_status === 'COMPLETE'
+                          ? 'var(--color-success)'
+                          : 'var(--color-text-secondary)',
                     }}
                   >
-                    {selectedDevice.health.missing_sequence_count} gói
+                    {(selectedDevice.missing_sequence_count ?? selectedDevice.health?.missing_sequence_count) !== null &&
+                    (selectedDevice.missing_sequence_count ?? selectedDevice.health?.missing_sequence_count) !== undefined
+                      ? `${selectedDevice.missing_sequence_count ?? selectedDevice.health?.missing_sequence_count} gói`
+                      : 'Chưa xác định'}
                   </div>
                 </div>
 
@@ -1042,7 +1054,7 @@ export const DevicesPage: React.FC = () => {
                     Nhịp tim (Heartbeat) cuối
                   </div>
                   <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, marginTop: '4px' }}>
-                    {formatTime(selectedDevice.health.last_heartbeat_at)}
+                    {formatTime(selectedDevice.health?.last_heartbeat_at)}
                   </div>
                 </div>
 
@@ -1058,12 +1070,12 @@ export const DevicesPage: React.FC = () => {
                     Gói tin cuối (Last Seen)
                   </div>
                   <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, marginTop: '4px' }}>
-                    {formatTime(selectedDevice.health.last_seen_at)}
+                    {formatTime(selectedDevice.last_seen_at ?? selectedDevice.health?.last_seen_at)}
                   </div>
                 </div>
               </div>
 
-              {/* BẢNG THEO DÕI DẢI MẤT GÓI (GAP RANGES TABLE) */}
+              {/* THEO DÕI TÍNH TOÀN VẸN CHUỖI SEQUENCE (SEQUENCE GAP AUDIT) */}
               <div>
                 <div
                   style={{
@@ -1073,21 +1085,67 @@ export const DevicesPage: React.FC = () => {
                     color: 'var(--color-text-secondary)',
                   }}
                 >
-                  Chi tiết các dải mất gói phát hiện bởi Backend:
+                  Tình trạng chuỗi sequence & tính đầy đủ dữ liệu (Backend Sequence Audit):
                 </div>
 
-                {loadingMissing ? (
+                {!selectedDevice.last_seen_at && !selectedDevice.health?.last_seen_at ? (
                   <div
                     style={{
                       padding: 'var(--space-4)',
-                      textAlign: 'center',
+                      backgroundColor: 'var(--color-surface-secondary)',
+                      border: '1px solid var(--color-border-subtle)',
+                      borderRadius: 'var(--radius-md)',
                       fontSize: 'var(--text-xs)',
-                      color: 'var(--color-text-tertiary)',
+                      color: 'var(--color-text-secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)',
                     }}
                   >
-                    Đang đối soát chuỗi sequence...
+                    <HelpCircle size={18} style={{ color: 'var(--color-text-tertiary)' }} />
+                    <div>
+                      <strong>Chưa có dữ liệu telemetry:</strong> Thiết bị chưa gửi mẫu tin nào. Trạng thái chữ ký và tính đầy đủ sequence hiện là <em>Chưa xác định (UNKNOWN)</em>.
+                    </div>
                   </div>
-                ) : !missingData || missingData.ranges.length === 0 ? (
+                ) : selectedDevice.completeness_status === 'DATA_INCOMPLETE' ||
+                  ((selectedDevice.missing_sequence_count ?? selectedDevice.health?.missing_sequence_count) &&
+                    (selectedDevice.missing_sequence_count ?? selectedDevice.health?.missing_sequence_count)! > 0) ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                    <div
+                      style={{
+                        padding: 'var(--space-4)',
+                        backgroundColor: '#fffbeb',
+                        border: '1px solid #fde68a',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: 'var(--text-xs)',
+                        color: '#b45309',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 'var(--space-3)',
+                      }}
+                    >
+                      <AlertTriangle size={18} style={{ color: '#d97706', flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <strong>Phát hiện mất sequence (DATA_INCOMPLETE):</strong> Tồn tại gián đoạn trong chuỗi sequence telemetry đã nhận ({selectedDevice.missing_sequence_count ?? selectedDevice.health?.missing_sequence_count ?? 'có'} gói bị thiếu).
+                      </div>
+                    </div>
+
+                    {/* Impact on 15-Minute Continuous Breach Rule */}
+                    <div
+                      style={{
+                        padding: 'var(--space-3)',
+                        backgroundColor: '#fef2f2',
+                        border: '1px solid #fee2e2',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: '11px',
+                        color: '#991b1b',
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      <strong>Đánh giá ảnh hưởng bồi thường:</strong> Dải sequence bị thiếu ngắt quãng chuỗi đo liên tục (`DATA_INCOMPLETE`). Theo quy định Backend và Hợp đồng Bảo hiểm, hệ thống <em>không suy diễn nhiệt độ qua khoảng trống dữ liệu</em>. Lô hàng sẽ không đủ điều kiện chi trả bảo hiểm tự động cho đến khi có bằng chứng hợp lệ liên tục đủ 15 phút.
+                    </div>
+                  </div>
+                ) : selectedDevice.completeness_status === 'COMPLETE' ? (
                   <div
                     style={{
                       padding: 'var(--space-4)',
@@ -1103,102 +1161,26 @@ export const DevicesPage: React.FC = () => {
                   >
                     <Check size={18} />
                     <div>
-                      <strong>Chuỗi sequence toàn vẹn 100%:</strong> Không phát hiện dải mất gói nào
-                      giữa các mẫu telemetry của thiết bị này.
+                      <strong>Chuỗi sequence toàn vẹn (Đã đối soát):</strong> Không phát hiện dải mất gói nào giữa các mẫu telemetry của thiết bị này.
                     </div>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                    <div
-                      style={{
-                        border: '1px solid var(--color-border-subtle)',
-                        borderRadius: 'var(--radius-md)',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <table
-                        style={{
-                          width: '100%',
-                          borderCollapse: 'collapse',
-                          fontSize: 'var(--text-xs)',
-                          textAlign: 'left',
-                        }}
-                      >
-                        <thead>
-                          <tr
-                            style={{
-                              backgroundColor: 'var(--color-surface-secondary)',
-                              borderBottom: '1px solid var(--color-border-subtle)',
-                              color: 'var(--color-text-secondary)',
-                            }}
-                          >
-                            <th style={{ padding: 'var(--space-2) var(--space-3)' }}>Dải Sequence</th>
-                            <th style={{ padding: 'var(--space-2) var(--space-3)' }}>Số lượng mất</th>
-                            <th style={{ padding: 'var(--space-2) var(--space-3)' }}>Thời điểm phát hiện</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {missingData.ranges.map((range, idx) => (
-                            <tr
-                              key={idx}
-                              style={{
-                                borderBottom:
-                                  idx < missingData.ranges.length - 1
-                                    ? '1px solid var(--color-border-subtle)'
-                                    : 'none',
-                                backgroundColor: '#fffbeb',
-                              }}
-                            >
-                              <td
-                                style={{
-                                  padding: 'var(--space-2) var(--space-3)',
-                                  fontFamily: 'monospace',
-                                  fontWeight: 600,
-                                  color: '#b45309',
-                                }}
-                              >
-                                #{range.start_sequence} → #{range.end_sequence}
-                              </td>
-                              <td
-                                style={{
-                                  padding: 'var(--space-2) var(--space-3)',
-                                  fontWeight: 600,
-                                  color: '#b45309',
-                                }}
-                              >
-                                {range.count} gói tin
-                              </td>
-                              <td
-                                style={{
-                                  padding: 'var(--space-2) var(--space-3)',
-                                  color: '#92400e',
-                                }}
-                              >
-                                {formatTime(range.detected_at)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Impact on 15-Minute Continuous Breach Rule */}
-                    <div
-                      style={{
-                        padding: 'var(--space-3)',
-                        backgroundColor: '#fef2f2',
-                        border: '1px solid #fee2e2',
-                        borderRadius: 'var(--radius-md)',
-                        fontSize: '11px',
-                        color: '#991b1b',
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      <strong>Đánh giá ảnh hưởng bồi thường:</strong> Dải sequence bị thiếu ngắt
-                      quãng chuỗi đo liên tục (`DATA_INCOMPLETE`). Theo quy định Backend và Hợp đồng
-                      Bảo hiểm, hệ thống <em>không suy diễn nhiệt độ qua khoảng trống dữ liệu</em>.
-                      Lô hàng sẽ không đủ điều kiện chi trả bảo hiểm tự động cho đến khi có bằng chứng
-                      hợp lệ liên tục đủ 15 phút.
+                  <div
+                    style={{
+                      padding: 'var(--space-4)',
+                      backgroundColor: 'var(--color-surface-secondary)',
+                      border: '1px solid var(--color-border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: 'var(--text-xs)',
+                      color: 'var(--color-text-secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)',
+                    }}
+                  >
+                    <HelpCircle size={18} style={{ color: 'var(--color-text-tertiary)' }} />
+                    <div>
+                      <strong>Chưa rõ tính đầy đủ (UNKNOWN):</strong> Cần nhận thêm telemetry ký số để đối soát dải sequence và đánh giá tính liên tục.
                     </div>
                   </div>
                 )}
