@@ -164,6 +164,18 @@ def list_batches(session: Session, shipment_id: str) -> list[IntegrityBatch]:
     ))
 
 
+def list_all_batches(session: Session) -> list[IntegrityBatch]:
+    return list(session.scalars(
+        select(IntegrityBatch)
+        .order_by(
+            IntegrityBatch.sealed_at.desc(),
+            IntegrityBatch.device_id,
+            IntegrityBatch.first_sequence,
+            IntegrityBatch.id,
+        )
+    ))
+
+
 def get_anchor_outbox(session: Session, batch_id: str) -> IntegrationOutbox | None:
     return session.scalar(select(IntegrationOutbox).where(
         IntegrationOutbox.kind == "ANCHOR_BATCH",
@@ -224,6 +236,28 @@ def integrity_summary(session: Session, shipment_id: str) -> dict:
     )
     return {
         "shipment_id": shipment_id,
+        "batch_count": len(batches),
+        "record_count": sum(item.record_count for item in batches),
+        "verification_status": verification,
+        "anchor_status": anchor,
+    }
+
+
+def global_integrity_summary(session: Session) -> dict:
+    batches = list_all_batches(session)
+    verification = (
+        "DATA_INTEGRITY_FAILED" if any(item.verification_status == "DATA_INTEGRITY_FAILED" for item in batches)
+        else "MATCHED" if batches and all(item.verification_status == "MATCHED" for item in batches)
+        else "NOT_CHECKED"
+    )
+    anchor = (
+        "BLOCKCHAIN_FAILED" if any(item.anchor_status == "BLOCKCHAIN_FAILED" for item in batches)
+        else "DATA_ANCHORED" if batches and all(item.anchor_status == "DATA_ANCHORED" for item in batches)
+        else "BLOCKCHAIN_PENDING" if any(item.anchor_status == "BLOCKCHAIN_PENDING" for item in batches)
+        else "NOT_READY"
+    )
+    return {
+        "shipment_id": None,
         "batch_count": len(batches),
         "record_count": sum(item.record_count for item in batches),
         "verification_status": verification,

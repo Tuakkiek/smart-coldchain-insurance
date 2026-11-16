@@ -211,9 +211,20 @@ def get_integrity_summary(shipment_id: UUID4, session: DbSession):
     return batch_service.integrity_summary(session, str(shipment_id))
 
 
+@router.get("/integrity/summary", response_model=IntegritySummaryOut)
+def get_global_integrity_summary(session: DbSession):
+    return batch_service.global_integrity_summary(session)
+
+
 @router.get("/shipments/{shipment_id}/batches", response_model=IntegrityBatchListOut)
 def list_integrity_batches(shipment_id: UUID4, session: DbSession):
     items = [batch_service.batch_view(session, item) for item in batch_service.list_batches(session, str(shipment_id))]
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/batches", response_model=IntegrityBatchListOut)
+def list_all_batches(session: DbSession):
+    items = [batch_service.batch_view(session, item) for item in batch_service.list_all_batches(session)]
     return {"items": items, "total": len(items)}
 
 

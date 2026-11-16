@@ -177,3 +177,106 @@ def test_membership_is_immutable_and_tamper_creates_one_alert(integrity_api):
     )
     assert empty.status_code == 409
     assert empty.json()["error"]["code"] == "NO_ELIGIBLE_TELEMETRY"
+
+
+def test_global_batches_and_summary_endpoints(integrity_api):
+    client, _app, key, shipment_id = integrity_api
+    # Before batches exist
+    assert client.get("/api/v1/batches").json() == {"items": [], "total": 0}
+    empty_summary = client.get("/api/v1/integrity/summary").json()
+    assert empty_summary == {
+        "shipment_id": None,
+        "batch_count": 0,
+        "record_count": 0,
+        "verification_status": "NOT_CHECKED",
+        "anchor_status": "NOT_READY",
+    }
+
+    # Ingest signed samples to trigger auto-seal
+    telemetry_route = f"/api/v1/shipments/{shipment_id}/telemetry"
+    for sequence in (1, 2, 3):
+        res = client.post(telemetry_route, json=signed(key, shipment_id, sequence))
+        assert res.status_code == 201
+        assert res.json()["signature_status"] == "VALID"
+        assert res.json()["completeness_status"] == "COMPLETE"
+
+    # Global batches should return the sealed batch
+    all_batches = client.get("/api/v1/batches").json()
+    assert all_batches["total"] == 1
+    batch = all_batches["items"][0]
+    assert batch["status"] == "SEALED"
+    assert batch["record_count"] == 3
+    assert batch["first_sequence"] == 1
+    assert batch["last_sequence"] == 3
+    assert batch["verification_status"] == "MATCHED"
+
+    global_summary = client.get("/api/v1/integrity/summary").json()
+    assert global_summary == {
+        "shipment_id": None,
+        "batch_count": 1,
+        "record_count": 3,
+        "verification_status": "MATCHED",
+        "anchor_status": "NOT_READY",
+    }
+
+
+def test_admin_auth_and_verify_contract(integrity_api):
+    client, _app, key, shipment_id = integrity_api
+    # 1. createShipment requires X-Admin-Key
+    no_auth_shipment = client.post("/api/v1/shipments", json={
+        "code": "SHIP-NO-AUTH",
+        "cargo_type": "vaccine",
+        "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
+        "destination": {"name": "B", "latitude": 11.0, "longitude": 106.0},
+        "temp_min_c": 2.0,
+        "temp_max_c": 8.0,
+        "insured_amount_vnd": 5000000,
+    })
+    assert no_auth_shipment.status_code == 401
+    assert no_auth_shipment.json()["error"]["code"] == "UNAUTHORIZED"
+
+    # 2. Ingest signed telemetry & auto-seal batch
+    for seq in (1, 2, 3):
+        client.post(f"/api/v1/shipments/{shipment_id}/telemetry", json=signed(key, shipment_id, seq))
+    batch = client.get(f"/api/v1/shipments/{shipment_id}/batches").json()["items"][0]
+    batch_id = batch["batch_id"]
+
+    # 3. verifyBatch requires X-Admin-Key
+    no_auth_verify = client.post(f"/api/v1/batches/{batch_id}/verify")
+    assert no_auth_verify.status_code == 401
+    assert no_auth_verify.json()["error"]["code"] == "UNAUTHORIZED"
+
+    # 4. verifyBatch with valid admin key returns accurate DTO fields
+    authed_verify = client.post(f"/api/v1/batches/{batch_id}/verify", headers=ADMIN)
+    assert authed_verify.status_code == 200
+    data = authed_verify.json()
+    assert data["batch_id"] == batch_id
+    assert data["verification_status"] == "MATCHED"
+    assert data["calculated_root"] == batch["merkle_root"]
+    assert data["merkle_root"] == batch["merkle_root"]
+    assert data["on_chain_match"] is None  # Not anchored yet, so on_chain_match must be None (not false or true)
+    assert data["first_sequence"] == 1
+    assert data["last_sequence"] == 3
+    assert data["record_count"] == 3
+
+
+def test_unsigned_telemetry_does_not_display_valid_signature(integrity_api):
+    client, _app, _key, shipment_id = integrity_api
+    # Post legacy/unsigned telemetry
+    res = client.post(
+        f"/api/v1/shipments/{shipment_id}/telemetry",
+        json={"device_id": "ESP32-INTEGRITY", "temperature_c": 4.5, "humidity_pct": 60.0},
+    )
+    assert res.status_code == 201
+    # Unsigned telemetry should NOT have signature_status = "VALID"
+    telemetry_data = res.json()
+    assert telemetry_data.get("signature_status") is None
+    assert telemetry_data.get("completeness_status") is None
+
+    # Inspect shipment detail
+    shipment_detail = client.get(f"/api/v1/shipments/{shipment_id}").json()
+    latest = shipment_detail["latest_telemetry"]
+    assert latest is not None
+    assert latest.get("signature_status") is None
+    assert latest.get("completeness_status") is None
+
