@@ -113,14 +113,65 @@ export async function getShipmentDevices(shipmentId: string): Promise<ShipmentDe
   return apiClient.get<ShipmentDevicesOut>(`/api/v1/shipments/${shipmentId}/devices`);
 }
 
+function normalizeDeviceItem(item: any): DeviceItemOut {
+  // If item already has full DeviceItemOut structure (e.g. mockAdapter)
+  if (item.health && item.signature_status) {
+    return item as DeviceItemOut;
+  }
+
+  // Map Backend DeviceOut (from GET /api/v1/devices) to DeviceItemOut
+  const lastSeen = item.last_seen_at;
+  const isOnline = lastSeen
+    ? Date.now() - new Date(lastSeen).getTime() < 5 * 60 * 1000
+    : false;
+
+  const activeKey = item.keys?.find((k: any) => k.status === 'active') || item.keys?.[0];
+  const activeAssignment = item.assignments?.find((a: any) => a.active) || item.assignments?.[0];
+
+  return {
+    id: item.device_id || item.id,
+    device_id: item.device_id || item.id,
+    device_name: item.device_name || item.device_id,
+    key_id: activeKey?.key_id || (item.has_public_key ? 'active-key' : 'NO_KEY'),
+    has_public_key: item.has_public_key ?? false,
+    public_key_pem: item.public_key_pem,
+    firmware_version: item.firmware_version || 'v1.0.0',
+    assigned_shipment_id: activeAssignment?.shipment_id || item.current_shipment_id || null,
+    assigned_shipment_code: item.assigned_shipment_code || null,
+    signature_status: item.has_public_key ? 'VALID' : 'UNKNOWN_KEY',
+    completeness_status: 'COMPLETE',
+    health: {
+      device_id: item.device_id || item.id,
+      last_sequence_number: item.last_sequence_number ?? null,
+      missing_sequence_count: 0,
+      last_heartbeat_at: item.last_seen_at || null,
+      last_seen_at: item.last_seen_at || null,
+      online_status: isOnline ? 'ONLINE' : 'OFFLINE',
+      firmware_version: item.firmware_version || 'v1.0.0',
+    },
+    registered_at: item.created_at || new Date().toISOString(),
+  };
+}
+
 /**
  * Fetch all registered ESP32 devices and their integrity status.
  */
-export async function getDevices(): Promise<DevicesOut> {
+export async function getDevices(adminKey?: string): Promise<DevicesOut> {
   if (apiClient.isMockEnabled()) {
-    return mockAdapter.listDevices();
+    const res = await mockAdapter.listDevices();
+    return {
+      items: res.items.map(normalizeDeviceItem),
+      total: res.total,
+    };
   }
-  return apiClient.get<DevicesOut>('/api/v1/devices');
+  const key = adminKey || apiClient.getAdminKey();
+  const headers = key ? { 'X-Admin-Key': key } : undefined;
+  const res = await apiClient.get<any>('/api/v1/devices', undefined, headers);
+  const items = Array.isArray(res?.items) ? res.items.map(normalizeDeviceItem) : [];
+  return {
+    items,
+    total: res?.total ?? items.length,
+  };
 }
 
 /**
