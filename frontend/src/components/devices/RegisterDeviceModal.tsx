@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { DeviceRegisterPayload, AdminDeviceViewOut } from '../../types/api';
 import { registerDevice } from '../../api/devices';
-import { apiClient, ApiError } from '../../api/client';
+import { ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
 import {
   Cpu,
   X,
-  Lock,
   AlertCircle,
   RefreshCw,
   Info,
@@ -24,8 +23,6 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const [adminKey, setAdminKey] = useState(apiClient.getAdminKey() || '');
-  const [saveAdminKey, setSaveAdminKey] = useState(true);
 
   const [deviceId, setDeviceId] = useState('ESP32-001');
   const [deviceName, setDeviceName] = useState('Cold Chain Sensor 01');
@@ -42,7 +39,6 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
     if (isOpen) {
       setDeviceId('ESP32-001');
       setDeviceName('Cold Chain Sensor 01');
-      setAdminKey(apiClient.getAdminKey() || '');
       setError(null);
     }
   }, [isOpen]);
@@ -51,10 +47,6 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminKey.trim()) {
-      setError('Vui lòng nhập X-Admin-Key (Khóa quản trị của máy chủ Backend)');
-      return;
-    }
     if (!deviceId.trim()) {
       setError('Mã thiết bị (Device ID) không được để trống');
       return;
@@ -67,25 +59,19 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
     setSubmitting(true);
     setError(null);
 
-    if (saveAdminKey) {
-      apiClient.setAdminKey(adminKey.trim());
-    }
-
     const payload: DeviceRegisterPayload = {
       device_id: deviceId.trim(),
       device_name: deviceName.trim(),
     };
 
     try {
-      const result = await registerDevice(payload, adminKey.trim());
+      const result = await registerDevice(payload);
       onSuccess(result);
       onClose();
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         if (err.status === 401 || err.code === 'UNAUTHORIZED') {
-          setError('Xác thực thất bại: X-Admin-Key không chính xác hoặc không có quyền quản trị.');
-        } else if (err.status === 503 || err.code === 'ADMIN_UNAVAILABLE') {
-          setError('Máy chủ Backend chưa bật ADMIN_API_KEY (ADMIN_UNAVAILABLE).');
+          setError('Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.');
         } else if (err.status === 409 || err.code === 'DEVICE_EXISTS') {
           setError(`Mã thiết bị '${deviceId.trim()}' đã tồn tại trên hệ thống.`);
         } else if (err.status === 422) {
@@ -216,72 +202,6 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
               <div>{error}</div>
             </div>
           )}
-
-          {/* Admin API Key Section */}
-          <div
-            style={{
-              marginBottom: 'var(--space-4)',
-              padding: 'var(--space-3) var(--space-4)',
-              backgroundColor: 'var(--color-surface-secondary)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 6,
-              }}
-            >
-              <label
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  color: 'var(--color-text-primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                <Lock size={12} style={{ color: 'var(--color-accent)' }} />
-                X-Admin-Key (Khóa quản trị Backend) *
-              </label>
-              <label
-                style={{
-                  fontSize: '11px',
-                  color: 'var(--color-text-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={saveAdminKey}
-                  onChange={(e) => setSaveAdminKey(e.target.checked)}
-                />
-                Lưu vào trình duyệt
-              </label>
-            </div>
-            <input
-              type="password"
-              value={adminKey}
-              onChange={(e) => setAdminKey(e.target.value)}
-              placeholder="Nhập ADMIN_API_KEY cấu hình ở Backend..."
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-border)',
-                fontSize: 'var(--text-sm)',
-                backgroundColor: 'var(--color-surface)',
-                fontFamily: 'monospace',
-              }}
-            />
-          </div>
 
           {/* Device ID Input */}
           <div style={{ marginBottom: 'var(--space-4)' }}>

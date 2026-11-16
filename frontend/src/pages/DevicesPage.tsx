@@ -210,7 +210,6 @@ export const DevicesPage: React.FC = () => {
     <div>
       <PageHeader
         title="Quản lý Thiết bị ESP32 & Toàn vẹn Phần cứng"
-        description="Kiểm soát danh tính phần cứng, chữ ký số ECDSA P-256, sequence number, heartbeat và dải mất gói tin (gap ranges)."
         action={
           <div className="flex-row items-center gap-3">
             <label
@@ -337,51 +336,7 @@ export const DevicesPage: React.FC = () => {
         </div>
       )}
 
-      {/* Mandatory principle notice from Roadmap §3.3 */}
-      <IntegrityPrincipleNotice />
 
-      {/* Banner Quy trình Admin tối giản dùng chung */}
-      <div
-        style={{
-          marginBottom: 'var(--space-5)',
-          padding: 'var(--space-4) var(--space-5)',
-          backgroundColor: 'var(--color-surface)',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--color-border)',
-          boxShadow: 'var(--shadow-sm)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            marginBottom: 'var(--space-2)',
-          }}
-        >
-          <ShieldCheck size={18} style={{ color: 'var(--color-accent)' }} />
-          <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
-            Quy trình Admin tối giản dùng chung:
-          </span>
-        </div>
-        <div
-          style={{
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-secondary)',
-            lineHeight: 1.7,
-          }}
-        >
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>1. Admin đăng ký thiết bị</span> (chỉ cần device_id & device_name) →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>2. Admin đăng ký chuyến hàng</span> (nhập mã SHIP-001 vào code, Backend sinh ID UUID v4) →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>3. Liên kết thiết bị với chuyến hàng</span> (1 assignment active/device, đổi chuyến bằng bỏ gán cũ rồi gán mới) →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>4. Cấp khóa cho ESP32 ngoài browser</span> (Script Python NTK tạo cặp P-256 trên máy tin cậy → nạp USB → nạp SPKI public key qua API Admin) →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>5. ESP32 ký ECDSA P-256 & gửi telemetry</span> →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>6. Backend xác minh Public Key & sequence</span> →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>7. Lưu MySQL</span> →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>8. Bằng chứng Merkle & Neo Blockchain</span> →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>9. Oracle xử lý bảo hiểm tự động</span>
-        </div>
-      </div>
 
       {/* KPI Cards Grid */}
       <div
@@ -551,9 +506,6 @@ export const DevicesPage: React.FC = () => {
           >
             <div style={{ fontWeight: 600, fontSize: 'var(--text-md)' }}>
               Danh sách Thiết bị ESP32 ({filteredDevices.length})
-            </div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-              Chọn thiết bị để xem bảng theo dõi Sequence & Dải mất gói
             </div>
           </div>
 
@@ -947,7 +899,7 @@ export const DevicesPage: React.FC = () => {
                   icon={<ShieldCheck size={14} />}
                   style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-xs)' }}
                 >
-                  Xem chi tiết bảo mật (X-Admin-Key View) →
+                  Xem chi tiết quản trị thiết bị →
                 </Button>
               </div>
             </Card>

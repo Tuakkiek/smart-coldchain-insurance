@@ -473,9 +473,6 @@ export const MerkleBatchTable: React.FC<MerkleBatchTableProps> = ({
         <span>
           Hiển thị <strong>{filteredBatches.length}</strong> / <strong>{batches.length}</strong> Merkle Batch
         </span>
-        <span>
-          Quy tắc băm: <strong>MERKLE-v1</strong> (SHA-256 canonical projection) • Smart Contract lưu Root 32 bytes
-        </span>
       </div>
     </div>
   );

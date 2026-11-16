@@ -22,8 +22,14 @@ services:
         sync: false
       - key: MYSQL_SSL_CA
         sync: false
-      - key: ADMIN_API_KEY
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: JWT_SECRET_KEY
         generateValue: true
+      - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
       - key: CORS_ORIGINS
         sync: false
       - key: PUBLIC_API_BASE_URL

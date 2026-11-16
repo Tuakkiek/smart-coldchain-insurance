@@ -23,7 +23,7 @@ import {
   IntegritySummaryOut,
   BatchVerifyResultOut,
 } from '../types/api';
-import { apiClient, ApiError } from '../api/client';
+import { ApiError } from '../api/client';
 import {
   Layers,
   ShieldCheck,
@@ -135,10 +135,9 @@ export const DataIntegrityPage: React.FC = () => {
     setVerificationResult(null);
     setVerifyError(null);
 
-    const adminKey = apiClient.getAdminKey() || undefined;
 
     try {
-      const result = await verifyBatch(batchId, adminKey);
+      const result = await verifyBatch(batchId);
       if (isMountedRef.current) {
         setVerificationResult(result);
         const isTampered = result.verification_status === 'DATA_INTEGRITY_FAILED';
@@ -242,9 +241,6 @@ export const DataIntegrityPage: React.FC = () => {
         className="flex-row items-center justify-between"
         style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap', gap: 'var(--space-2)' }}
       >
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-          Hệ thống đảm bảo tính toàn vẹn: <strong>IoT Signature → MySQL → Merkle-v1 → Blockchain Anchor</strong>
-        </div>
 
         <div className="flex-row items-center gap-3">
           <label
@@ -279,14 +275,6 @@ export const DataIntegrityPage: React.FC = () => {
 
       <PageHeader
         title="Toàn vẹn Dữ liệu & Merkle Batches"
-        description="Quản lý tính toàn vẹn dữ liệu cảm biến và kiểm tra Merkle root neo on-chain."
-        action={
-          <div className="flex-row items-center gap-2">
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-              Chuẩn băm: <strong>MERKLE-v1</strong> • Chữ ký: <strong>ECDSA P-256</strong>
-            </span>
-          </div>
-        }
       />
 
       {/* Backend connection banner if degraded */}
@@ -380,31 +368,10 @@ export const DataIntegrityPage: React.FC = () => {
         />
       )}
 
-      {/* Architectural Notice Banner */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: 'var(--space-3)',
-          padding: 'var(--space-3) var(--space-4)',
-          backgroundColor: 'var(--color-info-soft)',
-          color: 'var(--color-info)',
-          borderRadius: 'var(--radius-md)',
-          fontSize: 'var(--text-xs)',
-          marginBottom: 'var(--space-6)',
-          lineHeight: '18px',
-        }}
-      >
-        <Info size={17} style={{ flexShrink: 0, marginTop: '1px' }} />
-        <div>
-          <strong>Quy chuẩn Kiến trúc Toàn vẹn:</strong> Dữ liệu từ thiết bị ESP32 được ký ECDSA P-256 và gửi về Backend. Chỉ các bản ghi được xác minh chữ ký thành công mới được gom vào canonical Merkle batch theo chuẩn <code>MERKLE-v1</code>. Merkle root dạng <code>0x + 64 ký tự hex</code> (32 raw bytes) được neo lên Smart Contract để làm bằng chứng bất biến chống chỉnh sửa.
-        </div>
-      </div>
 
       {/* MERKLE BATCHES LIST TABLE */}
       <Card
         title="Danh sách Merkle Batches (Merkle Batches Table)"
-        description="Toàn bộ các batch dữ liệu đã đóng niêm phong, Merkle root dạng 0x + 64 ký tự hex và trạng thái đối chiếu toàn vẹn."
         style={{ marginBottom: 'var(--space-6)' }}
       >
         <MerkleBatchTable

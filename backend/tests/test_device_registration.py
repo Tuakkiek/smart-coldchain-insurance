@@ -250,7 +250,7 @@ def test_openapi_and_browser_admin_header_match_the_new_contract(registry_api):
 def test_unconfigured_admin_api_fails_closed():
     with pytest.raises(ValueError, match="JWT_SECRET_KEY"):
         Settings(database_url="sqlite://", admin_username="admin", admin_password="valid-test-password-12345", jwt_secret_key="")
-    with pytest.raises(ValueError, match="ADMIN_USERNAME"):
-        Settings(database_url="sqlite://", admin_username="", admin_password="valid-test-password-12345", jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!")
-    with pytest.raises(ValueError, match="ADMIN_PASSWORD"):
-        Settings(database_url="sqlite://", admin_username="admin", admin_password="", jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!")
+    # Bootstrap credentials may be removed once the single Admin is in MySQL.
+    # Empty-database login still fails closed (test_admin_accounts.py).
+    settings = Settings(database_url="sqlite://", admin_username="", admin_password="", jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!")
+    assert settings.admin_username == settings.admin_password == ""

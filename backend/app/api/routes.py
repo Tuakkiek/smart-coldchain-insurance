@@ -45,6 +45,7 @@ from app.services import batch_service
 from app.services.auth import (
     AuthError,
     authenticate_admin,
+    auth_account,
     create_access_token,
     decode_and_verify_token,
     resolve_client_ip,
@@ -63,6 +64,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 def require_admin(
     request: Request,
+    session: DbSession,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> str:
     if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials.strip():
@@ -77,7 +79,7 @@ def require_admin(
     payload = decode_and_verify_token(
         token,
         settings.jwt_secret_key,
-        settings.admin_username,
+        auth_account(session, settings).username,
     )
     return payload["sub"]
 
@@ -93,7 +95,7 @@ AdminSession = Annotated[Session, Depends(admin_session)]
 
 
 @router.post("/auth/login", response_model=LoginOut)
-def login(payload: LoginIn, request: Request):
+def login(payload: LoginIn, request: Request, session: DbSession):
     settings = request.app.state.settings
     limiter = getattr(request.app.state, "login_rate_limiter", None)
     client_ip = resolve_client_ip(request, settings.trusted_proxies)
@@ -108,7 +110,8 @@ def login(payload: LoginIn, request: Request):
                 headers={"Retry-After": str(retry_after)},
             )
 
-    if not authenticate_admin(payload.username, payload.password, settings):
+    account = auth_account(session, settings)
+    if not authenticate_admin(payload.username, payload.password, account):
         raise AuthError(
             401,
             "UNAUTHORIZED",
@@ -117,7 +120,7 @@ def login(payload: LoginIn, request: Request):
         )
 
     token = create_access_token(
-        username=settings.admin_username,
+        username=account.username,
         secret_key=settings.jwt_secret_key,
         expire_minutes=settings.jwt_access_token_expire_minutes,
     )

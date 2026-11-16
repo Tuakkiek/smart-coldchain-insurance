@@ -17,14 +17,14 @@ adapters are configured. Verification alone does not imply anchoring or payout.
 
 ## Phase 2 — đăng ký thiết bị và nhận telemetry có chữ ký
 
-Thiết lập xác thực Admin duy nhất qua biến môi trường trong `backend/.env`:
-- `ADMIN_USERNAME`: Tên đăng nhập của tài khoản Admin duy nhất.
-- `ADMIN_PASSWORD`: Mật khẩu tài khoản Admin.
+Admin duy nhất được lưu trong MySQL/Aiven, dùng `backend/.env` để **khởi tạo lần đầu**:
+- `ADMIN_USERNAME`: Tên Admin khởi tạo nếu bảng `admin_accounts` chưa có tài khoản.
+- `ADMIN_PASSWORD`: Mật khẩu khởi tạo, được băm PBKDF2-HMAC-SHA256 (600.000 vòng, salt ngẫu nhiên), không lưu dạng rõ.
 - `JWT_SECRET_KEY`: Khóa bí mật HMAC-SHA256 (chuỗi ngẫu nhiên tối thiểu 32 byte / 256 bit).
 - `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`: Thời gian hiệu lực token (mặc định 30 phút).
 - `TRUSTED_PROXIES`: Danh sách IP proxy tin cậy (mặc định `127.0.0.1,::1`) để phân giải client IP chống giả mạo header `X-Forwarded-For`.
 
-*Lưu ý: Cơ chế `ADMIN_API_KEY` và header `X-Admin-Key` cũ đã bị xóa hoàn toàn khỏi backend. Backend không hỗ trợ dùng song song API key và JWT hoặc bỏ qua xác thực khi thiếu cấu hình. Toàn bộ credential và secret test mặc định đã bị loại bỏ khỏi runtime; cấu hình thiếu, rỗng hoặc chứa giá trị placeholder sẽ kích hoạt fail-closed ngay khi ứng dụng khởi động hoặc khởi tạo Settings trực tiếp.*
+Chạy `python -m app.cli upgrade-db`: migration `20261116_04` thêm `admin_accounts` và CLI khởi tạo `id=1` nếu chưa có. PRIMARY KEY + CHECK `id=1` bảo đảm duy nhất một Admin, kể cả nhiều process khởi tạo đồng thời. Đổi username/password trong `.env` hoặc chạy lại migration **không ghi đè** tài khoản đã lưu. Sau lần đầu có thể bỏ hai biến này; giữ `JWT_SECRET_KEY`, cấu hình DB/TLS và TTL. Login/kiểm tra subject JWT đọc MySQL, không fallback sang env khi DB lỗi. Chưa seed trả `503 ADMIN_NOT_INITIALIZED`; DB/schema lỗi trả `503 AUTH_STORAGE_UNAVAILABLE`. Không Register/thêm Admin/reset password tự động hoặc lưu phiên JWT trong DB. `ADMIN_API_KEY`/`X-Admin-Key` đã bị loại bỏ. JWT secret thiếu/yếu vẫn fail closed; bootstrap credential chỉ bắt buộc khi chưa có Admin. Không log password, hash hoặc token.
 
 Admin đăng nhập lấy Bearer token:
 ```bash
@@ -36,9 +36,9 @@ Response `200 OK`:
 ```json
 {"access_token":"<jwt_token>","token_type":"bearer"}
 ```
-Endpoint login được bảo vệ bởi rate limiter 5 lần/phút/IP (trả về `429 Too Many Requests` với mã lỗi `RATE_LIMITED` cùng header `Retry-After` khi vượt quá). CORS expose cả `X-Request-ID` và `Retry-After` cho các origin hợp lệ. So sánh credential thực hiện theo UTF-8 constant-time, hỗ trợ Unicode đầy đủ và bảo toàn nguyên văn khoảng trắng của mật khẩu.
+Endpoint login được bảo vệ bởi rate limiter 5 lần/phút/IP (trả về `429 Too Many Requests` với mã lỗi `RATE_LIMITED` cùng header `Retry-After` khi vượt quá). CORS expose cả `X-Request-ID` và `Retry-After` cho các origin hợp lệ. Kiểm tra password hash và username với so sánh constant-time, hỗ trợ Unicode đầy đủ và bảo toàn nguyên văn khoảng trắng của mật khẩu.
 
-Trên MySQL hiện có, sao lưu dữ liệu rồi chạy `python -m app.cli upgrade-db` từ `backend/`; với DB mới dùng `python -m app.cli init-db`. Cả hai chạy tới head **`20261115_03`**, gồm các revision signed telemetry/Merkle trước đó, thêm `devices.device_name` (backfill bằng ID) và unique generated-column index `uq_device_assignment_active`. Không sửa revision cũ.
+Trên MySQL hiện có, sao lưu dữ liệu rồi chạy `python -m app.cli upgrade-db` từ `backend/`; với DB mới dùng `python -m app.cli init-db`. Cả hai chạy tới head **`20261116_04`** (bao gồm bảng Admin), gồm các revision signed telemetry/Merkle trước đó, thêm `devices.device_name` (backfill bằng ID) và unique generated-column index `uq_device_assignment_active`. Không sửa revision cũ.
 
 Quy trình admin mới, mọi thao tác quản trị và giám sát đều yêu cầu header `Authorization: Bearer <access_token>`:
 

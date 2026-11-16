@@ -86,7 +86,6 @@ export const ShipmentsPage: React.FC = () => {
     <div>
       <PageHeader
         title="Danh sách Lô hàng Lạnh"
-        description="Quản lý và giám sát thời gian thực các lô hàng đang lưu thông trong chuỗi cung ứng."
         action={
           <div className="flex-row items-center gap-2">
             <Button variant="secondary" size="sm" onClick={fetchShipments}>
