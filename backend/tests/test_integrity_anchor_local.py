@@ -21,7 +21,10 @@ from app.services.telemetry_protocol import canonical_signed_bytes
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT = REPO_ROOT / "blockchain/artifacts/contracts/ColdChainDataIntegrity.sol/ColdChainDataIntegrity.json"
-ADMIN = {"X-Admin-Key": "local-integrity-admin"}
+from app.services.auth import create_access_token
+
+ADMIN_TOKEN = create_access_token("admin", "test-jwt-secret-key-at-least-32-chars-long!")
+ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
 @pytest.mark.skipif(
@@ -37,7 +40,6 @@ def test_signed_batch_is_anchored_and_read_back_on_local_chain(tmp_path):
 
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'integrity-chain.db').as_posix()}",
-        admin_api_key=ADMIN["X-Admin-Key"],
         integrity_batch_max_records=1,
         blockchain_enabled=True,
         blockchain_network="hardhat",

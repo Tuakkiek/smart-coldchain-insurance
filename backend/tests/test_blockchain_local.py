@@ -28,7 +28,10 @@ from app.services.telemetry_protocol import canonical_signed_bytes
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SEEDED_SHIPMENT_ID = "8b4fb8a2-2996-4da2-90b9-35019517f56f"
 INTEGRITY_ARTIFACT = REPO_ROOT / "blockchain/artifacts/contracts/ColdChainDataIntegrity.sol/ColdChainDataIntegrity.json"
-ADMIN = {"X-Admin-Key": "phase6-local-admin"}
+from app.services.auth import create_access_token
+
+ADMIN_TOKEN = create_access_token("admin", "test-jwt-secret-key-at-least-32-chars-long!")
+ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
 def signed_payload(key, sequence):
@@ -62,7 +65,6 @@ def test_signed_anchored_violation_pays_once_on_local_chain(tmp_path):
     integrity_address = web3.eth.wait_for_transaction_receipt(deploy_hash).contractAddress
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'chain.db').as_posix()}",
-        admin_api_key=ADMIN["X-Admin-Key"],
         integrity_batch_max_age_minutes=5,
         max_sample_gap_seconds=300,
         blockchain_enabled=True,

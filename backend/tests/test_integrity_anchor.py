@@ -13,7 +13,10 @@ from app.models import Device, IntegrityBatch, IntegrationOutbox, Shipment
 from app.services.integrity_anchor_service import IntegrityAnchorCoordinator
 
 
-ADMIN = {"X-Admin-Key": "anchor-test-admin"}
+from app.services.auth import create_access_token
+
+ADMIN_TOKEN = create_access_token("admin", "test-jwt-secret-key-at-least-32-chars-long!")
+ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
 class FakeIntegrityGateway:
@@ -53,7 +56,6 @@ class FakeIntegrityGateway:
 def setup_app(tmp_path):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'anchor.db').as_posix()}",
-        admin_api_key=ADMIN["X-Admin-Key"],
     ))
     Base.metadata.create_all(app.state.engine)
     batch_id = str(uuid4())

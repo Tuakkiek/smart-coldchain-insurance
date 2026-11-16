@@ -24,13 +24,16 @@ SHIPMENT = {
     "violation_duration_minutes": 15,
     "insured_amount_vnd": 10000000,
 }
-ADMIN = {"X-Admin-Key": "api-test-admin"}
+from app.services.auth import create_access_token
+
+ADMIN_TOKEN = create_access_token("admin", "test-jwt-secret-key-at-least-32-chars-long!")
+ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
 @pytest.fixture
 def api(tmp_path):
     database_url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
-    app = create_app(Settings(database_url=database_url, admin_api_key=ADMIN["X-Admin-Key"]))
+    app = create_app(Settings(database_url=database_url))
     Base.metadata.create_all(app.state.engine)
     with TestClient(app, headers=ADMIN) as client:
         yield client, app
@@ -83,7 +86,7 @@ def test_create_list_detail_and_persistence(api):
 
     # A fresh app instance sees the data committed by the first request.
     fresh = create_app(app.state.settings)
-    with TestClient(fresh) as second_client:
+    with TestClient(fresh, headers=ADMIN) as second_client:
         assert second_client.get(f"/api/v1/shipments/{created['id']}").json() == created
     fresh.state.engine.dispose()
 
@@ -338,7 +341,7 @@ def test_seed_is_repeatable_and_has_example_event(api):
 
 def test_unexpected_failure_has_safe_response(api):
     _client, app = api
-    with TestClient(app, raise_server_exceptions=False) as client:
+    with TestClient(app, headers=ADMIN, raise_server_exceptions=False) as client:
         with patch("app.api.routes.shipments.list_shipments", side_effect=RuntimeError("database secret")):
             response = client.get("/api/v1/shipments")
     assert response.status_code == 500

@@ -20,7 +20,7 @@ from test_signed_ingestion import ADMIN, SHIPMENT, signed
 def registry_api(tmp_path):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'registry.db').as_posix()}",
-        admin_api_key=ADMIN["X-Admin-Key"], integrity_batch_max_records=1,
+        integrity_batch_max_records=1,
         cors_origins=("http://localhost:5173",),
     ))
     Base.metadata.create_all(app.state.engine)
@@ -113,10 +113,11 @@ def test_registration_validates_identity_and_name(registry_api, body):
 ])
 def test_admin_routes_require_auth_even_for_unknown_resources(registry_api, method, path, body):
     client, _ = registry_api
-    for headers in ({}, {"X-Admin-Key": "wrong"}):
+    for headers in ({}, {"X-Admin-Key": "wrong"}, {"Authorization": "Bearer invalid.token"}):
         response = client.request(method, path, json=body, headers=headers)
         assert response.status_code == 401
         assert response.json()["error"]["code"] == "UNAUTHORIZED"
+        assert response.headers.get("www-authenticate") == "Bearer"
         assert "x-request-id" in response.headers
 
 
@@ -143,7 +144,7 @@ def test_ingestion_requires_assignment_then_public_key_and_accepts_signed_sample
         assert session.scalar(select(func.count(Telemetry.id))) == 1
         assert session.scalar(select(func.count(SignedTelemetryReceipt.telemetry_id))) == 1
         assert session.scalar(select(func.count(IntegrityBatch.id))) == 1
-    assert client.get(f"/api/v1/shipments/{shipment_id}").json()["insurance"]["payout_status"] == "not_requested"
+    assert client.get(f"/api/v1/shipments/{shipment_id}", headers=ADMIN).json()["insurance"]["payout_status"] == "not_requested"
     assert client.patch("/api/v1/devices/ESP32-001/keys/key-v1", headers=ADMIN,
                         json={"status": "revoked"}).json()["has_public_key"] is False
     assert client.post(route, json=signed(key, shipment_id, 2)).json()["error"]["code"] == "UNKNOWN_KEY"
@@ -158,20 +159,20 @@ def test_assignment_idempotency_multiple_devices_and_transfer_preserve_history(r
     assert assign(client, "ESP32-001", first).status_code == 200
     assert assign(client, "ESP32-001", first).status_code == 200
     assert assign(client, "ESP32-002", first).status_code == 200
-    assert len(client.get(f"/api/v1/shipments/{first}/devices").json()["items"]) == 2
+    assert len(client.get(f"/api/v1/shipments/{first}/devices", headers=ADMIN).json()["items"]) == 2
     conflict = assign(client, "ESP32-001", second)
     assert conflict.status_code == 409
     assert conflict.json()["error"]["code"] == "DEVICE_ALREADY_ASSIGNED"
     old_sample = signed(key, first, 1)
     assert client.post(f"/api/v1/shipments/{first}/telemetry", json=old_sample).status_code == 201
-    old_batches = client.get(f"/api/v1/shipments/{first}/batches").json()
+    old_batches = client.get(f"/api/v1/shipments/{first}/batches", headers=ADMIN).json()
     assert assign(client, "ESP32-001", first, False).json()["current_shipment_id"] is None
     assert assign(client, "ESP32-001", second).json()["current_shipment_id"] == second
     assert client.post(f"/api/v1/shipments/{first}/telemetry", json=old_sample).status_code == 403
     stale = client.post(f"/api/v1/shipments/{second}/telemetry", json=signed(key, second, 1))
     assert stale.status_code == 409
     assert client.post(f"/api/v1/shipments/{second}/telemetry", json=signed(key, second, 2)).status_code == 201
-    assert client.get(f"/api/v1/shipments/{first}/batches").json() == old_batches
+    assert client.get(f"/api/v1/shipments/{first}/batches", headers=ADMIN).json() == old_batches
     with app.state.session_factory() as session:
         assert session.get(Device, "ESP32-001").last_sequence_number == 2
         assert session.scalar(select(func.count(DeviceAssignment.device_id))) == 3
@@ -235,7 +236,7 @@ def test_openapi_and_browser_admin_header_match_the_new_contract(registry_api):
     assert "/api/v1/devices" in schema["paths"]
     preflight = client.options("/api/v1/devices", headers={
         "Origin": "http://localhost:5173", "Access-Control-Request-Method": "POST",
-        "Access-Control-Request-Headers": "content-type,x-admin-key",
+        "Access-Control-Request-Headers": "content-type,authorization",
     })
     assert preflight.status_code == 200
     assert preflight.headers["access-control-allow-origin"] == "http://localhost:5173"
@@ -243,11 +244,10 @@ def test_openapi_and_browser_admin_header_match_the_new_contract(registry_api):
     assert "x-request-id" in listing.headers["access-control-expose-headers"].lower()
 
 
-def test_unconfigured_admin_api_fails_closed(registry_api):
-    from dataclasses import replace
-
-    client, app = registry_api
-    app.state.settings = replace(app.state.settings, admin_api_key="")
-    response = client.get("/api/v1/devices", headers=ADMIN)
-    assert response.status_code == 503
-    assert response.json()["error"]["code"] == "ADMIN_NOT_CONFIGURED"
+def test_unconfigured_admin_api_fails_closed():
+    with pytest.raises(ValueError, match="JWT_SECRET_KEY"):
+        Settings(database_url="sqlite://", jwt_secret_key="")
+    with pytest.raises(ValueError, match="ADMIN_USERNAME"):
+        Settings(database_url="sqlite://", admin_username="")
+    with pytest.raises(ValueError, match="ADMIN_PASSWORD"):
+        Settings(database_url="sqlite://", admin_password="")

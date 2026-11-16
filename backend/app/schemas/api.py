@@ -13,6 +13,24 @@ class StrictBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class LoginIn(StrictBody):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=256)
+
+    @field_validator("username", "password")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+
+class LoginOut(StrictBody):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
 class Place(StrictBody):
     name: str = Field(min_length=1, max_length=100)
     latitude: float = Field(ge=-90, le=90, allow_inf_nan=False, strict=True)

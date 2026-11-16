@@ -25,14 +25,16 @@ SHIPMENT = {
     "temp_min_c": 2.0, "temp_max_c": 8.0,
     "violation_duration_minutes": 15, "insured_amount_vnd": 10000000,
 }
-ADMIN = {"X-Admin-Key": "local-test-admin-key"}
+from app.services.auth import create_access_token
+
+ADMIN_TOKEN = create_access_token("admin", "test-jwt-secret-key-at-least-32-chars-long!")
+ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
 @pytest.fixture
 def setup_api(tmp_path):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'signed.db').as_posix()}",
-        admin_api_key=ADMIN["X-Admin-Key"],
     ))
     Base.metadata.create_all(app.state.engine)
     app.state.clock = VirtualClock(datetime(2026, 11, 5, 12, tzinfo=timezone.utc))
@@ -40,8 +42,8 @@ def setup_api(tmp_path):
     pem = key.public_key().public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("ascii")
-    with TestClient(app) as client:
-        shipment_id = client.post("/api/v1/shipments", headers=ADMIN, json=SHIPMENT).json()["id"]
+    with TestClient(app, headers=ADMIN) as client:
+        shipment_id = client.post("/api/v1/shipments", json=SHIPMENT).json()["id"]
         yield client, app, key, pem, shipment_id
     app.state.engine.dispose()
 
@@ -76,7 +78,7 @@ def signed(key, shipment_id, sequence, *, temperature=5.0, device_id="ESP32-001"
 def test_registration_auth_and_signed_retry_conflict_gap(setup_api):
     client, app, key, pem, shipment_id = setup_api
     route = f"/api/v1/shipments/{shipment_id}/telemetry"
-    assert client.post("/api/v1/devices", json={}).status_code == 401
+    assert client.post("/api/v1/devices", headers={"Authorization": ""}, json={}).status_code == 401
     assert register(client, pem, shipment_id).status_code == 201
     initial_health = client.get(f"/api/v1/shipments/{shipment_id}/devices").json()["items"]
     assert initial_health[0]["telemetry_status"] == "UNKNOWN"
@@ -157,15 +159,14 @@ def test_sequence_gap_breaks_breach_and_never_dispatches_payout(setup_api):
     assert client.post(route, json=signed(key, shipment_id, 1, temperature=9.2)).status_code == 201
     app.state.clock.current += timedelta(minutes=15)
     assert client.post(route, json=signed(key, shipment_id, 3, temperature=9.2)).status_code == 201
-    events = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
+    events = client.get(f"/api/v1/shipments/{shipment_id}/events", headers=ADMIN).json()["items"]
     assert not any(event["type"] == "INSURANCE_TRIGGERED" for event in events)
-    assert client.get(f"/api/v1/shipments/{shipment_id}").json()["insurance"]["payout_status"] == "not_requested"
+    assert client.get(f"/api/v1/shipments/{shipment_id}", headers=ADMIN).json()["insurance"]["payout_status"] == "not_requested"
 
 
 def test_production_requires_signed_payload(tmp_path):
     app = create_app(Settings(
         database_url=f"sqlite:///{(tmp_path / 'prod.db').as_posix()}", app_env="production",
-        admin_api_key=ADMIN["X-Admin-Key"],
     ))
     Base.metadata.create_all(app.state.engine)
     with TestClient(app) as client:
