@@ -357,7 +357,7 @@ export const OverviewPage: React.FC = () => {
                   <Wifi size={14} style={{ color: 'var(--color-success)' }} /> Thiết bị trực tuyến:
                 </span>
                 <strong style={{ color: 'var(--color-success)' }}>
-                  {devices.filter((d) => d.health.online_status === 'ONLINE').length} / {devices.length}
+                  {devices.filter((d) => d.health?.online_status === 'ONLINE').length} / {devices.length}
                 </strong>
               </div>
 
@@ -394,7 +394,7 @@ export const OverviewPage: React.FC = () => {
                       devices.filter(
                         (d) =>
                           d.completeness_status === 'DATA_INCOMPLETE' ||
-                          d.health.missing_sequence_count > 0
+                          (d.health?.missing_sequence_count ?? 0) > 0
                       ).length > 0
                         ? 'var(--color-warning)'
                         : 'var(--color-text-secondary)',
@@ -404,7 +404,7 @@ export const OverviewPage: React.FC = () => {
                     devices.filter(
                       (d) =>
                         d.completeness_status === 'DATA_INCOMPLETE' ||
-                        d.health.missing_sequence_count > 0
+                        (d.health?.missing_sequence_count ?? 0) > 0
                     ).length
                   }{' '}
                   thiết bị
