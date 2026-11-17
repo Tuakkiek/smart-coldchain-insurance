@@ -46,7 +46,7 @@ def error_response(
         if origin and settings and settings.cors_origins:
             if "*" in settings.cors_origins or origin in settings.cors_origins:
                 headers["Access-Control-Allow-Origin"] = origin
-                headers["Access-Control-Allow-Credentials"] = "false"
+                headers["Access-Control-Allow-Credentials"] = "true"
                 headers["Access-Control-Expose-Headers"] = "X-Request-ID, Retry-After"
                 headers["Vary"] = "Origin"
     return JSONResponse(
@@ -150,7 +150,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=list(settings.cors_origins),
-            allow_credentials=False,
+            allow_credentials=True,
             allow_methods=["GET", "POST", "PATCH", "DELETE"],
             allow_headers=["Content-Type", "Authorization"],
             expose_headers=["X-Request-ID", "Retry-After"],

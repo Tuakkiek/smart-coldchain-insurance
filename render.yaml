@@ -30,6 +30,18 @@ services:
         generateValue: true
       - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
         value: "30"
+      - key: JWT_REFRESH_TOKEN_EXPIRE_DAYS
+        value: "30"
+      - key: REFRESH_COOKIE_NAME
+        value: coldchain_refresh
+      - key: REFRESH_COOKIE_PATH
+        value: /api/v1/auth
+      - key: REFRESH_COOKIE_SECURE
+        value: "true"
+      - key: REFRESH_COOKIE_SAMESITE
+        value: lax
+      - key: REFRESH_COOKIE_DOMAIN
+        value: ""
       - key: CORS_ORIGINS
         sync: false
       - key: PUBLIC_API_BASE_URL

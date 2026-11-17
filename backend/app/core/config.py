@@ -54,6 +54,47 @@ def validate_auth_config(
         raise ValueError("JWT_ACCESS_TOKEN_EXPIRE_MINUTES must be positive")
 
 
+def validate_refresh_config(
+    app_env: str,
+    expire_days: int,
+    cookie_name: str,
+    cookie_path: str,
+    cookie_secure: bool,
+    cookie_samesite: str,
+    cookie_domain: str,
+    cors_origins: tuple[str, ...],
+) -> None:
+    if type(expire_days) is not int or expire_days <= 0:
+        raise ValueError("JWT_REFRESH_TOKEN_EXPIRE_DAYS must be positive")
+    if not cookie_name or any(
+        not char.isascii() or not (char.isalnum() or char in "_.-")
+        for char in cookie_name
+    ):
+        raise ValueError("REFRESH_COOKIE_NAME is invalid")
+    if cookie_path not in {"/api/v1/auth", "/api/v1/auth/"}:
+        raise ValueError("REFRESH_COOKIE_PATH must be /api/v1/auth")
+    if type(cookie_secure) is not bool:
+        raise ValueError("REFRESH_COOKIE_SECURE must be true or false")
+    if cookie_samesite not in {"lax", "strict", "none"}:
+        raise ValueError("REFRESH_COOKIE_SAMESITE must be lax, strict or none")
+    if cookie_samesite == "none" and not cookie_secure:
+        raise ValueError("REFRESH_COOKIE_SECURE must be true when SameSite=None")
+    if app_env == "production" and not cookie_secure:
+        raise ValueError("REFRESH_COOKIE_SECURE must be true in production")
+    if cookie_domain and (
+        len(cookie_domain) > 253
+        or ".." in cookie_domain
+        or any(char.isspace() or char in "/:;,=\r\n" for char in cookie_domain)
+        or any(
+            not char.isascii() or not (char.isalnum() or char in ".-")
+            for char in cookie_domain
+        )
+    ):
+        raise ValueError("REFRESH_COOKIE_DOMAIN is invalid")
+    if "*" in cors_origins:
+        raise ValueError("CORS_ORIGINS cannot contain wildcard when credentials are enabled")
+
+
 def validate_admin_bootstrap(username: str, password: str) -> None:
     if is_placeholder(username) or not 1 <= len(username.strip()) <= 100:
         raise ValueError("ADMIN_USERNAME is required to initialize the Admin account")
@@ -72,6 +113,12 @@ class Settings:
     admin_password: str = ""
     jwt_secret_key: str = ""
     jwt_access_token_expire_minutes: int = 30
+    jwt_refresh_token_expire_days: int = 30
+    refresh_cookie_name: str = "coldchain_refresh"
+    refresh_cookie_path: str = "/api/v1/auth"
+    refresh_cookie_secure: bool | None = None
+    refresh_cookie_samesite: str = "lax"
+    refresh_cookie_domain: str = ""
     trusted_proxies: tuple[str, ...] = ("127.0.0.1", "::1")
     max_request_body_bytes: int = 8192
     signed_rate_limit_per_minute: int = 120
@@ -94,11 +141,23 @@ class Settings:
     public_api_base_url: str = ""
 
     def __post_init__(self) -> None:
+        if self.refresh_cookie_secure is None:
+            object.__setattr__(self, "refresh_cookie_secure", self.app_env == "production")
         validate_auth_config(
             self.admin_username,
             self.admin_password,
             self.jwt_secret_key,
             self.jwt_access_token_expire_minutes,
+        )
+        validate_refresh_config(
+            self.app_env,
+            self.jwt_refresh_token_expire_days,
+            self.refresh_cookie_name,
+            self.refresh_cookie_path,
+            self.refresh_cookie_secure,
+            self.refresh_cookie_samesite,
+            self.refresh_cookie_domain,
+            self.cors_origins,
         )
 
 
@@ -149,6 +208,20 @@ def load_settings() -> Settings:
         jwt_access_token_expire_minutes = int(raw_expire)
     except ValueError as exc:
         raise ValueError("JWT_ACCESS_TOKEN_EXPIRE_MINUTES must be an integer") from exc
+    raw_refresh_expire = os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "30").strip()
+    try:
+        jwt_refresh_token_expire_days = int(raw_refresh_expire)
+    except ValueError as exc:
+        raise ValueError("JWT_REFRESH_TOKEN_EXPIRE_DAYS must be an integer") from exc
+
+    raw_cookie_secure = os.getenv(
+        "REFRESH_COOKIE_SECURE", "true" if app_env == "production" else "false"
+    ).strip().lower()
+    if raw_cookie_secure not in {"true", "false"}:
+        raise ValueError("REFRESH_COOKIE_SECURE must be true or false")
+    refresh_cookie_secure = raw_cookie_secure == "true"
+    refresh_cookie_samesite = os.getenv("REFRESH_COOKIE_SAMESITE", "lax").strip().lower()
+    refresh_cookie_domain = os.getenv("REFRESH_COOKIE_DOMAIN", "").strip()
 
     raw_trusted_proxies = os.getenv("TRUSTED_PROXIES", "127.0.0.1,::1")
     trusted_proxies = tuple(
@@ -170,6 +243,16 @@ def load_settings() -> Settings:
     if app_env == "production":
         if not cors_origins or "*" in cors_origins:
             raise ValueError("CORS_ORIGINS must be an explicit allowlist in production")
+    validate_refresh_config(
+        app_env,
+        jwt_refresh_token_expire_days,
+        os.getenv("REFRESH_COOKIE_NAME", "coldchain_refresh").strip(),
+        os.getenv("REFRESH_COOKIE_PATH", "/api/v1/auth").strip(),
+        refresh_cookie_secure,
+        refresh_cookie_samesite,
+        refresh_cookie_domain,
+        cors_origins,
+    )
     enabled_text = os.getenv("BLOCKCHAIN_ENABLED", "false").lower()
     if enabled_text not in {"true", "false"}:
         raise ValueError("BLOCKCHAIN_ENABLED must be true or false")
@@ -241,6 +324,12 @@ def load_settings() -> Settings:
         admin_password=admin_password,
         jwt_secret_key=jwt_secret_key,
         jwt_access_token_expire_minutes=jwt_access_token_expire_minutes,
+        jwt_refresh_token_expire_days=jwt_refresh_token_expire_days,
+        refresh_cookie_name=os.getenv("REFRESH_COOKIE_NAME", "coldchain_refresh").strip(),
+        refresh_cookie_path=os.getenv("REFRESH_COOKIE_PATH", "/api/v1/auth").strip(),
+        refresh_cookie_secure=refresh_cookie_secure,
+        refresh_cookie_samesite=refresh_cookie_samesite,
+        refresh_cookie_domain=refresh_cookie_domain,
         trusted_proxies=trusted_proxies,
         max_request_body_bytes=max_request_body_bytes,
         signed_rate_limit_per_minute=signed_rate_limit_per_minute,
