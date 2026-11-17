@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AdminDeviceViewOut, DeviceItemOut, ShipmentOut } from '../../types/api';
 import { assignDevice, getDevices } from '../../api/devices';
 import { getShipments } from '../../api/shipments';
@@ -69,6 +70,30 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
         .finally(() => setLoading(false));
     }
   }, [isOpen, initialDeviceId]);
+
+  // Lock background scroll when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
+
+  // Close modal on Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, submitting, onClose]);
 
   if (!isOpen) return null;
 
@@ -170,19 +195,24 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
     }
   };
 
-  return (
+  const modalContent = (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="assign-device-modal-title"
       style={{
         position: 'fixed',
         inset: 0,
         backgroundColor: 'rgba(0, 0, 0, 0.45)',
         backdropFilter: 'blur(3px)',
-        zIndex: 100,
+        zIndex: 1000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 'var(--space-4)',
         animation: 'fadeIn 0.15s ease-out',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
       onClick={submitting ? undefined : onClose}
     >
@@ -197,11 +227,13 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '92vh',
+          maxHeight: 'min(90vh, 720px)',
+          margin: 'auto',
+          position: 'relative',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Header - Fixed */}
         <div
           style={{
             padding: 'var(--space-4) var(--space-5)',
@@ -210,6 +242,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
             alignItems: 'center',
             justifyContent: 'space-between',
             backgroundColor: 'var(--color-surface-secondary)',
+            flexShrink: 0,
           }}
         >
           <div className="flex-row items-center gap-3">
@@ -229,6 +262,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
             </div>
             <div>
               <h3
+                id="assign-device-modal-title"
                 style={{
                   fontSize: 'var(--text-lg)',
                   fontWeight: 600,
@@ -267,8 +301,26 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleAssign} style={{ overflowY: 'auto', padding: 'var(--space-5)' }}>
+        {/* Form Container */}
+        <form
+          onSubmit={handleAssign}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Scrollable Form Body */}
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              padding: 'var(--space-5)',
+            }}
+          >
           {error && (
             <div
               style={{
@@ -455,15 +507,19 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
             </div>
           )}
 
-          {/* Footer Actions */}
+          </div>
+
+          {/* Footer Actions - Fixed */}
           <div
             style={{
-              paddingTop: 'var(--space-4)',
+              padding: 'var(--space-3) var(--space-5)',
               borderTop: '1px solid var(--color-border-subtle)',
+              backgroundColor: 'var(--color-surface-secondary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'flex-end',
               gap: 'var(--space-3)',
+              flexShrink: 0,
             }}
           >
             <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>
@@ -482,4 +538,8 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };

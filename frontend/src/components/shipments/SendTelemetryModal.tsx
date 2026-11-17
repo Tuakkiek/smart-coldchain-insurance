@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { TelemetryCreatePayload, TelemetryOut } from '../../types/api';
 import { postShipmentTelemetry } from '../../api/shipments';
 import { Button } from '../ui/Button';
@@ -58,6 +59,30 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
       setError(null);
     }
   }, [isOpen, assignedDevices, tempMin, tempMax]);
+
+  // Lock background scroll when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
+
+  // Close modal on Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, submitting, onClose]);
 
   if (!isOpen) return null;
 
@@ -123,19 +148,24 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
     }
   };
 
-  return (
+  const modalContent = (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="send-telemetry-modal-title"
       style={{
         position: 'fixed',
         inset: 0,
         backgroundColor: 'rgba(0, 0, 0, 0.45)',
         backdropFilter: 'blur(3px)',
-        zIndex: 100,
+        zIndex: 1000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 'var(--space-4)',
         animation: 'fadeIn 0.15s ease-out',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
       onClick={submitting ? undefined : onClose}
     >
@@ -150,7 +180,9 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '92vh',
+          maxHeight: 'min(90vh, 720px)',
+          margin: 'auto',
+          position: 'relative',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -581,5 +613,9 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };
 

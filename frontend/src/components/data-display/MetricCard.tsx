@@ -16,8 +16,11 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   icon,
   accentColor,
 }) => {
+  // Auto-detect long text values (status strings like DATA_INTEGRITY_FAILED)
+  const isLongText = typeof value === 'string' && value.length > 10;
+
   return (
-    <Card style={{ padding: 'var(--space-5)' }}>
+    <Card style={{ padding: 'var(--space-5)', overflow: 'hidden' }}>
       <div className="flex-row items-center justify-between" style={{ marginBottom: 'var(--space-2)' }}>
         <span
           style={{
@@ -34,6 +37,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
               color: accentColor || 'var(--color-text-tertiary)',
               display: 'flex',
               alignItems: 'center',
+              flexShrink: 0,
             }}
           >
             {icon}
@@ -43,11 +47,14 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       <div
         className="tabular-nums"
         style={{
-          fontSize: 'var(--text-3xl)',
+          fontSize: isLongText ? 'var(--text-lg)' : 'var(--text-3xl)',
           fontWeight: 600,
-          lineHeight: 'var(--text-3xl-lh)',
+          lineHeight: isLongText ? 'var(--text-lg-lh)' : 'var(--text-3xl-lh)',
           color: accentColor || 'var(--color-text-primary)',
           letterSpacing: '-0.02em',
+          wordBreak: 'break-word',
+          overflowWrap: 'break-word',
+          hyphens: 'auto',
         }}
       >
         {value}

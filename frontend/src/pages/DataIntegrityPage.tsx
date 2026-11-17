@@ -252,6 +252,31 @@ export const DataIntegrityPage: React.FC = () => {
   const anchoredBatches = batches.filter((b) => b.anchor_status === 'DATA_ANCHORED').length;
   const totalRecordsCalculated = batches.reduce((acc, b) => acc + (b.record_count || 0), 0);
 
+  const getOverallVerificationDisplay = () => {
+    const status = summary?.verification_status ?? (failedBatches.length > 0 ? 'DATA_INTEGRITY_FAILED' : batches.length > 0 ? 'MATCHED' : 'NOT_CHECKED');
+    switch (status) {
+      case 'MATCHED':
+        return {
+          text: 'Toàn vẹn khớp',
+          subtitle: 'Đối soát Merkle Root trùng khớp',
+          color: 'var(--color-success)',
+        };
+      case 'DATA_INTEGRITY_FAILED':
+        return {
+          text: 'Sai lệch dữ liệu',
+          subtitle: 'Phát hiện can thiệp Merkle Root!',
+          color: 'var(--color-danger)',
+        };
+      case 'NOT_CHECKED':
+      default:
+        return {
+          text: 'Chưa đối chiếu',
+          subtitle: 'Chưa kiểm tra Merkle Root',
+          color: 'var(--color-neutral)',
+        };
+    }
+  };
+
   return (
     <div>
       {/* Top Controls */}
@@ -355,10 +380,10 @@ export const DataIntegrityPage: React.FC = () => {
         />
         <MetricCard
           title="Trạng thái xác minh chung"
-          value={summary?.verification_status ?? (failedBatches.length > 0 ? 'DATA_INTEGRITY_FAILED' : batches.length > 0 ? 'MATCHED' : 'NOT_CHECKED')}
-          subtitle="Đối soát Merkle Root"
+          value={getOverallVerificationDisplay().text}
+          subtitle={getOverallVerificationDisplay().subtitle}
           icon={<CheckCircle2 size={20} />}
-          accentColor={failedBatches.length > 0 ? 'var(--color-danger)' : 'var(--color-success)'}
+          accentColor={getOverallVerificationDisplay().color}
         />
         <MetricCard
           title="Batch đã neo on-chain"
