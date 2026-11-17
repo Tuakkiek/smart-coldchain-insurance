@@ -50,10 +50,21 @@ ADMIN_USERNAME=<single-admin-username>
 ADMIN_PASSWORD=<admin-password>
 JWT_SECRET_KEY=<random-secret-at-least-32-bytes>
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+JWT_REFRESH_TOKEN_EXPIRE_DAYS=30
+REFRESH_COOKIE_NAME=coldchain_refresh
+REFRESH_COOKIE_PATH=/api/v1/auth
+REFRESH_COOKIE_SECURE=true
+REFRESH_COOKIE_SAMESITE=lax
+# Để trống nhằm dùng host-only cookie; chỉ đặt khi kiến trúc deployment thực sự cần.
+REFRESH_COOKIE_DOMAIN=
 CORS_ORIGINS=https://<actual-frontend-domain>
 PUBLIC_API_BASE_URL=https://<actual-render-service>.onrender.com/api/v1
 LOG_LEVEL=INFO
 ```
+
+Giữ `REFRESH_COOKIE_SAMESITE=lax` khi Frontend/API cùng site. Nếu hai ứng dụng khác site, dùng
+`REFRESH_COOKIE_SAMESITE=none` cùng `REFRESH_COOKIE_SECURE=true`; cấu hình `none` bị từ chối khi
+cookie không Secure.
 
 `DATABASE_URL` được ưu tiên hơn `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD`. Backend bắt buộc MySQL, tự dùng driver PyMySQL, pool nhỏ (`5 + 2 overflow`), `pool_pre_ping`, recycle và timeout. Nếu provider cấp CA, tạo Render Secret File rồi đặt:
 
@@ -81,7 +92,7 @@ BLOCKCHAIN_CONTRACT_ADDRESS=<actual-insurance-address>
 BLOCKCHAIN_ORACLE_PRIVATE_KEY=<render-secret>
 ```
 
-Không dùng wildcard cho `CORS_ORIGINS`. `APP_ENV=production` tắt toàn bộ `/api/v1/demo/*`, từ chối unsigned telemetry và fail startup nếu credential Admin/secret JWT thiếu, dùng placeholder, secret ngắn hoặc CORS không phải allowlist rõ ràng.
+Không dùng wildcard cho `CORS_ORIGINS`; backend bật credentialed CORS và kiểm tra `Origin` trên auth endpoint. `APP_ENV=production` bắt buộc refresh cookie có `Secure`, tắt toàn bộ `/api/v1/demo/*`, từ chối unsigned telemetry và fail startup nếu credential Admin/secret JWT thiếu, dùng placeholder, secret ngắn hoặc CORS không phải allowlist rõ ràng.
 
 Admin lưu trong bảng `admin_accounts` của MySQL/Aiven, chỉ một dòng `id=1`, username và password hash PBKDF2-HMAC-SHA256. `ADMIN_USERNAME`/`ADMIN_PASSWORD` chỉ seed lần đầu khi chạy `upgrade-db`; không ghi đè tài khoản đã có. Sau khi seed có thể bỏ hai biến này, giữ `JWT_SECRET_KEY`, TTL, cấu hình DB/TLS. Không lưu password rõ hoặc JWT secret trong DB. Backend cần truy cập MySQL khi login/verify token; DB lỗi trả 503, không fallback env. `.env` local không tự đồng bộ Render. CA công khai đã được bundle tại `backend/certs/aiven-ca.crt`; đặt `MYSQL_SSL_CA=certs/aiven-ca.crt`.
 
@@ -105,7 +116,7 @@ Kỳ vọng khi chưa bật Blockchain:
 
 Tiếp tục kiểm tra:
 
-1. Xác nhận OpenAPI có **POST `/api/v1/auth/login`**. Đăng nhập JSON `{username, password}` với credential đã seed trong MySQL, nhận `{access_token, token_type: "bearer"}` rồi dùng `Authorization: Bearer <access_token>` cho các API quản trị/giám sát, đăng ký public key thiết bị và assignment. Không log/screenshot password hoặc token.
+1. Xác nhận OpenAPI có **POST `/api/v1/auth/login`**, `/api/v1/auth/refresh` và `/api/v1/auth/logout`**. Đăng nhập JSON `{username, password}` với credential đã seed trong MySQL, nhận `{access_token, token_type: "bearer"}` cùng cookie `HttpOnly`, rồi dùng `Authorization: Bearer <access_token>` cho các API quản trị/giám sát. Gọi refresh/logout với credentials; không log/screenshot password hoặc token.
 2. Gửi một signed telemetry từ simulator qua HTTPS public; xác nhận signature `VALID`, `received_at` do server tạo và dữ liệu đọc lại được.
 3. Restart/redeploy service; xác nhận shipment/telemetry vẫn còn trong external MySQL.
 4. Gửi preflight/request từ đúng Frontend origin và xác nhận origin khác không nhận CORS header.

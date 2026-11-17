@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -50,7 +51,10 @@ from app.services.auth import (
     auth_account,
     create_access_token,
     decode_and_verify_token,
+    issue_refresh_token,
+    revoke_refresh_token,
     resolve_client_ip,
+    rotate_refresh_token,
 )
 from app.models import SignedTelemetryReceipt
 from app.services.device_health_service import shipment_devices
@@ -96,9 +100,50 @@ def admin_session(
 AdminSession = Annotated[Session, Depends(admin_session)]
 
 
+def _validate_auth_origin(request: Request) -> None:
+    """Reject browser requests from origins outside the configured allowlist."""
+    origin = request.headers.get("origin")
+    if origin is not None and origin.rstrip("/") not in request.app.state.settings.cors_origins:
+        raise AuthError(403, "ORIGIN_NOT_ALLOWED", "Origin không được phép")
+
+
+def _set_refresh_cookie(
+    response: Response,
+    token: str,
+    expires_at,
+    settings,
+) -> None:
+    remaining_seconds = max(
+        0, int((expires_at - datetime.now(timezone.utc)).total_seconds())
+    )
+    response.set_cookie(
+        key=settings.refresh_cookie_name,
+        value=token,
+        max_age=remaining_seconds,
+        expires=expires_at,
+        path=settings.refresh_cookie_path,
+        domain=settings.refresh_cookie_domain or None,
+        secure=bool(settings.refresh_cookie_secure),
+        httponly=True,
+        samesite=settings.refresh_cookie_samesite,
+    )
+
+
+def _clear_refresh_cookie(response: Response, settings) -> None:
+    response.delete_cookie(
+        key=settings.refresh_cookie_name,
+        path=settings.refresh_cookie_path,
+        domain=settings.refresh_cookie_domain or None,
+        secure=bool(settings.refresh_cookie_secure),
+        httponly=True,
+        samesite=settings.refresh_cookie_samesite,
+    )
+
+
 @router.post("/auth/login", response_model=LoginOut)
-def login(payload: LoginIn, request: Request, session: DbSession):
+def login(payload: LoginIn, request: Request, response: Response, session: DbSession):
     settings = request.app.state.settings
+    _validate_auth_origin(request)
     limiter = getattr(request.app.state, "login_rate_limiter", None)
     client_ip = resolve_client_ip(request, settings.trusted_proxies)
 
@@ -126,7 +171,40 @@ def login(payload: LoginIn, request: Request, session: DbSession):
         secret_key=settings.jwt_secret_key,
         expire_minutes=settings.jwt_access_token_expire_minutes,
     )
+    refresh_token, refresh_expires_at = issue_refresh_token(session, account, settings)
+    _set_refresh_cookie(response, refresh_token, refresh_expires_at, settings)
     return LoginOut(access_token=token, token_type="bearer")
+
+
+@router.post("/auth/refresh", response_model=LoginOut)
+def refresh(request: Request, response: Response, session: DbSession):
+    settings = request.app.state.settings
+    _validate_auth_origin(request)
+    refresh_token = request.cookies.get(settings.refresh_cookie_name)
+    if not refresh_token:
+        raise AuthError(401, "REFRESH_TOKEN_MISSING", "Không tìm thấy refresh token")
+    replacement, expires_at, account = rotate_refresh_token(
+        session, refresh_token, settings
+    )
+    access_token = create_access_token(
+        username=account.username,
+        secret_key=settings.jwt_secret_key,
+        expire_minutes=settings.jwt_access_token_expire_minutes,
+    )
+    _set_refresh_cookie(response, replacement, expires_at, settings)
+    return LoginOut(access_token=access_token, token_type="bearer")
+
+
+@router.post("/auth/logout", status_code=204)
+def logout(request: Request, session: DbSession):
+    settings = request.app.state.settings
+    _validate_auth_origin(request)
+    revoke_refresh_token(
+        session, request.cookies.get(settings.refresh_cookie_name), settings
+    )
+    response = Response(status_code=204)
+    _clear_refresh_cookie(response, settings)
+    return response
 
 
 @router.get("/health", response_model=HealthOut)
