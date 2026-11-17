@@ -99,7 +99,7 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
       if (err instanceof ApiError) {
         if (err.code === 'SIGNED_TELEMETRY_REQUIRED' || err.status === 403) {
           setError(
-            'Backend trên Production yêu cầu Signed Telemetry v1 (có chữ ký mật mã ECDSA P-256 từ ESP32). Trên Development hoặc Mock Mode, bạn có thể gửi dữ liệu trực tiếp.'
+            'Backend trên Production yêu cầu Signed Telemetry v1 (có chữ ký mật mã ECDSA P-256 từ ESP32). Trên Development, bạn có thể gửi dữ liệu trực tiếp khi backend cho phép unauthenticated telemetry.'
           );
         } else if (err.code === 'SHIPMENT_NOT_FOUND') {
           setError('Không tìm thấy lô hàng này trên máy chủ.');
@@ -128,7 +128,7 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
         padding: 'var(--space-4)',
         animation: 'fadeIn 0.15s ease-out',
       }}
-      onClick={onClose}
+      onClick={submitting ? undefined : onClose}
     >
       <div
         style={{
@@ -194,11 +194,14 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            disabled={submitting}
             style={{
               background: 'none',
               border: 'none',
-              cursor: 'pointer',
+              cursor: submitting ? 'not-allowed' : 'pointer',
+              opacity: submitting ? 0.5 : 1,
               color: 'var(--color-text-tertiary)',
               padding: 4,
               borderRadius: 'var(--radius-sm)',
@@ -558,10 +561,10 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
             <Button
               type="submit"
               variant={isOutOfRange ? 'danger' : 'primary'}
+              loading={submitting}
               disabled={submitting}
-              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              icon={<Radio size={14} />}
             >
-              <Radio size={14} />
               {submitting ? 'Đang gửi...' : 'Gửi Dữ Liệu Đo'}
             </Button>
           </div>

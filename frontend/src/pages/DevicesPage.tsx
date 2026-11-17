@@ -25,6 +25,7 @@ import { ApiError } from '../api/client';
 import { RegisterDeviceModal } from '../components/devices/RegisterDeviceModal';
 import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { AdminDeviceDetailModal } from '../components/devices/AdminDeviceDetailModal';
+import { useToast } from '../components/feedback/Toast';
 import {
   Cpu,
   KeyRound,
@@ -47,6 +48,7 @@ import {
 } from 'lucide-react';
 
 export const DevicesPage: React.FC = () => {
+  const { toast } = useToast();
   const backendConnectionState = useBackendConnectionState();
   const [devices, setDevices] = useState<DeviceItemOut[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
@@ -143,6 +145,24 @@ export const DevicesPage: React.FC = () => {
     };
   }, [autoRefresh]);
 
+<<<<<<< HEAD
+=======
+  const copyPublicKey = (pem?: string) => {
+    if (!pem) return;
+    navigator.clipboard.writeText(pem);
+    setCopiedKey(true);
+    toast.info('Đã sao chép khóa công khai (PEM) vào bộ nhớ tạm.');
+    setTimeout(() => setCopiedKey(false), 2000);
+  };
+
+  const copyKeyId = (keyId: string) => {
+    navigator.clipboard.writeText(keyId);
+    setCopiedKeyId(keyId);
+    toast.info(`Đã sao chép Key ID '${keyId}' vào bộ nhớ tạm.`);
+    setTimeout(() => setCopiedKeyId(null), 2000);
+  };
+
+>>>>>>> 931ec32166bef589e0eac94aba2fe121e909c808
   const handleDeleteDevice = async (device: DeviceItemOut) => {
     setAdminSuccessMsg(null);
     setAdminErrorMsg(null);
@@ -226,7 +246,7 @@ export const DevicesPage: React.FC = () => {
   );
 
   if (loading && devices.length === 0) {
-    return <LoadingState message="Đang nạp dữ liệu xác thực và tình trạng thiết bị ESP32..." />;
+    return <LoadingState fullPage message="Đang nạp dữ liệu xác thực và tình trạng thiết bị ESP32..." />;
   }
 
   return (
@@ -255,14 +275,10 @@ export const DevicesPage: React.FC = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => fetchDevicesList(false)}
+              onClick={() => fetchDevicesList(true)}
+              loading={refreshing}
               disabled={loading || refreshing}
-              icon={
-                <RefreshCw
-                  size={14}
-                  className={loading || refreshing ? 'animate-spin' : undefined}
-                />
-              }
+              icon={<RefreshCw size={14} />}
             >
               Làm mới
             </Button>
@@ -435,12 +451,12 @@ export const DevicesPage: React.FC = () => {
         <MetricCard
           title="Trạng thái Backend"
           value={
-            backendConnectionState === 'MOCK'
-              ? 'Mock Mode'
-              : backendConnectionState === 'COLD_START' || isColdStart
+            backendConnectionState === 'COLD_START' || isColdStart
               ? 'Cold Start (~30s)'
               : backendConnectionState === 'ONLINE'
               ? 'Online'
+              : backendConnectionState === 'CHECKING'
+              ? 'Đang kiểm tra...'
               : 'Offline'
           }
           icon={<Server size={20} />}
@@ -1253,7 +1269,7 @@ export const DevicesPage: React.FC = () => {
                   Hiển thị banner <strong>Render Cold Start</strong>. Trạng thái thiết bị giữ nguyên hoặc hiển thị <em>Chờ Backend</em>, KHÔNG đánh dấu thiết bị ngoại vi offline.
                 </td>
                 <td style={{ padding: 'var(--space-3)' }}>
-                  Đợi 30 giây máy chủ thức giấc hoặc bấm nút chuyển sang Mock Data Mode.
+                  Đợi 30 giây máy chủ thức giấc hoặc bấm nút thử lại kết nối.
                 </td>
               </tr>
               <tr style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
@@ -1308,10 +1324,16 @@ export const DevicesPage: React.FC = () => {
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
         onSuccess={(res) => {
+<<<<<<< HEAD
           setAdminSuccessMsg(res.provisioning_status === 'ready'
             ? 'Đăng ký thiết bị thành công. Khóa thiết bị đã được tạo và cấu hình ESP32 đã được cập nhật.'
             : `Thiết bị ${res.device_id} đã được đăng ký nhưng config.h chưa được cập nhật; hãy cấp khóa bằng quy trình local.`
           );
+=======
+          const msg = `Đã đăng ký thành công thiết bị ${res.device_id} (${res.device_name || 'Cold Chain Sensor'}).`;
+          setAdminSuccessMsg(msg);
+          toast.success(msg, { title: 'Đăng ký thiết bị' });
+>>>>>>> 931ec32166bef589e0eac94aba2fe121e909c808
           fetchDevicesList(false);
         }}
       />
@@ -1325,6 +1347,7 @@ export const DevicesPage: React.FC = () => {
         initialDeviceId={assignModalDeviceId}
         onSuccess={(_res, msg) => {
           setAdminSuccessMsg(msg);
+          toast.success(msg, { title: 'Liên kết thiết bị' });
           fetchDevicesList(true);
         }}
       />

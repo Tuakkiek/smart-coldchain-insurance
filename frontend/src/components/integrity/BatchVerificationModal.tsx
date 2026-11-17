@@ -11,6 +11,7 @@ import {
   X,
   AlertTriangle,
   Info,
+  Loader2,
 } from 'lucide-react';
 
 interface BatchVerificationModalProps {
@@ -64,7 +65,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
         padding: 'var(--space-4)',
         animation: 'fadeIn 0.15s ease-out',
       }}
-      onClick={onClose}
+      onClick={loading ? undefined : onClose}
     >
       <div
         style={{
@@ -119,12 +120,15 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={onClose}
+            disabled={loading}
             style={{
               background: 'none',
               border: 'none',
               color: 'var(--color-text-tertiary)',
-              cursor: 'pointer',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.5 : 1,
               padding: '6px',
               borderRadius: 'var(--radius-sm)',
               display: 'flex',
@@ -155,7 +159,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                 gap: 'var(--space-3)',
               }}
             >
-              <div className="spinner" style={{ width: 36, height: 36 }} />
+              <Loader2 size={36} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
               <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
                 Đang yêu cầu Backend tính lại Merkle Root...
               </div>

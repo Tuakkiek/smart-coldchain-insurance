@@ -65,7 +65,6 @@ frontend/
       client.ts
       shipments.ts
       events.ts
-      demo.ts
     components/
       layout/
       ui/
@@ -76,7 +75,6 @@ frontend/
       shipments/
       telemetry/
       events/
-      demo/
     pages/
     types/
     mocks/
@@ -477,27 +475,9 @@ Distinguish:
 
 A sensor data gap is an absence of evidence, not proof that the cargo temperature was out of range.
 
-## 5.5 Demo area
+## 5.5 Demo area (Removed)
 
-The demo area is available only when the Backend is running in development/demo mode.
-
-Required controls from the roadmap:
-
-- Select a sample shipment.
-- “Kịch bản bình thường”.
-- “Mô phỏng nhiệt độ vượt ngưỡng”.
-- Scenario execution state and returned result.
-
-Rules:
-
-- Call the published Backend demo endpoint: `POST /api/v1/demo/shipments/{id}/scenario`.
-- Use the documented scenario values: `normal` and `temperature_breach`.
-- Do not write fake telemetry directly to the database.
-- Do not locally simulate a successful insurance payout or Blockchain transaction.
-- Disable scenario buttons while a scenario is running.
-- Display an explicit “Mô phỏng” label throughout the demo flow.
-- If the endpoint is disabled or unavailable, show that the scenario did not run. Do not display a fake success.
-- Keep demo controls out of production UI.
+*Note: The demo scenario endpoint and UI were removed in Issue #50.*
 
 ## 6. Business state presentation
 

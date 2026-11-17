@@ -13,7 +13,6 @@ import {
 } from '../components/data-display/StatusBadge';
 import { LoadingState } from '../components/feedback/LoadingState';
 import { ErrorState } from '../components/feedback/ErrorState';
-import { SimulatedRouteMap } from '../components/data-display/SimulatedRouteMap';
 import { TelemetryChart } from '../components/data-display/TelemetryChart';
 import { EventTimeline } from '../components/data-display/EventTimeline';
 import { getShipmentById, getShipmentTelemetry } from '../api/shipments';
@@ -34,6 +33,7 @@ import { IntegrityViolationAlert } from '../components/integrity/IntegrityViolat
 import { BatchVerificationModal } from '../components/integrity/BatchVerificationModal';
 import { BatchDetailModal } from '../components/integrity/BatchDetailModal';
 import { SendTelemetryModal } from '../components/shipments/SendTelemetryModal';
+import { useToast } from '../components/feedback/Toast';
 import {
   ArrowLeft,
   MapPin,
@@ -58,6 +58,7 @@ import {
 export const ShipmentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const [shipment, setShipment] = useState<ShipmentOut | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryOut[]>([]);
@@ -169,6 +170,17 @@ export const ShipmentDetailPage: React.FC = () => {
       if (isMountedRef.current) {
         setVerificationResult(result);
         const isTampered = result.verification_status === 'DATA_INTEGRITY_FAILED';
+        if (isTampered) {
+          toast.warning(
+            `Merkle Batch '${batchId.slice(0, 8)}...' phát hiện sai lệch dữ liệu!`,
+            { title: 'Toàn vẹn dữ liệu' }
+          );
+        } else {
+          toast.success(
+            `Xác minh Merkle Batch '${batchId.slice(0, 8)}...' trùng khớp hoàn toàn!`,
+            { title: 'Toàn vẹn dữ liệu' }
+          );
+        }
         setBatches((prev) =>
           prev.map((b) =>
             b.batch_id === batchId
@@ -191,6 +203,7 @@ export const ShipmentDetailPage: React.FC = () => {
             ? err.message
             : 'Lỗi kết nối hoặc quyền truy cập khi gửi yêu cầu xác minh tới Backend';
         setVerifyError(errorMsg);
+        toast.error(errorMsg, { title: 'Lỗi xác minh Merkle' });
       }
     } finally {
       if (isMountedRef.current) {
@@ -222,11 +235,12 @@ export const ShipmentDetailPage: React.FC = () => {
     if (!text) return;
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
+    toast.info('Đã sao chép vào bộ nhớ tạm.');
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  if (loading) {
-    return <LoadingState message="Đang nạp chi tiết lô hàng và bản đồ tuyến đường..." />;
+  if (loading && !shipment) {
+    return <LoadingState fullPage message="Đang nạp chi tiết lô hàng..." />;
   }
 
   if (error || !shipment) {
@@ -298,6 +312,7 @@ export const ShipmentDetailPage: React.FC = () => {
             size="sm"
             onClick={() => fetchData(true)}
             loading={refreshing}
+            disabled={loading || refreshing}
             icon={<RefreshCw size={14} />}
           >
             Làm mới
@@ -750,20 +765,6 @@ export const ShipmentDetailPage: React.FC = () => {
           </div>
         </Card>
       </div>
-
-      {/* PHASE 3: INTERACTIVE LEAFLET MAP PANEL */}
-      <Card
-        title="Bản đồ Lộ trình Tuyến xe (Mô phỏng)"
-        description="Vị trí xe và tiến độ hành trình được tính toán nội suy từ dữ liệu mẫu cảm biến Backend."
-        style={{ marginBottom: 'var(--space-6)' }}
-      >
-        <SimulatedRouteMap
-          origin={shipment.origin}
-          destination={shipment.destination}
-          currentLocation={shipment.location}
-          height="380px"
-        />
-      </Card>
 
       {/* PHASE 3: TELEMETRY CHART */}
       <Card
@@ -1220,9 +1221,9 @@ export const ShipmentDetailPage: React.FC = () => {
             : ['ESP32-01']
         }
         onSuccess={(sample) => {
-          setTelemetrySuccessMsg(
-            `Đã gửi thành công dữ liệu đo cảm biến: ${sample.temperature_c}°C, độ ẩm ${sample.humidity_pct}% từ thiết bị ${sample.device_id}.`
-          );
+          const msg = `Đã gửi thành công dữ liệu đo cảm biến: ${sample.temperature_c}°C, độ ẩm ${sample.humidity_pct}% từ thiết bị ${sample.device_id}.`;
+          setTelemetrySuccessMsg(msg);
+          toast.success(msg, { title: 'Gửi Telemetry thành công' });
           fetchData(true);
         }}
       />

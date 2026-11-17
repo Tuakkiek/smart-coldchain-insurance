@@ -343,17 +343,6 @@ export interface EventListOut {
   items: EventOut[];
 }
 
-export interface DemoScenarioPayload {
-  scenario: 'normal' | 'temperature_breach';
-}
-
-export interface DemoScenarioOut {
-  shipment_id: string;
-  scenario: 'normal' | 'temperature_breach';
-  generated_samples: number;
-  shipment_status: ShipmentStatus;
-}
-
 export interface HealthOut {
   status: 'ok';
 }

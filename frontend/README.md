@@ -12,7 +12,7 @@ Giao diện giám sát chuỗi cung ứng lạnh, dữ liệu telemetry cảm bi
 - **Routing:** React Router v6.
 - **Icon:** Lucide React (chuẩn outline tối giản).
 - **Styling:** CSS Tokens & Modern Responsive Layout (phong cách Apple tối giản, rõ ràng, trung thực với dữ liệu).
-- **API Client:** Lớp client duy nhất kết nối REST API Backend `/api/v1` cùng Mock Adapter độc lập cho môi trường phát triển / demo.
+- **API Client:** Lớp client duy nhất kết nối REST API Backend `/api/v1` chuẩn RESTful.
 
 ---
 
@@ -36,8 +36,6 @@ cp .env.example .env
 
 Các biến môi trường:
 - `VITE_API_BASE_URL`: Địa chỉ REST API Backend (mặc định development: `http://localhost:8000`; production dùng URL Render đã cấu hình). Không trộn `localhost` với `127.0.0.1` vì refresh cookie được phân tách theo hostname.
-- `VITE_USE_MOCK`: Bật dữ liệu Mock độc lập (`true` hoặc `false`). Hữu ích khi Backend chưa chạy hoặc muốn demo nhanh 3 kịch bản chuẩn.
-- `VITE_ENABLE_DEMO`: Cho phép hiển thị tab Demo kịch bản (`true` hoặc `false`).
 
 ### 2.3 Khởi chạy máy chủ phát triển (Dev Server)
 
@@ -64,7 +62,7 @@ npm run build
 - Nút **Đăng xuất** gọi Backend để revoke/xóa refresh cookie và luôn xóa access token local, kể cả khi Backend tạm thời không kết nối được. Login/refresh/logout không tự retry.
 - Sai thông tin đăng nhập trả `401`; `429` hiển thị thời gian chờ từ `Retry-After` và khóa nút tới lúc thử lại. Không tự retry POST login. Mật khẩu giữ nguyên khoảng trắng khi gửi, không lưu/log sau khi submit.
 - Backend cho phép CORS đúng frontend origin với `Authorization`/`Content-Type` và expose `Retry-After`. Production dùng HTTPS và static host phải rewrite đường dẫn SPA (như `/login`, `/devices`) về `index.html`.
-- Login luôn dùng **Backend thật**, kể cả khi bật mock cho dữ liệu giám sát. Mock không tạo credential hay bỏ qua đăng nhập. ESP32/telemetry giữ cơ chế xác thực P-256 riêng, không dùng JWT Admin.
+- Login luôn dùng **Backend thật**. ESP32/telemetry giữ cơ chế xác thực P-256 riêng, không dùng JWT Admin.
 
 Chạy kiểm thử auth và production build từ `frontend/`:
 
@@ -85,14 +83,13 @@ Vitest 5 yêu cầu Node.js `^22.12.0 || ^24.0.0 || >=26.0.0`; môi trường ki
 frontend/
 ├── public/                 # Assets tĩnh (icon, favicon)
 ├── src/
-│   ├── api/                # Lớp gọi REST API duy nhất (client, shipments, events, demo)
+│   ├── api/                # Lớp gọi REST API duy nhất (client, shipments, events, devices, integrity)
 │   ├── components/         # Shared components
 │   │   ├── layout/         # AppShell, Sidebar, TopBar, PageHeader
 │   │   ├── ui/             # Button, Card, Badge, Input
 │   │   ├── feedback/       # LoadingState, EmptyState, ErrorState, ConnectionStatus
 │   │   └── data-display/   # MetricCard, StatusBadge
-│   ├── mocks/              # Mock adapter và fixtures chuẩn (3 tình huống: bình thường, vi phạm, kích hoạt bảo hiểm)
-│   ├── pages/              # OverviewPage, ShipmentsPage, ShipmentDetailPage, EventsPage, DemoPage
+│   ├── pages/              # OverviewPage, ShipmentsPage, ShipmentDetailPage, EventsPage, DevicesPage, DataIntegrityPage
 │   ├── styles/             # tokens.css (Design tokens), globals.css
 │   ├── types/              # TypeScript types chuẩn khớp docs/contracts/api-v1.md
 │   ├── App.tsx             # Định tuyến SPA
@@ -122,9 +119,6 @@ frontend/
    - Trạng thái hợp đồng bảo hiểm và transaction hash Blockchain.
 4. **Sự kiện & Vi phạm (`/events`):**
    - Tập hợp các sự kiện `TEMPERATURE_BREACH_STARTED`, `INSURANCE_TRIGGERED`, `SENSOR_DATA_GAP`.
-5. **Khu vực Demo (`/demo`):**
-   - Thực thi kịch bản kiểm thử "Nhiệt độ vượt ngưỡng" và "Khôi phục bình thường".
-   - Khóa nút chống click trùng khi kịch bản đang chạy, hiển thị phản hồi từ Backend.
 
 ---
 

@@ -138,7 +138,7 @@ NTD compile/test/deploy bằng Remix + MetaMask, NTK giữ Alchemy RPC/khóa Eth
 
 ### 2.2. Công nghệ và nguyên tắc giữ từ Roadmap gốc
 
-1. **Stack:** React + Vite + TypeScript, router theo nhu cầu, Leaflet cho bản đồ; có thể dùng thư viện biểu đồ phù hợp sau khi thống nhất dependency, không bắt buộc đổi stack hiện có.
+1. **Stack:** React + Vite + TypeScript, router theo nhu cầu (bản đồ Leaflet đã gỡ bỏ theo Issue #51); có thể dùng thư viện biểu đồ phù hợp sau khi thống nhất dependency, không bắt buộc đổi stack hiện có.
 2. **Backend API:** một API client tập trung, `VITE_API_BASE_URL` chứa prefix `/api/v1` nếu chốt theo NTK; **không nhân đôi `/api/v1`** khi gọi endpoint.
 3. **Source of truth:** `docs/contracts/api-v1.md` + OpenAPI do NTK cung cấp; TypeScript DTO, enums, pagination và error response phải khớp phiên bản đã chốt. Không tự chốt schema mới chỉ vì mock cần nó.
 4. **Vị trí:** chỉ dùng `latitude`, `longitude`, `location_source`, `progress_pct` do Backend cung cấp; `location_source === "backend_simulated"` phải gắn nhãn **“Vị trí mô phỏng từ Backend”**. Không tuyên bố GPS thực.
@@ -228,7 +228,7 @@ Các tên trên là nhóm ý nghĩa/nhãn UI. Giữ wire enum hiện có: teleme
 | `POST` | `/api/v1/batches/{batch_id}/verify` | Có `AdminSession`; nút gọi bằng JWT sau khi NTK đổi dependency |
 | `POST` | `/api/v1/shipments/{shipment_id}/batches/seal`, `/api/v1/batches/{batch_id}/anchor`, `/api/v1/shipments/{shipment_id}/insurance/reconcile` | Đã có Admin routes; JWT cho seal/retry/reconcile khi UI cần, không cấp quyền blockchain owner |
 | `GET` | `/api/v1/health`, `/api/v1/ready` | Có; health/readiness an toàn |
-| `POST` | `/api/v1/demo/shipments/{shipment_id}/scenario` | Có `normal`/`temperature_breach` ở dev; scenario khác chỉ khi NTK triển khai |
+| `POST` | `/api/v1/demo/shipments/{shipment_id}/scenario` | **Đã xóa ở Issue #50** | Endpoint kịch bản demo và tab UI đã được loại bỏ hoàn toàn |
 
 **API dành cho actor khác, không tạo form browser:** `POST /api/v1/devices/{device_id}/keys` đã có; script NTK login rồi gửi `{key_id, public_key_pem}` cùng **JWT Bearer**, nhận `201 DeviceView`. Không thêm `/public-key`; UI chỉ refetch status. POST telemetry do ESP32/simulator ký ECDSA P-256 và gửi, không dùng JWT Admin, `201` cho mẫu mới/`200` duplicate hợp lệ; React không sinh chữ ký hoặc nhận private key. Token/password Admin không được ghi vào `config.h`.
 
@@ -281,7 +281,7 @@ MySQL do NTK quản lý: `devices.id` (API gọi `device_id`, thêm `device_name
 - Danh sách: mã lô hàng, loại hàng, trạng thái, nhiệt độ gần nhất, khoảng cho phép, tiến độ vận chuyển, integrity/insurance badge, tìm kiếm/lọc, pagination.
 - Chi tiết: thông tin nơi đi/đến, nhiệt độ/độ ẩm, `recorded_at` và `received_at` tách rõ, thời điểm cuối, trạng thái dữ liệu và các sự kiện liên quan.
 - Biểu đồ telemetry: đường nhiệt độ, độ ẩm, dải nhiệt độ cho phép; đánh dấu khoảng gián đoạn thay vì nối đường liên tục qua **gap** làm người xem hiểu nhầm có quan sát liên tục.
-- Bản đồ Leaflet: route/marker từ API, `progress_pct`, vị trí mới nhất; nhãn **“Vị trí mô phỏng từ Backend”** khi `location_source = "backend_simulated"`. Không nội suy GPS ở Frontend khi thiếu tọa độ.
+- Tuyến đường & vị trí: route/tọa độ tóm tắt từ API, `progress_pct`, vị trí mới nhất; nhãn **“Vị trí mô phỏng từ Backend”** khi `location_source = "backend_simulated"`. Bản đồ Leaflet đã được xóa theo Issue #51. Không nội suy GPS ở Frontend khi thiếu tọa độ.
 - Timeline nghiệp vụ: telemetry được nhận → cảnh báo → đủ điều kiện vi phạm **liên tục 15 phút** → bằng chứng đủ điều kiện/đang chờ → gửi Insurance tx → receipt/chi trả (nếu có).
 - Hiển thị giá trị hợp đồng `insured_amount_vnd` riêng với số **demo token** nếu Backend có cung cấp; không đổi hoặc gắn tỷ giá không có trong contract.
 - Chi tiết có danh sách tất cả device đang gán từ API; telemetry nhiều device hiển thị rõ `device_id`, không ghép chuỗi sequence của các thiết bị thành một chuỗi liên tục giả.
@@ -373,7 +373,7 @@ MySQL do NTK quản lý: `devices.id` (API gọi `device_id`, thêm `device_name
 |---|---|---:|---|---|
 | **0** | Frontend Architecture & API Contract | 1–2 ngày | Roadmap/Repo/NTK draft API | Layout, routes, API mapping, wireframe |
 | **1** | Login/JWT, TypeScript API Client & Mock Fixtures | 2–3 ngày, ước lượng lại cho auth | Login/API contract NTK | Login/Logout/route guard/Bearer client, fixtures |
-| **2** | Dashboard, tạo/list chuyến, Telemetry & Map | 3–5 ngày | Phase 1 | Form code/UUID, shipment list/detail, charts/Leaflet |
+| **2** | Dashboard, tạo/list chuyến, Telemetry (bản đồ đã gỡ theo #51) | 3–5 ngày | Phase 1 | Form code/UUID, shipment list/detail, charts |
 | **3** | Admin đăng ký/list/gán device + Device Integrity | 2–3 ngày | DeviceView/assignments/schema từ NTK | Form hai trường, key status, dropdown gán, monitoring |
 | **4** | Data Integrity & Merkle Batch UI | 2–4 ngày | Batch/verification schema từ NTK | Batch list/detail, verification/alerts |
 | **5** | Blockchain, Insurance & Demo UI | 2–4 ngày | Event/status schema NTK; NTD ABI handoff qua NTK | Separate transaction/payout views, demo panel |
@@ -440,7 +440,7 @@ MySQL do NTK quản lý: `devices.id` (API gọi `device_id`, thêm `device_name
 - [x] Tái sử dụng `CreateShipmentModal`: nhập `code`, cargo, origin/destination, min/max, thời lượng, VND; gửi admin `POST /shipments`, lưu UUID từ response, xử lý trùng code và dữ liệu sai. Mã chuyến hiển thị dễ đọc nhưng route/detail/dropdown dùng UUID; không coi tạo off-chain là policy funded trên chain.
 - [x] Trang shipment detail: hiển thị threshold, loại hàng, nguồn/đích, lịch sử và latest temperature/humidity với `received_at`/`recorded_at` tách biệt.
 - [x] Chart nhiệt độ/độ ẩm theo API; đánh dấu đường ngưỡng min/max, khoảng thiếu dữ liệu, thời điểm cảnh báo; không nối liền gap như dữ liệu liên tục.
-- [x] Leaflet hiển thị vị trí/trạng thái **từ Backend**; `location_source = backend_simulated` bắt buộc gắn nhãn. Không nhận GPS từ ESP32 hoặc client tự nội suy vị trí nguồn chân lý.
+- [x] Tuyến đường & vị trí tóm tắt **từ Backend**; `location_source = backend_simulated` bắt buộc gắn nhãn (bản đồ Leaflet đã gỡ bỏ theo Issue #51). Không nhận GPS từ ESP32 hoặc client tự nội suy vị trí nguồn chân lý.
 - [x] Timeline từ `ShipmentEvent` phân biệt cảnh báo, đủ điều kiện, giao dịch pending và payout confirmed; 15 phút liên tục do Backend kết luận.
 - [x] Hiển thị số tiền bảo hiểm VND riêng với demo-token payout; không gắn tỷ giá tự tạo.
 - [x] Tách component và hooks; kiểm thử responsive desktop/mobile, long text, missing data, nhiều events.
@@ -795,7 +795,7 @@ VITE_ENABLE_DEMO_UI=false
 | Dashboard + shipment list/detail | Có | API/mock đúng, responsive, empty/error |
 | Admin device registration/list + shipment create + assign/unassign | Có | Form device hai trường, code/UUID đúng, key status, một active/device; UI-23–UI-30 có evidence |
 | Typed DeviceView/register/assignment client + fixtures | Có | Khớp NTK §3.6, dùng `/assignments`, không form key hoặc alias API |
-| Telemetry chart + Leaflet route mô phỏng | Có | Không dùng GPS thật/đường tự suy diễn khi API thiếu |
+| Telemetry chart + thông tin tuyến mô phỏng (bản đồ đã gỡ theo #51) | Có | Không dùng GPS thật/đường tự suy diễn khi API thiếu |
 | Device Integrity UI | Có | Signature/sequence/gap/offline tách biệt |
 | Data Integrity Batch UI | Có | Merkle root, anchor, verification và alerts rõ ràng |
 | Blockchain + Insurance UI | Có | Anchor tx khác insurance tx; payout confirmed theo Backend |

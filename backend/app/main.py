@@ -17,7 +17,6 @@ from app.core.config import Settings, load_settings, validate_auth_config
 from app.core.database import make_engine, make_session_factory
 from app.services.shipments import DuplicateShipmentCode, ShipmentDeleteConflict, ShipmentNotFound
 from app.services.clock import SYSTEM_CLOCK
-from app.services.demo import DemoScenarioError
 from app.services.blockchain_outbox import configured_coordinator
 from app.services.integrity_anchor_service import configured_integrity_coordinator
 from app.services.insurance_evidence import configured_evidence_coordinator
@@ -199,10 +198,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def shipment_delete_conflict(_request: Request, exc: ShipmentDeleteConflict):
         return error_response(409, exc.code, exc.message)
 
-    @app.exception_handler(DemoScenarioError)
-    async def demo_scenario_error(_request: Request, exc: DemoScenarioError):
-        return error_response(422, "VALIDATION_ERROR", str(exc))
-
     @app.exception_handler(IngestionError)
     async def ingestion_error(_request: Request, exc: IngestionError):
         return error_response(exc.status_code, exc.code, exc.message)
@@ -232,10 +227,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return error_response(500, "INTERNAL_ERROR", "Lỗi nội bộ", request=request)
 
     app.include_router(router)
-    if settings.app_env == "development":
-        from app.api.routes import demo_router
-
-        app.include_router(demo_router)
     return app
 
 

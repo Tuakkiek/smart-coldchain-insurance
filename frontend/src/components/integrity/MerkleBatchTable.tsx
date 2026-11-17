@@ -432,6 +432,7 @@ export const MerkleBatchTable: React.FC<MerkleBatchTableProps> = ({
                             onVerifyBatch(batch.batch_id);
                           }}
                           loading={isVerifying}
+                          disabled={Boolean(verifyingBatchId)}
                           icon={<RefreshCw size={13} />}
                           title="Yêu cầu Backend đối chiếu lại Merkle Root từ MySQL với Blockchain"
                           style={{ fontSize: '11px', padding: '5px 9px' }}

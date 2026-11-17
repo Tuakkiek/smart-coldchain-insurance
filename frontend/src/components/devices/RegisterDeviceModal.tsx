@@ -101,7 +101,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
         padding: 'var(--space-4)',
         animation: 'fadeIn 0.15s ease-out',
       }}
-      onClick={onClose}
+      onClick={submitting ? undefined : onClose}
     >
       <div
         style={{
@@ -167,11 +167,14 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            disabled={submitting}
             style={{
               background: 'none',
               border: 'none',
-              cursor: 'pointer',
+              cursor: submitting ? 'not-allowed' : 'pointer',
+              opacity: submitting ? 0.5 : 1,
               color: 'var(--color-text-tertiary)',
               padding: 4,
               borderRadius: 'var(--radius-sm)',
@@ -337,7 +340,12 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
             <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>
               Hủy
             </Button>
-            <Button type="submit" variant="primary" disabled={submitting}>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={submitting}
+              disabled={submitting}
+            >
               {submitting ? 'Đang đăng ký...' : 'Đăng Ký Thiết Bị'}
             </Button>
           </div>

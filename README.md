@@ -56,7 +56,7 @@ flowchart TD
 | Data Integrity | Canonical JSON, SHA-256, Merkle Tree, persistent batches/outbox |
 | Blockchain | Solidity, Hardhat, TypeScript, local EVM/testnet |
 | Smart Contracts | `ColdChainDataIntegrity.sol`, `ColdChainInsurance.sol`, `MockInsuranceToken.sol` (token tùy cấu hình demo) |
-| Frontend | React, Vite, TypeScript; Leaflet cho bản đồ vị trí mô phỏng |
+| Frontend | React, Vite, TypeScript, Recharts |
 | Public Backend | Render Web Service, HTTPS, kết nối MySQL ngoài Render |
 
 > Các lựa chọn trên là **thiết kế được đề xuất trong Roadmap**, không phải danh sách thư viện đã được cài đặt hoặc kiểm thử ở repository.
@@ -239,7 +239,6 @@ Không có yêu cầu cảm biến GPS thật cho MVP. Backend nội suy vị tr
 | `POST` | `/integrity/batches/{batch_id}/verify` | Tính lại root/đối chiếu (admin) |
 | `GET` | `/integrity/audit` | Audit log (admin) |
 | `GET` | `/blockchain/transactions/{transaction_id}` | Theo dõi giao dịch Blockchain |
-| `POST` | `/demo/shipments/{shipment_id}/scenario` | Scenario demo; **chỉ development/test** |
 
 Ví dụ nhanh khi Backend đã chạy:
 
@@ -252,7 +251,7 @@ Tài liệu API tương tác theo cấu hình FastAPI dự kiến:
 - Local Swagger UI: `http://localhost:8000/docs`
 - Local OpenAPI JSON: `http://localhost:8000/openapi.json`
 
-**Lưu ý về quyền:** public API URL không có nghĩa tất cả endpoint công khai. Các route tạo/sửa, quản trị khóa, integrity verify, audit và demo cần authentication/authorization phía Backend. CORS **không** thay thế xác thực.
+**Lưu ý về quyền:** public API URL không có nghĩa tất cả endpoint công khai. Các route tạo/sửa, quản trị khóa, integrity verify và audit cần authentication/authorization phía Backend. CORS **không** thay thế xác thực.
 
 ## 7. Trạng thái hệ thống dùng chung
 
@@ -327,11 +326,10 @@ cd frontend
 npm install
 # Tạo file .env.local với cấu hình công khai:
 # VITE_API_BASE_URL=http://localhost:8000/api/v1
-# VITE_USE_MOCKS=false
 npm run dev
 ```
 
-Port phát triển mặc định của Vite thường là `5173`, nhưng phải dùng **port mà terminal báo**. Khi Backend chưa sẵn sàng, mock chỉ được bật **tường minh** và UI phải ghi `MOCK DATA`. Không chuyển ngầm sang mock khi API thật bị lỗi.
+Port phát triển mặc định của Vite thường là `5173`, nhưng phải dùng **port mà terminal báo**. Frontend luôn kết nối trực tiếp với backend REST API thật và không dùng dữ liệu mock.
 
 ### 8.5. ESP32 hoặc Simulator
 
@@ -365,7 +363,6 @@ PUBLIC_API_BASE_URL=<assigned-public-api-base-url>
 
 ```dotenv
 VITE_API_BASE_URL=http://localhost:8000/api/v1
-VITE_USE_MOCKS=false
 VITE_ENABLE_DEMO_UI=false
 ```
 

@@ -9,27 +9,37 @@ import { ErrorState } from '../components/feedback/ErrorState';
 import { EmptyState } from '../components/feedback/EmptyState';
 import { getAllEvents } from '../api/events';
 import { EventOut, EventType } from '../types/api';
-import { BellRing, AlertTriangle, ShieldAlert, WifiOff, ArrowRight } from 'lucide-react';
+import { BellRing, AlertTriangle, ShieldAlert, WifiOff, ArrowRight, RefreshCw } from 'lucide-react';
 
 export const EventsPage: React.FC = () => {
   const navigate = useNavigate();
   const [events, setEvents] = useState<EventOut[]>([]);
   const [filtered, setFiltered] = useState<EventOut[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
 
-  const fetchEvents = async () => {
-    setLoading(true);
+  const fetchEvents = async (isBackground = false) => {
+    if (!isBackground && !hasLoadedOnce) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     setError(null);
     try {
       const data = await getAllEvents();
       setEvents(data.items);
       setFiltered(data.items);
+      setHasLoadedOnce(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Lỗi không thể tải danh sách sự kiện');
+      if (!isBackground && !hasLoadedOnce) {
+        setError(err instanceof Error ? err.message : 'Lỗi không thể tải danh sách sự kiện');
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -45,16 +55,16 @@ export const EventsPage: React.FC = () => {
     }
   }, [filterType, events]);
 
-  if (loading) {
-    return <LoadingState message="Đang tải dòng sự kiện..." />;
+  if (loading && !hasLoadedOnce) {
+    return <LoadingState fullPage message="Đang tải dòng sự kiện..." />;
   }
 
-  if (error) {
+  if (error && !hasLoadedOnce) {
     return (
       <ErrorState
         title="Lỗi tải sự kiện"
         message={error}
-        onRetry={fetchEvents}
+        onRetry={() => fetchEvents(false)}
       />
     );
   }
@@ -86,7 +96,14 @@ export const EventsPage: React.FC = () => {
       <PageHeader
         title="Dòng Sự kiện & Vi phạm"
         action={
-          <Button variant="secondary" size="sm" onClick={fetchEvents}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => fetchEvents(true)}
+            loading={refreshing}
+            disabled={loading || refreshing}
+            icon={<RefreshCw size={14} />}
+          >
             Làm mới
           </Button>
         }
