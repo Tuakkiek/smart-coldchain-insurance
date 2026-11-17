@@ -367,6 +367,7 @@ def test_protected_routes_matrix(auth_api):
         ("POST", "/api/v1/shipments", {"json": TEST_SHIPMENT}),
         ("GET", "/api/v1/shipments", {}),
         ("GET", f"/api/v1/shipments/{shipment_id}", {}),
+        ("DELETE", f"/api/v1/shipments/{shipment_id}", {}),
         ("POST", "/api/v1/devices", {"json": {"device_id": "DEV-AUTH-02", "device_name": "Sensor 2"}}),
         ("GET", "/api/v1/devices", {}),
         ("GET", "/api/v1/devices/DEV-AUTH-01", {}),

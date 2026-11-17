@@ -114,6 +114,8 @@ Tài liệu này mô tả API đã triển khai trong Backend, gồm Signed Tele
 
 Mỗi phần tử `items` có cùng schema **ShipmentDetail**. Chưa có phân trang trong v1 MVP; `total` bằng số phần tử trả về.
 
+`DELETE /api/v1/shipments/{id}` xóa lô hàng chưa sử dụng. Nếu còn device assignment active, API trả `409 SHIPMENT_HAS_ASSIGNED_DEVICES`; admin cần bỏ liên kết thiết bị bằng `active=false` trước. Nếu đã có telemetry, event, ingestion audit, integrity batch hoặc dữ liệu Blockchain, API trả `409 SHIPMENT_HAS_DATA` để bảo toàn lịch sử vận hành và bằng chứng bảo hiểm. Khi hợp lệ, Backend xóa các assignment inactive còn lại và trả `200 {"shipment_id":"<UUID>","deleted":true}`.
+
 ## Telemetry
 
 `POST /api/v1/shipments/{shipment_id}/telemetry` → `201 Created`, body là **TelemetryRecord**. Thiết bị gửi:
@@ -296,6 +298,8 @@ Device ID phân biệt hoa/thường ở giao thức, pattern `[A-Za-z0-9_-]{1,1
 `GET /api/v1/devices` (admin) → `200 {items: DeviceView[], total}`; gồm cả thiết bị chưa key/chưa gán, sắp theo `device_id`. Danh sách rỗng là `{"items":[],"total":0}`, chưa phân trang. `GET /api/v1/devices/{device_id}` (admin) trả cùng view, không tồn tại trả `404 DEVICE_NOT_FOUND`.
 
 `has_public_key` được suy ra từ key active; `current_shipment_id` suy ra từ assignment active hoặc `null`. Chúng không phải trạng thái UI tự ghi. `status=active` chưa có nghĩa device đủ điều kiện gửi. View chỉ trả metadata `keys=[{key_id,status}]`, `assignments=[{shipment_id,active}]`; không trả PEM/private key. Có public key trong DB chưa chứng minh board đã flash đúng khóa; cần mẫu ký thật được Backend chấp nhận.
+
+`DELETE /api/v1/devices/{device_id}` (admin) xóa một thiết bị đăng ký nhầm hoặc chưa sử dụng. Thiết bị còn assignment active trả `409 DEVICE_ASSIGNED`; admin phải bỏ liên kết bằng `active=false` trước. Thiết bị đã có signed telemetry/integrity batch trả `409 DEVICE_HAS_DATA` để giữ nguyên bằng chứng đối soát và chỉ nên được revoke. Khi xóa thành công, Backend xóa public key và các assignment inactive còn lại, rồi trả `200 {"device_id":"ESP32-001","deleted":true}`.
 
 ### Liên kết hoặc bỏ liên kết
 

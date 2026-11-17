@@ -10,12 +10,12 @@ from uuid import UUID, uuid4
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (Device, DeviceAssignment, DeviceKey, IngestionAudit,
-                        SignedTelemetryReceipt, Telemetry)
+                        IntegrityBatch, SignedTelemetryReceipt, Telemetry)
 from app.schemas.api import SignedTelemetryCreate, TelemetryCreate
 from app.services import shipments
 from app.services.telemetry_protocol import canonical_signed_bytes, verify_signature
@@ -110,6 +110,44 @@ def device_view(session: Session, device: Device) -> dict:
 def list_devices(session: Session) -> dict:
     items = [device_view(session, device) for device in session.scalars(select(Device).order_by(Device.id))]
     return {"items": items, "total": len(items)}
+
+
+def delete_device(session: Session, device_id: str) -> None:
+    """Delete an unused device while preserving shipment evidence."""
+    device = get_device(session, device_id, lock=True)
+
+    active_assignment = session.scalar(select(DeviceAssignment).where(
+        DeviceAssignment.device_id == device.id,
+        DeviceAssignment.active.is_(True),
+    ).with_for_update())
+    if active_assignment is not None:
+        raise IngestionError(
+            409,
+            "DEVICE_ASSIGNED",
+            "Unassign the device from its current shipment before deleting it",
+        )
+
+    # Signed receipts and integrity batches are evidence for an existing shipment.
+    # Deleting them together with a device would make the audit trail incomplete.
+    has_receipt = session.scalar(select(SignedTelemetryReceipt.telemetry_id).where(
+        SignedTelemetryReceipt.device_id == device.id,
+    ).limit(1)) is not None
+    has_batch = session.scalar(select(IntegrityBatch.id).where(
+        IntegrityBatch.device_id == device.id,
+    ).limit(1)) is not None
+    if has_receipt or has_batch:
+        raise IngestionError(
+            409,
+            "DEVICE_HAS_DATA",
+            "Device has telemetry history and cannot be deleted; revoke it instead",
+        )
+
+    # Inactive assignments are only setup history. They can be removed together
+    # with a device that has never produced shipment evidence.
+    session.execute(delete(DeviceAssignment).where(DeviceAssignment.device_id == device.id))
+    session.execute(delete(DeviceKey).where(DeviceKey.device_id == device.id))
+    session.delete(device)
+    session.commit()
 
 
 def add_key(session: Session, device_id: str, key_id: str, public_key_pem: str) -> None:

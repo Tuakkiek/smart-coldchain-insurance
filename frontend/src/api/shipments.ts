@@ -4,6 +4,7 @@ import {
   ShipmentOut,
   ShipmentsOut,
   ShipmentCreatePayload,
+  ShipmentDeleteOut,
   TelemetryListOut,
   TelemetryCreatePayload,
   TelemetryOut,
@@ -38,6 +39,15 @@ export async function createShipment(
     return mockAdapter.createShipment(payload);
   }
   return apiClient.post<ShipmentOut>('/api/v1/shipments', payload);
+}
+
+export async function deleteShipment(shipmentId: string): Promise<ShipmentDeleteOut> {
+  if (apiClient.isMockEnabled()) {
+    return mockAdapter.deleteShipment(shipmentId);
+  }
+  return apiClient.delete<ShipmentDeleteOut>(
+    `/api/v1/shipments/${encodeURIComponent(shipmentId)}`
+  );
 }
 
 export async function getShipmentTelemetry(shipmentId: string): Promise<TelemetryListOut> {

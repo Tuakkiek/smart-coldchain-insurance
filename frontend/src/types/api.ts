@@ -55,6 +55,11 @@ export interface DeviceRegisterPayload {
   device_name: string;
 }
 
+export interface DeviceDeleteOut {
+  device_id: string;
+  deleted: true;
+}
+
 export interface DeviceAssignmentPayload {
   shipment_id: string;
   active: boolean;
@@ -283,6 +288,11 @@ export interface ShipmentOut {
 export interface ShipmentsOut {
   items: ShipmentOut[];
   total: number;
+}
+
+export interface ShipmentDeleteOut {
+  shipment_id: string;
+  deleted: true;
 }
 
 export interface ShipmentCreatePayload {

@@ -20,6 +20,7 @@ from app.schemas.api import (
     LoginOut,
     ShipmentCreate,
     ShipmentOut,
+    ShipmentDeleteOut,
     ShipmentsOut,
     TelemetryCreate,
     TelemetryListOut,
@@ -29,6 +30,7 @@ from app.schemas.api import (
     DeviceRegister,
     DeviceOut,
     DevicesOut,
+    DeviceDeleteOut,
     DeviceKeyRegister,
     DeviceStateUpdate,
     AssignmentUpdate,
@@ -161,6 +163,13 @@ def get_shipment(shipment_id: UUID4, request: Request, session: AdminSession):
     return shipments.shipment_dict(session, shipment, request.app.state.clock, request.app.state.settings.sensor_gap_minutes)
 
 
+@router.delete("/shipments/{shipment_id}", response_model=ShipmentDeleteOut)
+def delete_shipment(shipment_id: UUID4, session: AdminSession):
+    normalized_id = str(shipment_id)
+    shipments.delete_shipment(session, normalized_id)
+    return {"shipment_id": normalized_id, "deleted": True}
+
+
 @router.post("/shipments/{shipment_id}/telemetry", response_model=SignedTelemetryOut | TelemetryOut,
              response_model_exclude_unset=True, status_code=201)
 def add_telemetry(shipment_id: UUID4, payload: SignedTelemetryCreate | TelemetryCreate,
@@ -212,6 +221,12 @@ def list_devices(session: AdminSession):
 @router.get("/devices/{device_id}", response_model=DeviceOut)
 def get_device(device_id: str, session: AdminSession):
     return signed_ingestion.device_view(session, signed_ingestion.get_device(session, device_id))
+
+
+@router.delete("/devices/{device_id}", response_model=DeviceDeleteOut)
+def delete_device(device_id: str, session: AdminSession):
+    signed_ingestion.delete_device(session, device_id)
+    return {"device_id": device_id, "deleted": True}
 
 
 @router.post("/devices/{device_id}/keys", response_model=DeviceOut, status_code=201)

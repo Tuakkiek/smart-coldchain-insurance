@@ -196,6 +196,17 @@ class ApiClient {
       authenticated
     );
   }
+
+  delete<T>(path: string, timeoutMs?: number, authenticated = true): Promise<T> {
+    return this.request<T>(
+      path,
+      {
+        method: 'DELETE',
+      },
+      timeoutMs,
+      authenticated
+    );
+  }
 }
 
 export const apiClient = new ApiClient();

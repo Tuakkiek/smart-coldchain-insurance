@@ -7,9 +7,10 @@ import { ShipmentStatusBadge, InsuranceStatusBadge } from '../components/data-di
 import { LoadingState } from '../components/feedback/LoadingState';
 import { ErrorState } from '../components/feedback/ErrorState';
 import { EmptyState } from '../components/feedback/EmptyState';
-import { getShipments } from '../api/shipments';
+import { deleteShipment, getShipments } from '../api/shipments';
+import { ApiError } from '../api/client';
 import { ShipmentOut, ShipmentStatus } from '../types/api';
-import { Search, MapPin, Thermometer, Shield, Plus, CheckCircle, ArrowRight } from 'lucide-react';
+import { Search, MapPin, Thermometer, Shield, Plus, CheckCircle, ArrowRight, AlertTriangle, Trash2 } from 'lucide-react';
 import { CreateShipmentModal } from '../components/shipments/CreateShipmentModal';
 
 export const ShipmentsPage: React.FC = () => {
@@ -20,6 +21,9 @@ export const ShipmentsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [successShipment, setSuccessShipment] = useState<ShipmentOut | null>(null);
+  const [deleteSuccessMsg, setDeleteSuccessMsg] = useState<string | null>(null);
+  const [deleteErrorMsg, setDeleteErrorMsg] = useState<string | null>(null);
+  const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -41,6 +45,37 @@ export const ShipmentsPage: React.FC = () => {
   const handleShipmentCreated = (newShipment: ShipmentOut) => {
     setShipments((prev) => [newShipment, ...prev]);
     setSuccessShipment(newShipment);
+  };
+
+  const handleDeleteShipment = async (shipment: ShipmentOut) => {
+    setDeleteSuccessMsg(null);
+    setDeleteErrorMsg(null);
+    const confirmed = window.confirm(
+      `Xóa lô hàng ${shipment.code}? Chỉ lô hàng chưa liên kết thiết bị và chưa có dữ liệu vận hành mới có thể xóa.`
+    );
+    if (!confirmed) return;
+
+    setDeletingShipmentId(shipment.id);
+    try {
+      await deleteShipment(shipment.id);
+      setShipments((current) => current.filter((item) => item.id !== shipment.id));
+      if (successShipment?.id === shipment.id) setSuccessShipment(null);
+      setDeleteSuccessMsg(`Đã xóa lô hàng ${shipment.code} thành công.`);
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_ASSIGNED_DEVICES') {
+        setDeleteErrorMsg(
+          `Không thể xóa ${shipment.code}: vẫn còn thiết bị đang liên kết. Hãy bỏ liên kết trong trang Thiết bị trước.`
+        );
+      } else if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_DATA') {
+        setDeleteErrorMsg(
+          `Không thể xóa ${shipment.code} vì đã có dữ liệu vận hành hoặc lịch sử đối soát.`
+        );
+      } else {
+        setDeleteErrorMsg(err instanceof Error ? err.message : 'Không thể xóa lô hàng.');
+      }
+    } finally {
+      setDeletingShipmentId(null);
+    }
   };
 
   useEffect(() => {
@@ -157,6 +192,64 @@ export const ShipmentsPage: React.FC = () => {
         </div>
       )}
 
+      {deleteSuccessMsg && (
+        <div
+          style={{
+            marginBottom: 'var(--space-5)',
+            padding: 'var(--space-3) var(--space-4)',
+            backgroundColor: 'var(--color-success-soft)',
+            border: '1px solid var(--color-success)',
+            borderRadius: 'var(--radius-md)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
+          }}
+        >
+          <div className="flex-row items-center gap-2">
+            <CheckCircle size={18} style={{ color: 'var(--color-success)' }} />
+            <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+              {deleteSuccessMsg}
+            </span>
+          </div>
+          <button
+            onClick={() => setDeleteSuccessMsg(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {deleteErrorMsg && (
+        <div
+          style={{
+            marginBottom: 'var(--space-5)',
+            padding: 'var(--space-3) var(--space-4)',
+            backgroundColor: 'var(--color-danger-soft)',
+            border: '1px solid var(--color-danger)',
+            borderRadius: 'var(--radius-md)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
+          }}
+        >
+          <div className="flex-row items-center gap-2">
+            <AlertTriangle size={18} style={{ color: 'var(--color-danger)', flexShrink: 0 }} />
+            <span style={{ color: 'var(--color-danger)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+              {deleteErrorMsg}
+            </span>
+          </div>
+          <button
+            onClick={() => setDeleteErrorMsg(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Filter and Search Bar */}
       <Card style={{ marginBottom: 'var(--space-6)', padding: 'var(--space-4)' }}>
         <div
@@ -264,8 +357,22 @@ export const ShipmentsPage: React.FC = () => {
                     />
                   </div>
 
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-                    Tạo lúc: {new Date(shipment.created_at).toLocaleDateString('vi-VN')}
+                  <div className="flex-row items-center gap-2">
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
+                      Tạo lúc: {new Date(shipment.created_at).toLocaleDateString('vi-VN')}
+                    </div>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      loading={deletingShipmentId === shipment.id}
+                      icon={<Trash2 size={13} />}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDeleteShipment(shipment);
+                      }}
+                    >
+                      Xóa
+                    </Button>
                   </div>
                 </div>
 
