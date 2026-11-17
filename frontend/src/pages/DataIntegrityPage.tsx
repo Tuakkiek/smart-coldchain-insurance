@@ -110,6 +110,9 @@ export const DataIntegrityPage: React.FC = () => {
     }
   };
 
+  const isVerifyingRef = useRef(false);
+  isVerifyingRef.current = isVerifyingLoading;
+
   useEffect(() => {
     isMountedRef.current = true;
     fetchData();
@@ -117,6 +120,7 @@ export const DataIntegrityPage: React.FC = () => {
     let timer: NodeJS.Timeout | null = null;
     if (autoRefresh) {
       timer = setInterval(() => {
+        if (isVerifyingRef.current) return;
         fetchData(true);
       }, 10000);
     }

@@ -74,6 +74,8 @@ export const Button: React.FC<ButtonProps> = ({
     },
   };
 
+  const spinnerSize = size === 'sm' ? 14 : size === 'lg' ? 18 : 16;
+
   return (
     <button
       disabled={disabled || loading}
@@ -85,7 +87,16 @@ export const Button: React.FC<ButtonProps> = ({
       className={clsx('ui-btn', className)}
       {...props}
     >
-      {loading ? <Loader2 size={16} className="animate-spin" /> : icon}
+      {loading ? (
+        <Loader2
+          size={spinnerSize}
+          className="animate-spin"
+          style={{ flexShrink: 0 }}
+          aria-hidden="true"
+        />
+      ) : (
+        icon
+      )}
       {children}
     </button>
   );

@@ -45,7 +45,6 @@ export class ApiError extends Error {
 
 class ApiClient {
   private baseUrl: string;
-  private useMock: boolean;
   private protectedRequests = new Set<AbortController>();
   private refreshPromise: Promise<AdminSession> | null = null;
   private refreshController: AbortController | null = null;
@@ -54,24 +53,11 @@ class ApiClient {
 
   constructor() {
     this.baseUrl = (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE).replace(/\/$/, '');
-    this.useMock =
-      import.meta.env.VITE_USE_MOCKS === 'true' ||
-      import.meta.env.VITE_USE_MOCK === 'true' ||
-      import.meta.env.VITE_USE_MOCKS === true ||
-      import.meta.env.VITE_USE_MOCK === true;
     subscribeAuth(() => {
       if (getAuthSnapshot().session) return;
       this.protectedRequests.forEach((controller) => controller.abort());
       this.protectedRequests.clear();
     });
-  }
-
-  isMockEnabled(): boolean {
-    return this.useMock;
-  }
-
-  setMockEnabled(enabled: boolean): void {
-    this.useMock = enabled;
   }
 
   getBaseUrl(): string {

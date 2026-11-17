@@ -327,11 +327,10 @@ cd frontend
 npm install
 # Tạo file .env.local với cấu hình công khai:
 # VITE_API_BASE_URL=http://localhost:8000/api/v1
-# VITE_USE_MOCKS=false
 npm run dev
 ```
 
-Port phát triển mặc định của Vite thường là `5173`, nhưng phải dùng **port mà terminal báo**. Khi Backend chưa sẵn sàng, mock chỉ được bật **tường minh** và UI phải ghi `MOCK DATA`. Không chuyển ngầm sang mock khi API thật bị lỗi.
+Port phát triển mặc định của Vite thường là `5173`, nhưng phải dùng **port mà terminal báo**. Frontend luôn kết nối trực tiếp với backend REST API thật và không dùng dữ liệu mock.
 
 ### 8.5. ESP32 hoặc Simulator
 
@@ -365,7 +364,6 @@ PUBLIC_API_BASE_URL=<assigned-public-api-base-url>
 
 ```dotenv
 VITE_API_BASE_URL=http://localhost:8000/api/v1
-VITE_USE_MOCKS=false
 VITE_ENABLE_DEMO_UI=false
 ```
 

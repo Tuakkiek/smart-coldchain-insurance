@@ -13,7 +13,6 @@ beforeEach(() => {
   endSession();
   localStorage.clear();
   sessionStorage.clear();
-  apiClient.setMockEnabled(false);
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockReset();
 });

@@ -99,7 +99,7 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
       if (err instanceof ApiError) {
         if (err.code === 'SIGNED_TELEMETRY_REQUIRED' || err.status === 403) {
           setError(
-            'Backend trên Production yêu cầu Signed Telemetry v1 (có chữ ký mật mã ECDSA P-256 từ ESP32). Trên Development hoặc Mock Mode, bạn có thể gửi dữ liệu trực tiếp.'
+            'Backend trên Production yêu cầu Signed Telemetry v1 (có chữ ký mật mã ECDSA P-256 từ ESP32). Trên Development, bạn có thể gửi dữ liệu trực tiếp khi backend cho phép unauthenticated telemetry.'
           );
         } else if (err.code === 'SHIPMENT_NOT_FOUND') {
           setError('Không tìm thấy lô hàng này trên máy chủ.');

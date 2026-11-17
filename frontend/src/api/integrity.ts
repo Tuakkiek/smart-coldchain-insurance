@@ -1,5 +1,4 @@
 import { apiClient } from './client';
-import { mockAdapter } from '../mocks/mockAdapter';
 import {
   IntegritySummaryOut,
   IntegrityBatchesOut,
@@ -57,9 +56,6 @@ export function adaptVerifyResult(raw: any): BatchVerifyResultOut {
  * Fetch overall integrity summary (batch_count, record_count, verification_status, anchor_status).
  */
 export async function getIntegritySummary(shipmentId?: string): Promise<IntegritySummaryOut> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.getIntegritySummary(shipmentId);
-  }
   const endpoint = shipmentId
     ? `/api/v1/shipments/${shipmentId}/integrity`
     : '/api/v1/integrity/summary';
@@ -73,9 +69,6 @@ export async function getIntegrityBatches(params?: {
   shipment_id?: string;
   device_id?: string;
 }): Promise<IntegrityBatchesOut> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.listBatches(params?.shipment_id);
-  }
   const endpoint = params?.shipment_id
     ? `/api/v1/shipments/${params.shipment_id}/batches`
     : '/api/v1/batches';
@@ -91,9 +84,6 @@ export async function getIntegrityBatches(params?: {
  * Fetch single Merkle batch detail by batch_id.
  */
 export async function getBatchById(batchId: string): Promise<IntegrityBatch> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.getBatch(batchId);
-  }
   const res = await apiClient.get<any>(`/api/v1/batches/${batchId}`);
   return adaptBatch(res);
 }
@@ -107,10 +97,6 @@ export async function getBatchById(batchId: string): Promise<IntegrityBatch> {
 export async function verifyBatch(
   batchId: string
 ): Promise<BatchVerifyResultOut> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.verifyBatch(batchId);
-  }
-
   const res = await apiClient.post<any>(
     `/api/v1/batches/${batchId}/verify`,
     undefined

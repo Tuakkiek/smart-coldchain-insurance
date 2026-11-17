@@ -23,7 +23,7 @@ export const LoadingState: React.FC<LoadingStateProps> = ({
     <div
       role="status"
       aria-live="polite"
-      className={className}
+      className={className ? `ui-loading-container ${className}` : 'ui-loading-container'}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -35,9 +35,34 @@ export const LoadingState: React.FC<LoadingStateProps> = ({
         padding: 'var(--space-4)',
       }}
     >
-      <Loader2 size={spinnerSize} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
-      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{message}</span>
+      <div
+        style={{
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Loader2
+          size={spinnerSize}
+          className="animate-spin"
+          style={{
+            color: 'var(--color-accent)',
+            filter: 'drop-shadow(0 0 6px rgba(0, 122, 255, 0.35))',
+          }}
+        />
+      </div>
+      <span
+        className="animate-pulse"
+        style={{
+          fontSize: 'var(--text-sm)',
+          fontWeight: 500,
+          color: 'var(--color-text-secondary)',
+          letterSpacing: '-0.01em',
+        }}
+      >
+        {message}
+      </span>
     </div>
   );
 };
-

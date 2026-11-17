@@ -1,5 +1,4 @@
 import { apiClient, ApiError } from './client';
-import { mockAdapter } from '../mocks/mockAdapter';
 import {
   DevicesOut,
   DeviceItemOut,
@@ -26,10 +25,6 @@ export { ApiError };
 export async function registerDevice(
   payload: DeviceRegisterPayload
 ): Promise<AdminDeviceViewOut> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.registerDevice(payload);
-  }
-
   return apiClient.post<AdminDeviceViewOut>('/api/v1/devices', payload);
 }
 
@@ -38,10 +33,6 @@ export async function registerDevice(
  * Devices with telemetry history are retained to preserve audit evidence.
  */
 export async function deleteDevice(deviceId: string): Promise<DeviceDeleteOut> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.deleteDevice(deviceId);
-  }
-
   return apiClient.delete<DeviceDeleteOut>(
     `/api/v1/devices/${encodeURIComponent(deviceId)}`
   );
@@ -59,10 +50,6 @@ export async function assignDevice(
   deviceId: string,
   payload: DeviceAssignmentPayload
 ): Promise<AdminDeviceViewOut> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.assignDevice(deviceId, payload);
-  }
-
   return apiClient.post<AdminDeviceViewOut>(
     `/api/v1/devices/${deviceId}/assignments`,
     payload
@@ -77,10 +64,6 @@ export async function assignDevice(
 export async function getAdminDeviceDetails(
   deviceId: string
 ): Promise<AdminDeviceViewOut> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.getAdminDeviceDetails(deviceId);
-  }
-
   return apiClient.get<AdminDeviceViewOut>(`/api/v1/devices/${deviceId}`);
 }
 
@@ -89,14 +72,11 @@ export async function getAdminDeviceDetails(
  * Official contract: GET /api/v1/shipments/{shipment_id}/devices
  */
 export async function getShipmentDevices(shipmentId: string): Promise<ShipmentDevicesOut> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.listShipmentDevices(shipmentId);
-  }
   return apiClient.get<ShipmentDevicesOut>(`/api/v1/shipments/${shipmentId}/devices`);
 }
 
 export function normalizeDeviceItem(item: any): DeviceItemOut {
-  // If item already has full DeviceItemOut structure (e.g. mockAdapter)
+  // If item already has full DeviceItemOut structure
   if (item.health && item.signature_status && item.completeness_status) {
     return item as DeviceItemOut;
   }
@@ -191,13 +171,6 @@ export function normalizeDeviceItem(item: any): DeviceItemOut {
  * Fetch all registered ESP32 devices and their integrity status.
  */
 export async function getDevices(): Promise<DevicesOut> {
-  if (apiClient.isMockEnabled()) {
-    const res = await mockAdapter.listDevices();
-    return {
-      items: res.items.map(normalizeDeviceItem),
-      total: res.total,
-    };
-  }
   const res = await apiClient.get<any>('/api/v1/devices');
   const items = Array.isArray(res?.items) ? res.items.map(normalizeDeviceItem) : [];
   return {
@@ -210,9 +183,6 @@ export async function getDevices(): Promise<DevicesOut> {
  * Fetch detailed registration and cryptographic metadata for a specific ESP32 device.
  */
 export async function getDeviceById(deviceId: string): Promise<DeviceItemOut> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.getDevice(deviceId);
-  }
   const res = await apiClient.get<any>(`/api/v1/devices/${deviceId}`);
   return normalizeDeviceItem(res);
 }
@@ -223,9 +193,6 @@ export async function getDeviceById(deviceId: string): Promise<DeviceItemOut> {
  * Health is obtained via admin GET /devices/{id} or GET /shipments/{id}/devices.
  */
 export async function getDeviceHealth(deviceId: string): Promise<DeviceHealthOut> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.getDeviceHealth(deviceId);
-  }
   const dev = await getDeviceById(deviceId);
   return dev.health;
 }
@@ -235,11 +202,8 @@ export async function getDeviceHealth(deviceId: string): Promise<DeviceHealthOut
  * Note: Backend has no separate /devices/{id}/missing-sequences endpoint.
  */
 export async function getDeviceMissingSequences(
-  deviceId: string
+  _deviceId: string
 ): Promise<DeviceMissingSequencesOut> {
-  if (apiClient.isMockEnabled()) {
-    return mockAdapter.getDeviceMissingSequences(deviceId);
-  }
   throw new ApiError(
     'Backend chưa hỗ trợ endpoint riêng /devices/{id}/missing-sequences. Thông tin gap chuỗi được xác định từ telemetry trên chuyến hàng.',
     501,
