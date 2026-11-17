@@ -297,12 +297,12 @@ Do not show a success toast before the Backend confirms success.
 - Avoid ambiguous labels such as “Good”, “Done”, or “Paid” unless they match an explicit Backend state.
 - Unknown enum values must not be silently mapped to success. Display a neutral fallback and log/report the unexpected value for development.
 
-### 7.3 Maps
+### 7.3 Route & Location Display
 
-- Use Leaflet as specified by the frontend roadmap.
-- Draw the route from Backend-provided origin/destination and place the marker using Backend-provided coordinates.
-- Treat coordinates as absent when the API has not supplied them; do not invent a marker.
-- When `location_source === "backend_simulated"`, visibly display **“Vị trí mô phỏng từ Backend”** near the map or location summary.
+- Simulated map area removed per Issue #51. Route origin, destination, and progress are displayed via structured cards/text.
+- Display the route from Backend-provided origin/destination and location summary using Backend-provided coordinates.
+- Treat coordinates as absent when the API has not supplied them.
+- When `location_source === "backend_simulated"`, visibly display **“Vị trí mô phỏng từ Backend”** or **“Tuyến đường mô phỏng”** near the location summary.
 - Do not call it GPS, live GPS, or actual vehicle tracking.
 - If there is no telemetry/route position yet, show a no-location state instead of a fabricated location.
 
@@ -416,6 +416,6 @@ This design system is derived from the three project roadmaps:
 
 - **Member 1 — IoT and Backend:** API is the source of shipment and operational data; Backend creates simulated location, evaluates temperature duration, and manages Blockchain integration.
 - **Member 2 — Blockchain and Smart Contract:** contract uses a demo/local-chain or testnet flow; the Backend is the authorized oracle; demo tokens do not represent real money.
-- **Member 3 — Frontend, Dashboard and UI QA:** React + Vite + TypeScript, Leaflet, a single API client, dashboard/list/detail/demo screens, responsive behavior, and explicit loading/error/empty states.
+- **Member 3 — Frontend, Dashboard and UI QA:** React + Vite + TypeScript, a single API client, dashboard/list/detail/demo screens, responsive behavior, and explicit loading/error/empty states.
 
 If this document conflicts with the final `docs/contracts/api-v1.md`, the API contract determines field names and data meaning. If a design request appears to imply behavior not supported by the API, request a contract clarification rather than inventing a frontend rule.

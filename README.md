@@ -56,7 +56,7 @@ flowchart TD
 | Data Integrity | Canonical JSON, SHA-256, Merkle Tree, persistent batches/outbox |
 | Blockchain | Solidity, Hardhat, TypeScript, local EVM/testnet |
 | Smart Contracts | `ColdChainDataIntegrity.sol`, `ColdChainInsurance.sol`, `MockInsuranceToken.sol` (token tùy cấu hình demo) |
-| Frontend | React, Vite, TypeScript; Leaflet cho bản đồ vị trí mô phỏng |
+| Frontend | React, Vite, TypeScript, Recharts |
 | Public Backend | Render Web Service, HTTPS, kết nối MySQL ngoài Render |
 
 > Các lựa chọn trên là **thiết kế được đề xuất trong Roadmap**, không phải danh sách thư viện đã được cài đặt hoặc kiểm thử ở repository.
