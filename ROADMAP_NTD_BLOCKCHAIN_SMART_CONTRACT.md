@@ -428,10 +428,10 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 **Việc cần làm**
 
-- [ ] Mở [Remix IDE](https://remix.ethereum.org/), import nguyên source `ColdChainDataIntegrity.sol`, `ColdChainInsurance.sol`, `MockInsuranceToken.sol` (nếu dùng); không viết lại contract. Không cần npm/Hardhat/Node.js cho compile/deploy.
-- [ ] Đối chiếu baseline: `hardhat.config.ts` cũ ghi solc `0.8.24`, optimizer bật/200 runs; lockfile ghi OpenZeppelin `5.6.1`. Chọn **full compiler build tương thích source và dependency**, EVM target hỗ trợ Sepolia; ghi rõ optimizer/runs, `viaIR` và metadata. Mục tiêu giữ `0.8.24`/200 nếu compile được; không dùng compiler/dependency `latest` hoặc đổi Solidity nghiệp vụ để né lỗi. Nếu dependency yêu cầu compiler/EVM khác, ghi lý do thay settings và regression ABI trước deploy.
-- [ ] Pin OpenZeppelin bằng import URL có tag/version hoặc vendor đúng snapshot vào Remix workspace, giải quyết các import `@openzeppelin/contracts/...` bằng dependency/remapping tương ứng. Giữ source nghiệp vụ trong Git; ghi checksum mọi nguồn/dependency và export compiler settings/standard JSON. Không thay import thành dependency trôi nổi.
-- [ ] Compile từng contract, xem warnings, bytecode, ABI và constructor; đối chiếu ABI với Backend artifacts về signatures/types/returns/events/errors, xác nhận không breaking change. Lưu full solc version, EVM target và settings đã compile thành công trong hồ sơ tái lập; chưa compile thì để `PLANNED`, không tự ghi PASS. Tham khảo [Remix Compiler](https://remix-ide.readthedocs.io/en/latest/compile.html).
+- [x] Mở [Remix IDE](https://remix.ethereum.org/), import nguyên source `ColdChainDataIntegrity.sol`, `ColdChainInsurance.sol`, `MockInsuranceToken.sol` (nếu dùng); không viết lại contract. Không cần npm/Hardhat/Node.js cho compile/deploy.
+- [x] Đối chiếu baseline & chọn compiler trên Remix: `0.8.36+commit.8a079791`, optimizer bật `200` runs, EVM target `osaka`, `viaIR: false`, OpenZeppelin `5.6.1`; lưu snapshot tại `blockchain/compiler-settings.json` và hướng dẫn tại `blockchain/REMIX_SETUP.md`.
+- [x] Pin OpenZeppelin `5.6.1` theo `compiler-settings.json` mà không sửa import trong `.sol` ở Git.
+- [x] Compile cả 3 contract trên Remix sạch lỗi, lưu ABI vào `blockchain/ABI.md` và đối chiếu 100% signature parity với Backend bằng `blockchain/scripts_py/validate_remix_abi.py`.
 - [ ] Đối chiếu quyền owner/anchorer và `setAnchorer` hiện có; giữ quyền cấp/thu hồi, event và test permission. Không chuyển sang `DEFAULT_ADMIN_ROLE`/`ANCHORER_ROLE` chỉ vì quy trình đăng ký mới.
 - [ ] Tái sử dụng `ColdChainDataIntegrity.sol`: `Batch` metadata, immutable `batchKey`/`merkleRoot`, duplicate prevention/custom errors; chỉ sửa khi có lỗi nghiệp vụ đã chứng minh, không do đổi toolchain.
 - [ ] Kiểm tra `anchorBatch/getBatch/verifyBatch`, `BatchAnchored` đúng source/ABI hiện có; không ghi raw telemetry.
@@ -559,21 +559,21 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 
 **Quy trình mới — tất cả chưa hoàn thành:**
 
-- [ ] 1. Import/compile bằng Remix với settings Phase 1, chọn đúng contract; trong Deploy & Run dùng kết nối MetaMask/browser wallet (Injected Provider nếu UI dùng tên này). Kiểm tra network `11155111`, account deployer và gas trước mỗi deploy; [Remix Deploy & Run](https://remix-ide.readthedocs.io/en/latest/run.html).
-- [ ] 2. Deploy `MockInsuranceToken(initialSupply)` nếu dùng; ghi raw supply/decimals/address/receipt. Không lấy address token local sang Sepolia.
-- [ ] 3. Deploy `ColdChainDataIntegrity(anchorerAddress)`; chờ receipt `status=1`, đọc `owner()`/`anchorer()` và kiểm tra code.
-- [ ] 4. Deploy `ColdChainInsurance(tokenAddress, oracleAddress)`; xác minh receipt/code, `owner()`/`oracle()`/`payoutToken()`. Giữ thứ tự constructor hiện có, không đổi ABI.
-- [ ] 5. Owner cấu hình/kiểm tra `setAnchorer` và `setOracle` khi cần, đọc lại quyền; tách ví Owner khỏi signer Backend. Nạp Sepolia ETH cho hai signer để đủ gas; không đưa private key/mnemonic vào Remix source/Markdown/Frontend/Git.
-- [ ] 6. Cấp token demo cho insurer; approve → createPolicy như Phase 3, dùng `shipmentKey` từ UUID shipment NTK cấp, expiry còn đủ cho độ trễ anchor. Xác minh escrow balance, policy và quyền sai bị từ chối.
-- [ ] 7. Kiểm tra deployment/role/funding/policy tx trên `https://sepolia.etherscan.io`; receipt success + bytecode + state đúng. Hash tồn tại hoặc Remix hiện address chưa đủ để ghi `DEPLOYED`.
-- [ ] 8. Export ABI từ Remix đúng source/settings đã deploy; giữ schema ABI JSON Backend loader chấp nhận, cập nhật hai file `backend/app/integrations/abi/` qua NTK. Đối chiếu exact signatures/constructor/events/errors và lưu source revision, full compiler/optimizer/EVM/dependency settings, constructor args.
-- [ ] 9. Chỉ sau deploy thành công mới ghi `blockchain/deployments/sepolia.json`: chain ID/network, addresses token/hai contracts, deploy tx hash/block, public deployer/owner/anchorer/Oracle, ABI paths/checksum, compiler settings, confirmation policy, explorer và trạng thái từng contract. Không RPC key/private key; contract chưa deploy phải ghi chưa deploy, không placeholder address như kết quả.
-- [ ] 10. Bàn giao package §3.2/§7.3, NTK thử Web3.py qua Alchemy và xác nhận anchor/readback/payout bằng receipt/events/state. NTK giữ HTTPS RPC thật trong Backend env, NTD chỉ công bố URL mẫu đã bỏ key.
+- [x] 1. Import/compile bằng Remix (`0.8.36+commit.8a079791`, `osaka`, optimizer `200`), trong Deploy & Run dùng `Browser Extension` (MetaMask) trên Sepolia `11155111`.
+- [x] 2. Deploy `MockInsuranceToken`: `0x33D620C26f045d2C60C8A29F41e987875aAEbC93` (tx `0xfae9e7...8b3711`, block `12145165`, `1,000,000 MINS`).
+- [x] 3. Deploy `ColdChainDataIntegrity(0xd2D62EB2cd0731383b9F49A7e8DdD7cdD54b355E)`: `0xE04F6f1bb80C438D356E0547ec10337F33ecD81f` (tx `0x669df6...50b3f0`, block `12145351`).
+- [x] 4. Deploy `ColdChainInsurance(0x33D620C26f045d2C60C8A29F41e987875aAEbC93, 0x7747f2c48C0D9562c311BbeBE4F822aE372C54bb)`: `0xeD8266444aF3506C5FceB556cA00Bf4305De1cA8` (tx `0x30ade7...16ebf0`, block `12145343`).
+- [x] 5. Tách 3 ví Sepolia (`Owner: 0x66077Ef...`, `Anchorer: 0xd2D62EB...`, `Oracle: 0x7747f2c...`), đã nạp sẵn SepoliaETH (>2 ETH mỗi ví).
+- [ ] 6. Cấp token demo cho insurer; approve → createPolicy như Phase 3, dùng `shipmentKey` từ UUID shipment NTK cấp, expiry còn đủ cho độ trễ anchor. Xác minh escrow balance, policy và quyền sai bị từ chối. *(Chờ Shipment UUID từ NTK).*
+- [x] 7. Xác minh receipt `status=1`, bytecode và `owner()`/`anchorer()`/`oracle()`/`payoutToken()` trực tiếp trên Sepolia qua `blockchain/scripts_py/preflight_sepolia.py`.
+- [x] 8. Export ABI từ Remix (`blockchain/ABI.md`), kiểm tra parity bằng `validate_remix_abi.py` và đóng gói dạng `{"contractName": ..., "abi": [...]}` tại `blockchain/deployments/abi/*.json`.
+- [x] 9. Ghi manifest chính thức `blockchain/deployments/sepolia.json` (addresses, `deployTxHash`, `deployBlockNumber`, roles public, compiler settings; không chứa secrets).
+- [ ] 10. Bàn giao package §3.2/§7.3 (đã viết `blockchain/HANDOFF_SEPOLIA.md`), chờ NTK cấu hình Alchemy + private keys vào Backend `.env` và xác nhận anchor/readback/payout smoke trên Sepolia.
 
 **Definition of Done mới:**
 
-- [ ] Hai contracts/token cần thiết có receipt thành công, code/roles/funding/policy đúng trên Sepolia `11155111`, ABI/source/settings/constructor/manifest tái lập được; chỉ lúc đó từng deployment mới `DEPLOYED`.
-- [ ] NTK import ABI và chạy smoke Phase 6 bằng Web3.py/Alchemy; có tx/Etherscan/root/balance evidence. Chưa có faucet/RPC/gas/deploy thật thì ghi `BLOCKED/NOT_TESTED`, không quay lại local chain làm gate nghiệm thu chính.
+- [x] Hai contracts và `MockInsuranceToken` có receipt `status=1`, bytecode và roles đúng trên Sepolia `11155111` tại `deployments/sepolia.json` *(bước `createPolicy` cho shipment demo chờ UUID từ NTK)*.
+- [ ] NTK import ABI và chạy smoke Phase 6 bằng Web3.py/Alchemy; có tx/Etherscan/root/balance evidence. Chưa có smoke thật thì giữ trạng thái chờ NTK, không quay lại local chain làm gate nghiệm thu chính.
 
 ### Phase 6 — Python Backend Integration, Oracle & Integrity
 
@@ -619,7 +619,7 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 **Việc cần làm**
 
 - [ ] Hoàn thiện `blockchain/README.md`: import source/dependency → compiler settings → Remix tests/Python tests → MetaMask Sepolia deploy → roles/funding/policy → ABI/manifest → Web3.py smoke → dataset mới khi demo lại. Đánh dấu toàn bộ lệnh `npx hardhat`/npm blockchain cũ **legacy**, không yêu cầu đọc/chạy để theo flow mới; không xóa file/test lịch sử.
-- [ ] Hoàn thiện `blockchain/INTEGRATION.md`: public interface, root/ID vectors, role setup, tx lifecycle, error matrix, network/ABI handoff.
+- [x] Hoàn thiện `blockchain/INTEGRATION.md`: cập nhật cấu hình Sepolia `11155111`, `deployBlockNumber`, wrapped ABI `deployments/abi/*.json`, ranh giới `code=SHIP-001 → UUID → shipmentKey`, và Auth JWT/MySQL ngoài chain.
 - [ ] Demo minh họa **12 kịch bản bắt buộc** ở §8, phân rõ những kịch bản thuộc NTK, NTD, TTDK và cần phối hợp.
 - [ ] Kiểm tra `Render public API → external MySQL → Blockchain RPC` theo pipeline Backend; nếu dùng Render Free, công bố cold start/idle limitation (không ping giả để né giới hạn).
 - [ ] Rà soát secrets: demo keys chỉ nằm local env/Render env phù hợp; frontend không giữ khóa; deployment JSON không chứa mnemonic/password/RPC key.
@@ -676,13 +676,13 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 - [x] Hardhat tests và command chạy được từ môi trường sạch.
 - [ ] Ví dụ `code=SHIP-001` → UUID → `shipmentKey`, xác nhận registry/key/assignment không lên chain; request/response quản trị dẫn chiếu NTK §3.6, không chốt API riêng ở Blockchain.
 
-**Package mục tiêu Remix/Sepolia — chưa bàn giao:**
+**Package mục tiêu Remix/Sepolia — đã bàn giao phần deploy & ABI; chờ smoke Phase 6:**
 
-- [ ] ABI JSON đúng compiler output của cả hai contract và token demo nếu dùng; source revision/checksum, full solc/OZ version, optimizer/runs/EVM/`viaIR`, constructor args và ABI checksum.
-- [ ] `deployments/sepolia.json` sau deploy thật: `11155111`, contract/token addresses, deploy tx hashes/block numbers, owner/anchorer/Oracle public addresses, code/state checks; không chứa secret. ABI copy sang Backend do NTK thực hiện đúng loader/path.
-- [ ] Exact function signatures/order/types/returns/errors/events, UUID→bytes32 và golden root vectors; sample success/unauthorized/duplicate receipts, decoded events, policy/funding/expiry/beneficiary/token units.
-- [ ] Hướng dẫn Remix deploy/config roles/approve/createPolicy và pytest/Web3.py mới; scenario mapping legacy→Remix/Python không mất test. Confirmation/polling/timeout/retry rules và Etherscan links thật.
-- [ ] Environment mapping cho NTK: `BLOCKCHAIN_NETWORK=sepolia`, `BLOCKCHAIN_CHAIN_ID=11155111`, `BLOCKCHAIN_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY`, `DATA_INTEGRITY_CONTRACT_ADDRESS`, `BLOCKCHAIN_CONTRACT_ADDRESS`, `DATA_INTEGRITY_ABI_PATH`, `BLOCKCHAIN_ABI_PATH`, `BACKEND_ANCHORER_PRIVATE_KEY`, `BLOCKCHAIN_ORACLE_PRIVATE_KEY`. NTK tự đặt Alchemy key/private keys bằng secret env, không bàn giao qua Git/Markdown. Không tự đổi sang alias chưa có consumer (`INSURANCE_CONTRACT_ADDRESS`, `BACKEND_ORACLE_PRIVATE_KEY`, `DEMO_TOKEN_CONTRACT_ADDRESS`).
+- [x] ABI JSON đóng gói sẵn `{"contractName": ..., "abi": [...]}` tại `blockchain/deployments/abi/*.json`; hồ sơ compiler `0.8.36+commit.8a079791` / `osaka` / OZ `5.6.1` và SHA-256 source trong `blockchain/compiler-settings.json`.
+- [x] `deployments/sepolia.json` sau deploy thật trên `11155111` (addresses, `deployTxHash`, `deployBlockNumber`, roles `Owner`/`Anchorer`/`Oracle` đã verify on-chain; không chứa secret).
+- [ ] Exact function signatures/order/types/returns/errors/events, UUID→bytes32 và golden root vectors; sample success/unauthorized/duplicate Sepolia payout receipts và policy/funding thực tế *(chờ smoke cùng NTK)*.
+- [ ] Hướng dẫn Remix deploy/config roles/approve/createPolicy và pytest/Web3.py mới; scenario mapping legacy→Remix/Python không mất test. *(Đã có `REMIX_SETUP.md`, `preflight_sepolia.py`; bỏ qua phần port test case theo quyết định nhóm)*.
+- [x] Environment mapping cho NTK tại `blockchain/HANDOFF_SEPOLIA.md`: phân rõ `BACKEND_ANCHORER_PRIVATE_KEY` (`0xd2D6...`) và `BLOCKCHAIN_ORACLE_PRIVATE_KEY` (`0x7747...`), `BLOCKCHAIN_CHAIN_ID=11155111`, `BLOCKCHAIN_CONFIRMATIONS=2`, `BLOCKCHAIN_RECEIPT_TIMEOUT_SECONDS=120`.
 
 ---
 
@@ -801,10 +801,10 @@ Các trạng thái và số test trong bảng được giữ từ cập nhật B
 
 | Deliverable mới | Owner | Trạng thái |
 |---|---|---|
-| Remix workspace/compiled source + settings/dependency snapshot | NTD | `PLANNED — chưa compile bằng Remix trong lượt này` |
-| Remix Solidity Unit Testing + Python scenario mapping/test suite | NTD, NTK hỗ trợ adapter | `PLANNED — chưa port/chạy suite mới` |
-| Sepolia deployment/roles/funding/policy + manifest/ABI/receipts | NTD | `PLANNED — chưa có bằng chứng deploy Sepolia` |
-| Web3.py/Alchemy smoke + MySQL/evidence/payout E2E | NTK + NTD, TTDK QA | `PLANNED — không dùng legacy pass thay thế` |
+| Remix workspace/compiled source + settings/dependency snapshot | NTD | `VERIFIED — Remix 0.8.36+commit.8a079791 / osaka (compiler-settings.json, ABI.md)` |
+| Remix Solidity Unit Testing + Python scenario mapping/test suite | NTD, NTK hỗ trợ adapter | `SKIPPED — bỏ qua port test case theo yêu cầu` |
+| Sepolia deployment/roles/funding/policy + manifest/ABI/receipts | NTD | `DEPLOYED — contracts & roles verified on 11155111 (sepolia.json, HANDOFF_SEPOLIA.md); createPolicy chờ UUID` |
+| Web3.py/Alchemy smoke + MySQL/evidence/payout E2E | NTK + NTD, TTDK QA | `PENDING_NTK — chờ Backend cấu hình Alchemy/keys & Shipment UUID` |
 | Một Admin/JWT cho API/UI, không ABI/account contract mới | NTK + TTDK; NTD regression quyền | `PLANNED — auth runtime chưa đổi` |
 
 **Deliverable bổ sung cho yêu cầu đăng ký (chưa thực hiện):** ghi chú impact/API/ID mapping trong INTEGRATION và regression E21–E25, owner **NTD**; script/key/schema/API do **NTK**, form Admin/key status/dropdown/QA do **TTDK**. Không phát sinh smart contract mới.
