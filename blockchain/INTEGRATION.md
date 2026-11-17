@@ -1,7 +1,7 @@
 # INTEGRATION.md — Hướng dẫn tích hợp Blockchain (Module A & B)
 
-> Tài liệu kỹ thuật tích hợp giữa Smart Contracts và Backend / Dashboard (Hoàn thành Phase 5).
-> Member 1 (Backend - NTK) sử dụng tài liệu này để cấu hình và phát triển `blockchain_adapter.py`.
+> Tài liệu kỹ thuật tích hợp giữa Smart Contracts và Backend / Dashboard.
+> Member 1 (Backend - NTK) sử dụng tài liệu này cùng **[HANDOFF_SEPOLIA.md](HANDOFF_SEPOLIA.md)** và **[deployments/sepolia.json](deployments/sepolia.json)** để cấu hình `blockchain_adapter.py`.
 
 ---
 
@@ -9,32 +9,35 @@
 
 ### 1.1. Cấu hình Mạng (Network Configuration)
 
-| Thuộc tính | Local Chain (Hardhat Node) | Testnet (Sepolia/Arbitrum Sepolia) |
+| Thuộc tính | Ethereum Sepolia (Mục tiêu chính thức) | Local Chain (Hardhat Node — Legacy) |
 |---|---|---|
-| **Network Name** | `localhost` | `BLOCKED` (Chưa cấp RPC/Faucet) |
-| **RPC URL** | `http://127.0.0.1:8545` | N/A |
-| **Chain ID** | `31337` | N/A |
-| **Block Time / Finality** | Tức thì (~0s, 1 confirmation) | ~12s (yêu cầu 2 confirmations) |
-| **Block Explorer** | Không có (dùng terminal logs hoặc node console) | Sepolia Etherscan (khi triển khai) |
-| **Giới hạn** | Khởi động lại node sẽ xóa state; cần chạy lại `deploy` và `seed`. | Cần testnet ETH/tokens để trả gas. |
+| **Network Name** | `sepolia` | `localhost` |
+| **RPC URL** | `https://eth-sepolia.g.alchemy.com/v2/<ALCHEMY_KEY>` (NTK giữ trong env) | `http://127.0.0.1:8545` |
+| **Chain ID** | `11155111` | `31337` |
+| **Block Time / Finality** | ~12s/block (`BLOCKCHAIN_CONFIRMATIONS=2`, `TIMEOUT=120s`) | Tức thì (~0s, 1 confirmation) |
+| **Block Explorer** | `https://sepolia.etherscan.io` | Không có |
+| **Manifest chuẩn** | `blockchain/deployments/sepolia.json` | `blockchain/deployments/localhost.json` |
+| **Deploy Toolchain** | Remix IDE (`0.8.36+commit.8a079791`, `osaka`) + MetaMask | Hardhat `2.29.1` (Legacy) |
 
-> ⚠️ **Quy tắc Testnet (DoD Phase 5)**: Hiện tại dự án tập trung vào Local Node ổn định phục vụ demo. Chưa triển khai testnet và không sử dụng địa chỉ placeholder giả mạo. File `deployments/localhost.json` là nguồn sự thật duy nhất cho local chain.
+> 🚀 **Lưu ý vận hành Sepolia + Alchemy:**
+> - Xem bảng phân vai địa chỉ ví (`Owner`, `Anchorer`, `Oracle`), biến `.env` mẫu và `deployBlockNumber` (`12145351`, `12145343`) trong **[HANDOFF_SEPOLIA.md](HANDOFF_SEPOLIA.md)**.
+> - Khi dùng `get_logs(...)` trên Alchemy Free Tier, tránh `from_block=0` (nên dùng `deployBlockNumber` hoặc dải block gần `latest`).
 
 ### 1.2. Đường dẫn Artifacts & ABI Bàn giao
 
-Backend và Frontend có thể sử dụng 2 định dạng ABI:
-1. **Hardhat Full Artifacts (khuyên dùng cho Backend `blockchain_adapter.py`)**:
-   - `blockchain/artifacts/contracts/ColdChainDataIntegrity.sol/ColdChainDataIntegrity.json`
-   - `blockchain/artifacts/contracts/ColdChainInsurance.sol/ColdChainInsurance.json`
-   - `blockchain/artifacts/contracts/MockInsuranceToken.sol/MockInsuranceToken.json`
-   *(Backend đọc trường `["abi"]` từ file này)*.
-2. **Pure ABI Files (nhẹ, chuẩn hóa độc lập)**:
+Backend và Frontend sử dụng các file ABI được đóng gói từ Remix (`0.8.36+commit.8a079791`, `optimizer=200`, `evmVersion=osaka`, OpenZeppelin `5.6.1`):
+1. **Wrapped ABI cho Backend (`blockchain_adapter.py` đọc `json.load(...)["abi"]`)**:
+   - `blockchain/deployments/abi/ColdChainDataIntegrity.json`
+   - `blockchain/deployments/abi/ColdChainInsurance.json`
+   - `blockchain/deployments/abi/MockInsuranceToken.json`
+2. **Pure ABI Files (mảng `[...]` thuần) & Metadata**:
    - `blockchain/deployments/abi/ColdChainDataIntegrity.abi.json`
    - `blockchain/deployments/abi/ColdChainInsurance.abi.json`
    - `blockchain/deployments/abi/MockInsuranceToken.abi.json`
    - Bảng tổng hợp signature: `blockchain/deployments/abi/contract-interfaces.json`
-3. **Deployment Metadata**:
-   - `blockchain/deployments/localhost.json` (chứa addresses của 3 contract và các roles: Deployer, Oracle, Anchorer).
+3. **Deployment & Compiler Metadata**:
+   - `blockchain/deployments/sepolia.json` (chứa addresses thật, `deployTxHash`, `deployBlockNumber`, và các roles public — không chứa secret).
+   - `blockchain/compiler-settings.json` (khóa compiler, optimizer, `osaka`, SHA-256 checksum source).
 
 ---
 
@@ -50,7 +53,9 @@ batchKey    = keccak256(UTF8(batch_id))
 deviceKey   = keccak256(UTF8(device_id))
 ```
 
-- Sử dụng `keccak256` trên chuỗi UTF-8 nguyên bản có dấu gạch nối (ví dụ UUID v4: `8b4fb8a2-2996-4da2-90b9-35019517f56f`).
+- Sử dụng `keccak256` trên chuỗi UTF-8 nguyên bản có dấu gạch nối (ví dụ UUID v4 `shipments.id`: `8b4fb8a2-2996-4da2-90b9-35019517f56f`).
+- **`code` vs UUID:** Mã chuyến hiển thị `SHIP-001` (`shipments.code`) chỉ dùng cho UI/tra cứu; **mọi `shipmentKey` trên chain và policy đều phải hash từ UUID `shipments.id`**. Tạo shipment trong MySQL chưa đồng nghĩa policy đã được tạo/cấp vốn trên chain.
+- **Ranh giới Registry & Auth:** Đăng ký thiết bị, gán chuyến (`device_assignments`), public key ECDSA P-256 của ESP32 và Admin JWT nằm hoàn toàn ở Backend/MySQL, **không** đưa lên Smart Contract. `deviceKey = keccak256(UTF8(device_id))` chỉ là hash định danh trong batch metadata, không phải public key P-256.
 - **Không** hash UUID dạng nhị phân 16 bytes, **không** dùng SHA-256 cho các trường định danh Key.
 
 ### 2.2. Merkle Root (`MERKLE-v1` — SHA-256)
@@ -356,5 +361,6 @@ Hiện tại `backend/app/services/batch_service.py` tạo sẵn `IntegrationOut
 | `SecurityAndFailureScenarios.test.ts` | Tấn công Reentrancy qua SafeERC20/ReentrancyGuard, rollback trạng thái khi transfer lỗi, kiểm tra biên thời gian expiry, solvency checks | 8 | PASS (100%) |
 | **Tổng cộng** | **Bao phủ toàn diện Module A & B, Deployment Workflow, Phase 6 E2E Integration & Cross-contract Security** | **83** | **PASS (100%)** |
 
-> **Xác nhận tương thích Phase 6 với Backend (`backend/app/integrations/blockchain_adapter.py`):**
-> Đã đối chiếu khớp 100% ABI (`deployments/abi/*.abi.json` == `backend/app/integrations/abi/*.json`) và kiểm thử E2E thành công `Web3IntegrityAdapter` (Anchorer Account `#2`) + `Web3BlockchainAdapter` (Oracle Account `#1`) cùng `InsuranceEvidenceCoordinator` trên local Hardhat node (`chainId: 31337`).
+> **Xác nhận tương thích & Trạng thái hiện tại:**
+> - **Sepolia (`11155111`):** Đã deploy 3 contracts từ Remix (`0.8.36+commit.8a079791`, `osaka`), xác minh bytecode + roles (`Owner`, `Anchorer`, `Oracle`) trực tiếp trên Sepolia bằng `preflight_sepolia.py`, và đối chiếu 100% parity ABI qua `validate_remix_abi.py`. Đang chờ Shipment UUID thật từ Backend & cấu hình Alchemy `.env` phía NTK để tạo policy (`createPolicy`) và chạy smoke E2E Sepolia.
+> - **Legacy Local (`31337`):** Bộ 83 Hardhat tests và `Web3IntegrityAdapter` + `Web3BlockchainAdapter` E2E trên local node đã pass lịch sử trước khi chuyển sang Sepolia.
