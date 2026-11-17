@@ -8,8 +8,6 @@ import {
   TelemetryListOut,
   EventOut,
   EventListOut,
-  DemoScenarioOut,
-  DemoScenarioPayload,
   HealthOut,
   DevicesOut,
   DeviceItemOut,
@@ -536,86 +534,6 @@ class MockAdapter {
     };
   }
 
-  async runDemoScenario(id: string, payload: DemoScenarioPayload): Promise<DemoScenarioOut> {
-    const item = this.shipments.find((s) => s.id === id);
-    if (!item) {
-      throw new Error(`Mock 404: Shipment ${id} not found`);
-    }
-
-    const now = new Date().toISOString();
-
-    if (payload.scenario === 'temperature_breach') {
-      item.status = 'insurance_triggered';
-      item.latest_telemetry = {
-        id: `tel-demo-${Date.now()}`,
-        device_id: item.latest_telemetry?.device_id || 'ESP32-DEMO',
-        temperature_c: 12.8,
-        humidity_pct: 85.0,
-        recorded_at: now,
-        received_at: now,
-      };
-      item.insurance = {
-        insured_amount_vnd: item.insurance.insured_amount_vnd,
-        status: 'triggered',
-        payout_status: 'paid',
-      };
-      const anchorHash =
-        '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-      const insuranceHash =
-        '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-      item.blockchain = {
-        network: 'localhost',
-        transaction_hash: insuranceHash,
-        anchor_transaction_hash: anchorHash,
-        insurance_transaction_hash: insuranceHash,
-        confirmation_status: 'success',
-      };
-
-      // Add breach event
-      if (!this.events[id]) this.events[id] = [];
-      this.events[id].push({
-        id: `evt-demo-${Date.now()}`,
-        shipment_id: id,
-        type: 'INSURANCE_TRIGGERED',
-        occurred_at: now,
-        details: {
-          breach_started_at: now,
-          duration_minutes: item.violation_duration_minutes,
-        },
-      });
-
-      return {
-        shipment_id: id,
-        scenario: 'temperature_breach',
-        generated_samples: 2,
-        shipment_status: 'insurance_triggered',
-      };
-    } else {
-      // Normal scenario reset
-      item.status = 'in_transit';
-      item.latest_telemetry = {
-        id: `tel-demo-${Date.now()}`,
-        device_id: item.latest_telemetry?.device_id || 'ESP32-DEMO',
-        temperature_c: (item.temp_min_c + item.temp_max_c) / 2,
-        humidity_pct: 65.0,
-        recorded_at: now,
-        received_at: now,
-      };
-      item.insurance = {
-        insured_amount_vnd: item.insurance.insured_amount_vnd,
-        status: 'active',
-        payout_status: 'not_requested',
-      };
-      item.blockchain = null;
-
-      return {
-        shipment_id: id,
-        scenario: 'normal',
-        generated_samples: 1,
-        shipment_status: 'in_transit',
-      };
-    }
-  }
 }
 
 export const mockAdapter = new MockAdapter();

@@ -145,24 +145,6 @@ export const DevicesPage: React.FC = () => {
     };
   }, [autoRefresh]);
 
-<<<<<<< HEAD
-=======
-  const copyPublicKey = (pem?: string) => {
-    if (!pem) return;
-    navigator.clipboard.writeText(pem);
-    setCopiedKey(true);
-    toast.info('Đã sao chép khóa công khai (PEM) vào bộ nhớ tạm.');
-    setTimeout(() => setCopiedKey(false), 2000);
-  };
-
-  const copyKeyId = (keyId: string) => {
-    navigator.clipboard.writeText(keyId);
-    setCopiedKeyId(keyId);
-    toast.info(`Đã sao chép Key ID '${keyId}' vào bộ nhớ tạm.`);
-    setTimeout(() => setCopiedKeyId(null), 2000);
-  };
-
->>>>>>> 931ec32166bef589e0eac94aba2fe121e909c808
   const handleDeleteDevice = async (device: DeviceItemOut) => {
     setAdminSuccessMsg(null);
     setAdminErrorMsg(null);
@@ -1324,16 +1306,15 @@ export const DevicesPage: React.FC = () => {
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
         onSuccess={(res) => {
-<<<<<<< HEAD
-          setAdminSuccessMsg(res.provisioning_status === 'ready'
+          const msg = res.provisioning_status === 'ready'
             ? 'Đăng ký thiết bị thành công. Khóa thiết bị đã được tạo và cấu hình ESP32 đã được cập nhật.'
-            : `Thiết bị ${res.device_id} đã được đăng ký nhưng config.h chưa được cập nhật; hãy cấp khóa bằng quy trình local.`
-          );
-=======
-          const msg = `Đã đăng ký thành công thiết bị ${res.device_id} (${res.device_name || 'Cold Chain Sensor'}).`;
+            : `Thiết bị ${res.device_id} đã được đăng ký nhưng config.h chưa được cập nhật; hãy cấp khóa bằng quy trình local.`;
           setAdminSuccessMsg(msg);
-          toast.success(msg, { title: 'Đăng ký thiết bị' });
->>>>>>> 931ec32166bef589e0eac94aba2fe121e909c808
+          if (res.provisioning_status === 'ready') {
+            toast.success(msg, { title: 'Đăng ký thiết bị' });
+          } else {
+            toast.info(msg, { title: 'Cần cấp khóa local' });
+          }
           fetchDevicesList(false);
         }}
       />
