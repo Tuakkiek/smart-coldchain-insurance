@@ -4,7 +4,7 @@ Smart Contract quản lý dữ liệu toàn vẹn (Module A) và chính sách b�
 
 > 🚀 **Môi trường triển khai hiện tại: Ethereum Sepolia (`11155111`) qua Remix + MetaMask**  
 > - **Dành cho Backend (NTK):** Xem hướng dẫn cấu hình `.env`, phân vai ví (`Anchorer` / `Oracle`), địa chỉ contract và lưu ý Alchemy tại **[HANDOFF_SEPOLIA.md](HANDOFF_SEPOLIA.md)** và **[deployments/sepolia.json](deployments/sepolia.json)**.  
-> - **Quy trình Remix & Python tooling (không cần Hardhat / Node.js):** Xem **[REMIX_SETUP.md](REMIX_SETUP.md)** và **[compiler-settings.json](compiler-settings.json)**.  
+> - **Quy trình Remix & Python tooling (không cần Hardhat / Node.js):** Xem **[REMIX_SETUP.md](REMIX_SETUP.md)**, **[compiler-settings.json](compiler-settings.json)** và kịch bản kiểm thử thủ công trên Remix cho người mới tại **[REMIX_TEST_SCENARIOS.md](REMIX_TEST_SCENARIOS.md)**.  
 > - *(Các lệnh `npx hardhat` / `npm` bên dưới là tài liệu **legacy** cho môi trường local `31337` trước đây.)*
 
 > ⚠️ **Demo only** — Token và tài sản trong project này không có giá trị thật.
