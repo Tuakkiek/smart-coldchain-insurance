@@ -56,9 +56,13 @@ describe('Admin Login and guarded routes', () => {
     expect(screen.getByText('admin')).not.toBeNull();
     expect(getActiveSession()?.accessToken).toBe(token);
     fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
-    expect(screen.getByRole('heading', { name: 'Đăng nhập quản trị' })).not.toBeNull();
+    await screen.findByRole('heading', { name: 'Đăng nhập quản trị' });
     expect(screen.queryByRole('heading', { name: 'Danh sách thiết bị' })).toBeNull();
     expect(sessionStorage.getItem('coldchain_admin_session')).toBeNull();
+    expect(localStorage.getItem('coldchain_admin_session')).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/api\/v1\/auth\/logout$/);
+    expect(fetchMock.mock.calls[1][1]!.credentials).toBe('include');
     // Simulate history/deep-link navigation after logout; the guard runs again.
     act(() => {
       window.history.pushState({}, '', '/devices');
@@ -92,16 +96,21 @@ describe('Admin Login and guarded routes', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it('returns to Login as soon as an idle token expires', () => {
+  it('refreshes an idle expired token and returns to Login if refresh fails', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
     startSession(tokenFor('admin', 4000));
+    fetchMock.mockResolvedValue(jsonResponse({
+      error: { code: 'REFRESH_TOKEN_EXPIRED', message: 'Expired' },
+    }, 401));
     render(<App />);
     expect(screen.getByRole('heading', { name: 'Dashboard riêng tư' })).not.toBeNull();
-    act(() => { vi.advanceTimersByTime(4000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
     expect(screen.getByRole('heading', { name: 'Đăng nhập quản trị' })).not.toBeNull();
     expect(screen.getByRole('status').textContent).toContain('hết hạn');
     expect(screen.queryByRole('heading', { name: 'Dashboard riêng tư' })).toBeNull();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/v1\/auth\/refresh$/);
   });
 
   it('clears a rejected session on a real protected API 401', async () => {
