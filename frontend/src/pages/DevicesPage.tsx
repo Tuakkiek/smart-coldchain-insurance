@@ -168,9 +168,9 @@ export const DevicesPage: React.FC = () => {
     setAdminErrorMsg(null);
 
     if (device.assigned_shipment_id) {
-      setAdminErrorMsg(
-        `Thiết bị ${device.device_id} đang liên kết với chuyến hàng ${device.assigned_shipment_code || device.assigned_shipment_id}. Hãy bỏ liên kết trước khi xóa.`
-      );
+      const msg = `Thiết bị ${device.device_id} đang liên kết với chuyến hàng ${device.assigned_shipment_code || device.assigned_shipment_id}. Hãy bỏ liên kết trước khi xóa.`;
+      setAdminErrorMsg(msg);
+      toast.warning(msg, { title: 'Không thể xóa thiết bị' });
       return;
     }
 
@@ -184,17 +184,20 @@ export const DevicesPage: React.FC = () => {
       await deleteDevice(device.device_id);
       setDevices((current) => current.filter((item) => item.device_id !== device.device_id));
       if (selectedDeviceId === device.device_id) setSelectedDeviceId(null);
-      setAdminSuccessMsg(`Đã xóa thiết bị ${device.device_id} thành công.`);
+      const successMsg = `Đã xóa thiết bị ${device.device_id} thành công.`;
+      setAdminSuccessMsg(successMsg);
+      toast.success(successMsg, { title: 'Xóa thiết bị thành công' });
     } catch (err: unknown) {
+      let msg = '';
       if (err instanceof ApiError && err.code === 'DEVICE_ASSIGNED') {
-        setAdminErrorMsg('Không thể xóa: thiết bị vẫn đang liên kết với một chuyến hàng.');
+        msg = 'Không thể xóa: thiết bị vẫn đang liên kết với một chuyến hàng.';
       } else if (err instanceof ApiError && err.code === 'DEVICE_HAS_DATA') {
-        setAdminErrorMsg(
-          'Không thể xóa thiết bị đã có dữ liệu telemetry vì cần giữ lịch sử đối soát. Hãy thu hồi thiết bị thay thế.'
-        );
+        msg = 'Không thể xóa thiết bị đã có dữ liệu telemetry vì cần giữ lịch sử đối soát. Hãy thu hồi thiết bị thay thế.';
       } else {
-        setAdminErrorMsg(err instanceof Error ? err.message : 'Không thể xóa thiết bị.');
+        msg = err instanceof Error ? err.message : 'Không thể xóa thiết bị.';
       }
+      setAdminErrorMsg(msg);
+      toast.error(msg, { title: 'Lỗi xóa thiết bị' });
     } finally {
       setDeletingDeviceId(null);
     }
@@ -275,7 +278,10 @@ export const DevicesPage: React.FC = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => fetchDevicesList(true)}
+              onClick={() => {
+                fetchDevicesList(true);
+                toast.info('Đang làm mới danh sách thiết bị...', { title: 'Làm mới', duration: 2500 });
+              }}
               loading={refreshing}
               disabled={loading || refreshing}
               icon={<RefreshCw size={14} />}

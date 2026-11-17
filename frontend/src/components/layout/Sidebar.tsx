@@ -12,6 +12,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { ConnectionStatus } from '../feedback/ConnectionStatus';
+import { useToast } from '../feedback/Toast';
 import { Button } from '../ui/Button';
 import { useAuth } from '../../auth/AuthProvider';
 import { logoutAdmin } from '../../api/auth';
@@ -25,6 +26,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh, isRefreshing }) => {
   const { session } = useAuth();
+  const { toast } = useToast();
 
   const navItems = [
     { label: 'Tổng quan', path: '/', icon: <LayoutDashboard size={18} /> },
@@ -166,7 +168,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh, is
             {onRefresh && (
               <button
                 type="button"
-                onClick={onRefresh}
+                onClick={() => {
+                  onRefresh();
+                  toast.info('Đang làm mới dữ liệu hệ thống...', { title: 'Làm mới', duration: 2500 });
+                }}
                 title="Làm mới trang và kết nối"
                 aria-label="Làm mới trang và kết nối"
                 style={{
@@ -212,7 +217,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh, is
               size="sm"
               variant="secondary"
               icon={<LogOut size={15} aria-hidden="true" />}
-              onClick={() => { void logoutAdmin().catch(() => undefined); }}
+              onClick={() => {
+                void logoutAdmin().catch(() => undefined);
+                toast.info('Bạn đã đăng xuất khỏi hệ thống quản trị.', { title: 'Đăng xuất' });
+              }}
             >
               Đăng xuất
             </Button>

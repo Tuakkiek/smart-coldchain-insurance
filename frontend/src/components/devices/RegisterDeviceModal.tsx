@@ -3,6 +3,7 @@ import { DeviceRegisterPayload, AdminDeviceViewOut } from '../../types/api';
 import { registerDevice } from '../../api/devices';
 import { ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
+import { useToast } from '../feedback/Toast';
 import {
   Cpu,
   X,
@@ -23,7 +24,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-
+  const { toast } = useToast();
   const [deviceId, setDeviceId] = useState('ESP32-001');
   const [deviceName, setDeviceName] = useState('Cold Chain Sensor 01');
 
@@ -48,11 +49,15 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deviceId.trim()) {
-      setError('Mã thiết bị (Device ID) không được để trống');
+      const msg = 'Mã thiết bị (Device ID) không được để trống';
+      setError(msg);
+      toast.warning(msg, { title: 'Thông tin chưa đầy đủ' });
       return;
     }
     if (!deviceName.trim()) {
-      setError('Tên thiết bị (Device Name) không được để trống');
+      const msg = 'Tên thiết bị (Device Name) không được để trống';
+      setError(msg);
+      toast.warning(msg, { title: 'Thông tin chưa đầy đủ' });
       return;
     }
 
@@ -69,19 +74,22 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
       onSuccess(result);
       onClose();
     } catch (err: unknown) {
+      let msg = '';
       if (err instanceof ApiError) {
         if (err.status === 401 || err.code === 'UNAUTHORIZED') {
-          setError('Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.');
+          msg = 'Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.';
         } else if (err.status === 409 || err.code === 'DEVICE_EXISTS') {
-          setError(`Mã thiết bị '${deviceId.trim()}' đã tồn tại trên hệ thống.`);
+          msg = `Mã thiết bị '${deviceId.trim()}' đã tồn tại trên hệ thống.`;
         } else if (err.status === 422) {
-          setError(err.message || 'Dữ liệu đăng ký không hợp lệ (Mã ID 1-100 ký tự).');
+          msg = err.message || 'Dữ liệu đăng ký không hợp lệ (Mã ID 1-100 ký tự).';
         } else {
-          setError(err.message || 'Lỗi khi đăng ký thiết bị');
+          msg = err.message || 'Lỗi khi đăng ký thiết bị';
         }
       } else {
-        setError(err instanceof Error ? err.message : 'Lỗi không xác định khi đăng ký thiết bị');
+        msg = err instanceof Error ? err.message : 'Lỗi không xác định khi đăng ký thiết bị';
       }
+      setError(msg);
+      toast.error(msg, { title: 'Đăng ký thiết bị thất bại' });
     } finally {
       setSubmitting(false);
     }

@@ -5,6 +5,7 @@ import { getShipments } from '../../api/shipments';
 import { ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { useToast } from '../feedback/Toast';
 import {
   Link2,
   Unlink,
@@ -29,7 +30,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
   onSuccess,
   initialDeviceId,
 }) => {
-
+  const { toast } = useToast();
   const [devices, setDevices] = useState<DeviceItemOut[]>([]);
   const [shipments, setShipments] = useState<ShipmentOut[]>([]);
 
@@ -78,11 +79,15 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDeviceId) {
-      setError('Vui lòng chọn thiết bị');
+      const msg = 'Vui lòng chọn thiết bị';
+      setError(msg);
+      toast.warning(msg, { title: 'Thông tin chưa đầy đủ' });
       return;
     }
     if (!selectedShipmentId) {
-      setError('Vui lòng chọn chuyến hàng');
+      const msg = 'Vui lòng chọn chuyến hàng';
+      setError(msg);
+      toast.warning(msg, { title: 'Thông tin chưa đầy đủ' });
       return;
     }
 
@@ -103,21 +108,22 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
       onSuccess(result, `Đã liên kết thành công thiết bị ${selectedDeviceId} với chuyến hàng ${shipLabel}!`);
       onClose();
     } catch (err: unknown) {
+      let msg = '';
       if (err instanceof ApiError) {
         if (err.status === 409 || err.code === 'DEVICE_ALREADY_ASSIGNED') {
           setIsConflict409(true);
-          setError(
-            err.message ||
-              `Thiết bị '${selectedDeviceId}' đã có liên kết kích hoạt với chuyến hàng khác (${currentAssignedShipmentCode || currentAssignedShipmentId}). Mỗi thiết bị chỉ được có 1 liên kết active. Vui lòng bấm 'Bỏ liên kết cũ' trước khi gán mới!`
-          );
+          msg = err.message ||
+            `Thiết bị '${selectedDeviceId}' đã có liên kết kích hoạt với chuyến hàng khác (${currentAssignedShipmentCode || currentAssignedShipmentId}). Mỗi thiết bị chỉ được có 1 liên kết active. Vui lòng bấm 'Bỏ liên kết cũ' trước khi gán mới!`;
         } else if (err.status === 401 || err.code === 'UNAUTHORIZED') {
-          setError('Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.');
+          msg = 'Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.';
         } else {
-          setError(err.message || 'Lỗi khi gán thiết bị vào chuyến hàng');
+          msg = err.message || 'Lỗi khi gán thiết bị vào chuyến hàng';
         }
       } else {
-        setError(err instanceof Error ? err.message : 'Lỗi không xác định khi liên kết thiết bị');
+        msg = err instanceof Error ? err.message : 'Lỗi không xác định khi liên kết thiết bị';
       }
+      setError(msg);
+      toast.error(msg, { title: 'Lỗi liên kết thiết bị' });
     } finally {
       setSubmitting(false);
     }
