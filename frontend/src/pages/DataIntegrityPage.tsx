@@ -213,8 +213,8 @@ export const DataIntegrityPage: React.FC = () => {
   const isEffectiveColdStart =
     isColdStart || backendConnectionState === 'COLD_START';
 
-  if (loading) {
-    return <LoadingState message="Đang nạp danh sách Merkle Batches và trạng thái neo Blockchain..." />;
+  if (loading && batches.length === 0) {
+    return <LoadingState fullPage message="Đang nạp danh sách Merkle Batches và trạng thái neo Blockchain..." />;
   }
 
   if (error && batches.length === 0) {
@@ -278,9 +278,10 @@ export const DataIntegrityPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => fetchData(false)}
+            onClick={() => fetchData(true)}
             loading={refreshing}
-            icon={<RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />}
+            disabled={loading || refreshing}
+            icon={<RefreshCw size={14} />}
           >
             Làm mới
           </Button>

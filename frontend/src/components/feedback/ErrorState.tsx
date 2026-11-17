@@ -70,6 +70,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
           size="sm"
           onClick={onRetry}
           loading={retrying}
+          disabled={retrying}
           icon={<RefreshCw size={14} />}
         >
           Thử lại

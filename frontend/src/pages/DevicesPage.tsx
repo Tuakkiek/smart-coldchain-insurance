@@ -246,7 +246,7 @@ export const DevicesPage: React.FC = () => {
   );
 
   if (loading && devices.length === 0) {
-    return <LoadingState message="Đang nạp dữ liệu xác thực và tình trạng thiết bị ESP32..." />;
+    return <LoadingState fullPage message="Đang nạp dữ liệu xác thực và tình trạng thiết bị ESP32..." />;
   }
 
   return (
@@ -275,14 +275,10 @@ export const DevicesPage: React.FC = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => fetchDevicesList(false)}
+              onClick={() => fetchDevicesList(true)}
+              loading={refreshing}
               disabled={loading || refreshing}
-              icon={
-                <RefreshCw
-                  size={14}
-                  className={loading || refreshing ? 'animate-spin' : undefined}
-                />
-              }
+              icon={<RefreshCw size={14} />}
             >
               Làm mới
             </Button>

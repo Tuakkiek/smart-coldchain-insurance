@@ -24,6 +24,7 @@ import {
   Wifi,
   WifiOff,
   ShieldCheck,
+  RefreshCw,
 } from 'lucide-react';
 
 export const OverviewPage: React.FC = () => {
@@ -32,10 +33,16 @@ export const OverviewPage: React.FC = () => {
   const [recentEvents, setRecentEvents] = useState<EventOut[]>([]);
   const [devices, setDevices] = useState<DeviceItemOut[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (isBackground = false) => {
+    if (!isBackground && !hasLoadedOnce) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     setError(null);
     try {
       const [shipmentsRes, eventsRes, devicesRes] = await Promise.all([
@@ -46,10 +53,14 @@ export const OverviewPage: React.FC = () => {
       setShipments(shipmentsRes.items);
       setRecentEvents(eventsRes.items.slice(0, 5));
       setDevices(devicesRes.items);
+      setHasLoadedOnce(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Lỗi không xác định khi tải dữ liệu');
+      if (!isBackground && !hasLoadedOnce) {
+        setError(err instanceof Error ? err.message : 'Lỗi không xác định khi tải dữ liệu');
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -57,16 +68,16 @@ export const OverviewPage: React.FC = () => {
     fetchData();
   }, []);
 
-  if (loading) {
-    return <LoadingState message="Đang nạp dữ liệu bảng điều khiển..." />;
+  if (loading && !hasLoadedOnce) {
+    return <LoadingState fullPage message="Đang nạp dữ liệu bảng điều khiển..." />;
   }
 
-  if (error) {
+  if (error && !hasLoadedOnce) {
     return (
       <ErrorState
         title="Không thể tải tổng quan"
         message={error}
-        onRetry={fetchData}
+        onRetry={() => fetchData(false)}
       />
     );
   }
@@ -87,7 +98,14 @@ export const OverviewPage: React.FC = () => {
       <PageHeader
         title="Bảng điều khiển Giám sát"
         action={
-          <Button variant="secondary" size="sm" onClick={fetchData}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => fetchData(true)}
+            loading={refreshing}
+            disabled={loading || refreshing}
+            icon={<RefreshCw size={14} />}
+          >
             Làm mới dữ liệu
           </Button>
         }

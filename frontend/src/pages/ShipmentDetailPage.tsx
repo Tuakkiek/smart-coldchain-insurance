@@ -240,8 +240,8 @@ export const ShipmentDetailPage: React.FC = () => {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  if (loading) {
-    return <LoadingState message="Đang nạp chi tiết lô hàng và bản đồ tuyến đường..." />;
+  if (loading && !shipment) {
+    return <LoadingState fullPage message="Đang nạp chi tiết lô hàng và bản đồ tuyến đường..." />;
   }
 
   if (error || !shipment) {
@@ -313,6 +313,7 @@ export const ShipmentDetailPage: React.FC = () => {
             size="sm"
             onClick={() => fetchData(true)}
             loading={refreshing}
+            disabled={loading || refreshing}
             icon={<RefreshCw size={14} />}
           >
             Làm mới
