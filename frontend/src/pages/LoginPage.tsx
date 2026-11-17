@@ -5,10 +5,13 @@ import { loginAdmin } from '../api/auth';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../components/ui/Button';
+import { PasswordInput } from '../components/ui/PasswordInput';
+import { useToast } from '../components/feedback/Toast';
 import '../styles/auth.css';
 
 export const LoginPage: React.FC = () => {
   const { session, reason } = useAuth();
+  const { toast } = useToast();
   const location = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +24,7 @@ export const LoginPage: React.FC = () => {
   const retrySeconds = Math.max(0, Math.ceil((retryUntil - now) / 1000));
 
   useEffect(() => () => request.current?.abort(), []);
+
   useEffect(() => {
     if (!retryUntil) return;
     const timer = setInterval(() => {
@@ -41,6 +45,9 @@ export const LoginPage: React.FC = () => {
     if (busy.current || Date.now() < retryUntil) return;
     if (!username.trim() || !password.trim()) {
       setError('Vui lòng nhập tên đăng nhập và mật khẩu.');
+      toast.warning('Vui lòng điền đầy đủ tên đăng nhập và mật khẩu.', {
+        title: 'Thông tin chưa đầy đủ',
+      });
       return;
     }
     busy.current = true;
@@ -53,17 +60,25 @@ export const LoginPage: React.FC = () => {
     setPassword('');
     try {
       await loginAdmin(username, enteredPassword, controller.signal);
+      toast.success('Đăng nhập hệ thống quản trị thành công.', { title: 'Đăng nhập thành công' });
     } catch (err: unknown) {
       if (controller.signal.aborted) return;
       if (err instanceof ApiError && err.status === 401) {
         setError('Tên đăng nhập hoặc mật khẩu không chính xác.');
+        toast.error('Đăng nhập không thành công. Vui lòng kiểm tra lại tài khoản hoặc mật khẩu.', {
+          title: 'Đăng nhập thất bại',
+        });
       } else if (err instanceof ApiError && err.status === 429) {
         const time = Date.now();
         setNow(time);
         setRetryUntil(time + Math.max(1, err.retryAfterSeconds ?? 60) * 1000);
         setError('Bạn đã thử đăng nhập quá nhiều lần. Vui lòng đợi trước khi thử lại.');
       } else {
-        setError(err instanceof Error ? err.message : 'Không thể đăng nhập. Vui lòng thử lại.');
+        const msg = err instanceof Error ? err.message : 'Không thể đăng nhập. Vui lòng thử lại.';
+        setError(msg);
+        toast.error('Không thể kết nối đến máy chủ. Vui lòng thử lại.', {
+          title: 'Đăng nhập thất bại',
+        });
       }
     } finally {
       busy.current = false;
@@ -100,12 +115,18 @@ export const LoginPage: React.FC = () => {
           </div>
           <div>
             <label htmlFor="login-password">Mật khẩu</label>
-            <div className="auth-input-wrap">
-              <LockKeyhole size={18} aria-hidden="true" />
-              <input id="login-password" name="password" type="password" autoComplete="current-password"
-                required maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)}
-                disabled={submitting} placeholder="Nhập mật khẩu" />
-            </div>
+            <PasswordInput
+              id="login-password"
+              name="password"
+              autoComplete="current-password"
+              required
+              maxLength={256}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              disabled={submitting}
+              placeholder="Nhập mật khẩu"
+              leftIcon={<LockKeyhole size={18} aria-hidden="true" />}
+            />
           </div>
           {error && <div id="login-error" className="auth-error" role="alert">{error}</div>}
           {retrySeconds > 0 && <p className="auth-retry" role="status">Thử lại sau {retrySeconds} giây.</p>}

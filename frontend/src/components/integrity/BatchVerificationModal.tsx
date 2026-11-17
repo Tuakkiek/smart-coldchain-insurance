@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BatchVerifyResultOut, IntegrityBatch } from '../../types/api';
 import { Button } from '../ui/Button';
+import { useToast } from '../feedback/Toast';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -31,6 +32,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
   batch,
   loading = false,
 }) => {
+  const { toast } = useToast();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -38,6 +40,8 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
+    const label = key === 'root' ? 'Merkle Root' : key === 'tx' ? 'Transaction Hash' : 'Dữ liệu';
+    toast.info(`Đã sao chép ${label} vào bộ nhớ tạm.`, { title: 'Sao chép' });
     setTimeout(() => setCopiedKey(null), 2000);
   };
 

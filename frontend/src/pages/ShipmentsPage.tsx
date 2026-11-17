@@ -79,19 +79,20 @@ export const ShipmentsPage: React.FC = () => {
       await deleteShipment(shipment.id);
       setShipments((current) => current.filter((item) => item.id !== shipment.id));
       if (successShipment?.id === shipment.id) setSuccessShipment(null);
-      setDeleteSuccessMsg(`Đã xóa lô hàng ${shipment.code} thành công.`);
+      const successMsg = `Đã xóa lô hàng ${shipment.code} thành công.`;
+      setDeleteSuccessMsg(successMsg);
+      toast.success(successMsg, { title: 'Xóa lô hàng thành công' });
     } catch (err: unknown) {
+      let msg = '';
       if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_ASSIGNED_DEVICES') {
-        setDeleteErrorMsg(
-          `Không thể xóa ${shipment.code}: vẫn còn thiết bị đang liên kết. Hãy bỏ liên kết trong trang Thiết bị trước.`
-        );
+        msg = `Không thể xóa ${shipment.code}: vẫn còn thiết bị đang liên kết. Hãy bỏ liên kết trong trang Thiết bị trước.`;
       } else if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_DATA') {
-        setDeleteErrorMsg(
-          `Không thể xóa ${shipment.code} vì đã có dữ liệu vận hành hoặc lịch sử đối soát.`
-        );
+        msg = `Không thể xóa ${shipment.code} vì đã có dữ liệu vận hành hoặc lịch sử đối soát.`;
       } else {
-        setDeleteErrorMsg(err instanceof Error ? err.message : 'Không thể xóa lô hàng.');
+        msg = err instanceof Error ? err.message : 'Không thể xóa lô hàng.';
       }
+      setDeleteErrorMsg(msg);
+      toast.error(msg, { title: 'Lỗi xóa lô hàng' });
     } finally {
       setDeletingShipmentId(null);
     }
@@ -145,7 +146,10 @@ export const ShipmentsPage: React.FC = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => fetchShipments(true)}
+              onClick={() => {
+                fetchShipments(true);
+                toast.info('Đang làm mới danh sách lô hàng...', { title: 'Làm mới', duration: 2500 });
+              }}
               loading={refreshing}
               disabled={loading || refreshing}
               icon={<RefreshCw size={14} />}

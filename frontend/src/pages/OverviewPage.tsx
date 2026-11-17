@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button';
 import { LoadingState } from '../components/feedback/LoadingState';
 import { ErrorState } from '../components/feedback/ErrorState';
 import { EmptyState } from '../components/feedback/EmptyState';
+import { useToast } from '../components/feedback/Toast';
 import { getShipments } from '../api/shipments';
 import { getAllEvents } from '../api/events';
 import { getDevices } from '../api/devices';
@@ -29,6 +30,7 @@ import {
 
 export const OverviewPage: React.FC = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [shipments, setShipments] = useState<ShipmentOut[]>([]);
   const [recentEvents, setRecentEvents] = useState<EventOut[]>([]);
   const [devices, setDevices] = useState<DeviceItemOut[]>([]);
@@ -101,7 +103,10 @@ export const OverviewPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => fetchData(true)}
+            onClick={() => {
+              fetchData(true);
+              toast.info('Đang làm mới dữ liệu tổng quan...', { title: 'Làm mới', duration: 2500 });
+            }}
             loading={refreshing}
             disabled={loading || refreshing}
             icon={<RefreshCw size={14} />}

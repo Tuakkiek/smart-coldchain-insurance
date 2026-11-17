@@ -3,6 +3,7 @@ import { ShipmentCreatePayload, ShipmentOut } from '../../types/api';
 import { createShipment } from '../../api/shipments';
 import { Button } from '../ui/Button';
 import { ApiError } from '../../api/client';
+import { useToast } from '../feedback/Toast';
 import {
   PackagePlus,
   X,
@@ -86,6 +87,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const { toast } = useToast();
   const generateRandomCode = () => {
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     const rand = Math.floor(1000 + Math.random() * 9000);
@@ -198,7 +200,10 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validate()) {
+      toast.warning('Vui lòng kiểm tra lại các trường thông tin bị lỗi.', { title: 'Thông tin chưa hợp lệ' });
+      return;
+    }
 
     setSubmitting(true);
     setApiError(null);
@@ -227,18 +232,21 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
       onSuccess(created);
       onClose();
     } catch (err: unknown) {
+      let msg = '';
       if (err instanceof ApiError) {
         if (err.code === 'DUPLICATE_SHIPMENT_CODE') {
-          setApiError(`Mã lô hàng '${payload.code}' đã tồn tại trên hệ thống. Vui lòng đổi mã khác.`);
+          msg = `Mã lô hàng '${payload.code}' đã tồn tại trên hệ thống. Vui lòng đổi mã khác.`;
         } else if (err.details && err.details.length > 0) {
           const detailMsg = err.details.map((d) => `${d.field ? d.field + ': ' : ''}${d.message}`).join(', ');
-          setApiError(`Lỗi xác thực: ${detailMsg}`);
+          msg = `Lỗi xác thực: ${detailMsg}`;
         } else {
-          setApiError(err.message || 'Lỗi khi tạo lô hàng');
+          msg = err.message || 'Lỗi khi tạo lô hàng';
         }
       } else {
-        setApiError(err instanceof Error ? err.message : 'Lỗi không xác định khi tạo lô hàng');
+        msg = err instanceof Error ? err.message : 'Lỗi không xác định khi tạo lô hàng';
       }
+      setApiError(msg);
+      toast.error(msg, { title: 'Tạo lô hàng thất bại' });
     } finally {
       setSubmitting(false);
     }

@@ -15,24 +15,51 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismis
       <style>{`
         .coldchain-toast-container {
           position: fixed;
-          bottom: 24px;
+          top: 24px;
           right: 24px;
           z-index: 9999;
           display: flex;
           flex-direction: column;
           gap: 10px;
-          max-width: 400px;
+          max-width: 420px;
           width: 100%;
           pointer-events: none;
         }
 
+        .coldchain-toast-item {
+          animation: toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          will-change: transform, opacity;
+        }
+
+        @keyframes toastSlideIn {
+          from {
+            opacity: 0;
+            transform: translate3d(24px, -6px, 0) scale(0.97);
+          }
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+        }
+
         @media (max-width: 640px) {
           .coldchain-toast-container {
-            bottom: 16px;
+            top: 16px;
             left: 16px;
             right: 16px;
             max-width: none;
             width: auto;
+          }
+
+          @keyframes toastSlideIn {
+            from {
+              opacity: 0;
+              transform: translate3d(0, -10px, 0) scale(0.97);
+            }
+            to {
+              opacity: 1;
+              transform: translate3d(0, 0, 0) scale(1);
+            }
           }
         }
       `}</style>
