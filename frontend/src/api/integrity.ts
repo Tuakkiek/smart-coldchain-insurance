@@ -1,4 +1,4 @@
-import { apiClient, ApiError } from './client';
+import { apiClient } from './client';
 import { mockAdapter } from '../mocks/mockAdapter';
 import {
   IntegritySummaryOut,
@@ -102,30 +102,18 @@ export async function getBatchById(batchId: string): Promise<IntegrityBatch> {
  * Request backend to recalculate Merkle root from MySQL and verify against on-chain anchor.
  * Frontend NEVER hashes data locally or interacts with private keys/RPC directly.
  * Endpoint: POST /api/v1/batches/{batch_id}/verify
- * Requires header: X-Admin-Key
+ * Authentication: current Admin Bearer session (attached by apiClient).
  */
 export async function verifyBatch(
-  batchId: string,
-  adminKey?: string
+  batchId: string
 ): Promise<BatchVerifyResultOut> {
-  const key = adminKey || apiClient.getAdminKey();
-  if (!key) {
-    throw new ApiError(
-      'Chưa cấu hình X-Admin-Key. Vui lòng cung cấp Admin API Key để xác minh batch.',
-      401,
-      'UNAUTHORIZED'
-    );
-  }
-
   if (apiClient.isMockEnabled()) {
     return mockAdapter.verifyBatch(batchId);
   }
 
   const res = await apiClient.post<any>(
     `/api/v1/batches/${batchId}/verify`,
-    undefined,
-    undefined,
-    { 'X-Admin-Key': key }
+    undefined
   );
   return adaptVerifyResult(res);
 }

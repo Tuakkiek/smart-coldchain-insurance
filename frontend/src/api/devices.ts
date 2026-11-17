@@ -7,6 +7,7 @@ import {
   DeviceMissingSequencesOut,
   ShipmentDevicesOut,
   DeviceRegisterPayload,
+  DeviceDeleteOut,
   DeviceAssignmentPayload,
   AdminDeviceViewOut,
   SignatureStatus,
@@ -20,28 +21,30 @@ export { ApiError };
  * Admin: Register a new ESP32 device with minimal fields (device_id and device_name).
  * Cryptographic keys are provisioned outside browser via trusted Python script via USB.
  * Endpoint: POST /api/v1/devices
- * Requires header: X-Admin-Key
+ * Authentication: current Admin Bearer session (attached by apiClient).
  */
 export async function registerDevice(
-  payload: DeviceRegisterPayload,
-  adminKey?: string
+  payload: DeviceRegisterPayload
 ): Promise<AdminDeviceViewOut> {
-  const key = adminKey || apiClient.getAdminKey();
-  if (!key) {
-    throw new ApiError(
-      'Chưa cấu hình X-Admin-Key. Vui lòng cung cấp Admin API Key để thực hiện.',
-      401,
-      'UNAUTHORIZED'
-    );
-  }
-
   if (apiClient.isMockEnabled()) {
     return mockAdapter.registerDevice(payload);
   }
 
-  return apiClient.post<AdminDeviceViewOut>('/api/v1/devices', payload, undefined, {
-    'X-Admin-Key': key,
-  });
+  return apiClient.post<AdminDeviceViewOut>('/api/v1/devices', payload);
+}
+
+/**
+ * Delete a registered device that has no active shipment assignment.
+ * Devices with telemetry history are retained to preserve audit evidence.
+ */
+export async function deleteDevice(deviceId: string): Promise<DeviceDeleteOut> {
+  if (apiClient.isMockEnabled()) {
+    return mockAdapter.deleteDevice(deviceId);
+  }
+
+  return apiClient.delete<DeviceDeleteOut>(
+    `/api/v1/devices/${encodeURIComponent(deviceId)}`
+  );
 }
 
 /**
@@ -50,61 +53,35 @@ export async function registerDevice(
  * To change shipment: first unassign old (active=false), then assign new (active=true).
  * Backend enforces constraint; returns 409 DEVICE_ALREADY_ASSIGNED if active assignment exists.
  * Endpoint: POST /api/v1/devices/{device_id}/assignments
- * Requires header: X-Admin-Key
+ * Authentication: current Admin Bearer session (attached by apiClient).
  */
 export async function assignDevice(
   deviceId: string,
-  payload: DeviceAssignmentPayload,
-  adminKey?: string
+  payload: DeviceAssignmentPayload
 ): Promise<AdminDeviceViewOut> {
-  const key = adminKey || apiClient.getAdminKey();
-  if (!key) {
-    throw new ApiError(
-      'Chưa cấu hình X-Admin-Key. Vui lòng cung cấp Admin API Key để thực hiện.',
-      401,
-      'UNAUTHORIZED'
-    );
-  }
-
   if (apiClient.isMockEnabled()) {
     return mockAdapter.assignDevice(deviceId, payload);
   }
 
   return apiClient.post<AdminDeviceViewOut>(
     `/api/v1/devices/${deviceId}/assignments`,
-    payload,
-    undefined,
-    {
-      'X-Admin-Key': key,
-    }
+    payload
   );
 }
 
 /**
  * Admin: Fetch detailed cryptographic keys and assignments for a device.
  * Endpoint: GET /api/v1/devices/{device_id}
- * Requires header: X-Admin-Key
+ * Authentication: current Admin Bearer session (attached by apiClient).
  */
 export async function getAdminDeviceDetails(
-  deviceId: string,
-  adminKey?: string
+  deviceId: string
 ): Promise<AdminDeviceViewOut> {
-  const key = adminKey || apiClient.getAdminKey();
-  if (!key) {
-    throw new ApiError(
-      'Chưa cấu hình X-Admin-Key. Vui lòng cung cấp Admin API Key để thực hiện.',
-      401,
-      'UNAUTHORIZED'
-    );
-  }
-
   if (apiClient.isMockEnabled()) {
     return mockAdapter.getAdminDeviceDetails(deviceId);
   }
 
-  return apiClient.get<AdminDeviceViewOut>(`/api/v1/devices/${deviceId}`, undefined, {
-    'X-Admin-Key': key,
-  });
+  return apiClient.get<AdminDeviceViewOut>(`/api/v1/devices/${deviceId}`);
 }
 
 /**
@@ -213,7 +190,7 @@ export function normalizeDeviceItem(item: any): DeviceItemOut {
 /**
  * Fetch all registered ESP32 devices and their integrity status.
  */
-export async function getDevices(adminKey?: string): Promise<DevicesOut> {
+export async function getDevices(): Promise<DevicesOut> {
   if (apiClient.isMockEnabled()) {
     const res = await mockAdapter.listDevices();
     return {
@@ -221,9 +198,7 @@ export async function getDevices(adminKey?: string): Promise<DevicesOut> {
       total: res.total,
     };
   }
-  const key = adminKey || apiClient.getAdminKey();
-  const headers = key ? { 'X-Admin-Key': key } : undefined;
-  const res = await apiClient.get<any>('/api/v1/devices', undefined, headers);
+  const res = await apiClient.get<any>('/api/v1/devices');
   const items = Array.isArray(res?.items) ? res.items.map(normalizeDeviceItem) : [];
   return {
     items,
@@ -234,13 +209,11 @@ export async function getDevices(adminKey?: string): Promise<DevicesOut> {
 /**
  * Fetch detailed registration and cryptographic metadata for a specific ESP32 device.
  */
-export async function getDeviceById(deviceId: string, adminKey?: string): Promise<DeviceItemOut> {
+export async function getDeviceById(deviceId: string): Promise<DeviceItemOut> {
   if (apiClient.isMockEnabled()) {
     return mockAdapter.getDevice(deviceId);
   }
-  const key = adminKey || apiClient.getAdminKey();
-  const headers = key ? { 'X-Admin-Key': key } : undefined;
-  const res = await apiClient.get<any>(`/api/v1/devices/${deviceId}`, undefined, headers);
+  const res = await apiClient.get<any>(`/api/v1/devices/${deviceId}`);
   return normalizeDeviceItem(res);
 }
 

@@ -46,14 +46,19 @@ def validate_auth_config(
     jwt_secret_key: str | None,
     jwt_access_token_expire_minutes: int,
 ) -> None:
-    if not admin_username or is_placeholder(admin_username):
-        raise ValueError("ADMIN_USERNAME is required and cannot be empty or placeholder")
-    if not admin_password or is_placeholder(admin_password):
-        raise ValueError("ADMIN_PASSWORD is required and cannot be empty or placeholder")
+    # Username/password are bootstrap inputs, validated only when the DB has no
+    # Admin. Existing accounts keep working after those inputs are removed.
     if not jwt_secret_key or is_placeholder(jwt_secret_key) or len(jwt_secret_key.encode("utf-8")) < 32:
         raise ValueError("JWT_SECRET_KEY must be at least 32 bytes and cannot be a placeholder")
     if type(jwt_access_token_expire_minutes) is not int or jwt_access_token_expire_minutes <= 0:
         raise ValueError("JWT_ACCESS_TOKEN_EXPIRE_MINUTES must be positive")
+
+
+def validate_admin_bootstrap(username: str, password: str) -> None:
+    if is_placeholder(username) or not 1 <= len(username.strip()) <= 100:
+        raise ValueError("ADMIN_USERNAME is required to initialize the Admin account")
+    if is_placeholder(password) or not 1 <= len(password) <= 256:
+        raise ValueError("ADMIN_PASSWORD is required to initialize the Admin account")
 
 
 @dataclass(frozen=True)

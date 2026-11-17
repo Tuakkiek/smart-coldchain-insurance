@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ShipmentCreatePayload, ShipmentOut } from '../../types/api';
 import { createShipment } from '../../api/shipments';
 import { Button } from '../ui/Button';
-import { apiClient, ApiError } from '../../api/client';
+import { ApiError } from '../../api/client';
 import {
   PackagePlus,
   X,
@@ -13,7 +13,6 @@ import {
   Sparkles,
   AlertCircle,
   RefreshCw,
-  Lock,
 } from 'lucide-react';
 
 interface CreateShipmentModalProps {
@@ -41,7 +40,7 @@ const PRESETS = [
   {
     name: 'Quy trình Chuẩn: SHIP-001 (Vaccine 2°C - 8°C)',
     code: 'SHIP-001',
-    cargo_type: 'Vaccine Tiêu Chuẩn Cold-Chain',
+    cargo_type: 'Vaccine',
     tempMin: '2.0',
     tempMax: '8.0',
     duration: '15',
@@ -95,7 +94,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
 
   const [form, setForm] = useState<FormState>({
     code: 'SHIP-001',
-    cargo_type: 'Vaccine Tiêu Chuẩn Cold-Chain',
+    cargo_type: 'Vaccine',
     originName: 'Kho Trung Ương 1, Hà Nội',
     originLat: '21.0285',
     originLng: '105.8542',
@@ -109,8 +108,6 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [adminKey, setAdminKey] = useState<string>(apiClient.getAdminKey() || '');
-  const [saveAdminKey, setSaveAdminKey] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -203,16 +200,6 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
     e.preventDefault();
     if (!validate()) return;
 
-    const trimmedKey = adminKey.trim();
-    if (!trimmedKey) {
-      setApiError('Vui lòng nhập X-Admin-Key (Khóa quản trị của máy chủ Backend)');
-      return;
-    }
-
-    if (saveAdminKey) {
-      apiClient.setAdminKey(trimmedKey);
-    }
-
     setSubmitting(true);
     setApiError(null);
 
@@ -236,7 +223,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
     };
 
     try {
-      const created = await createShipment(payload, trimmedKey);
+      const created = await createShipment(payload);
       onSuccess(created);
       onClose();
     } catch (err: unknown) {
@@ -353,58 +340,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} style={{ overflowY: 'auto', padding: 'var(--space-5)' }}>
-          {/* Quick Presets */}
-          <div
-            style={{
-              marginBottom: 'var(--space-4)',
-              padding: 'var(--space-3) var(--space-4)',
-              backgroundColor: 'var(--color-surface-secondary)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px dashed var(--color-border)',
-            }}
-          >
-            <div
-              className="flex-row items-center gap-1"
-              style={{
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-                color: 'var(--color-text-secondary)',
-                marginBottom: 'var(--space-2)',
-              }}
-            >
-              <Sparkles size={14} style={{ color: 'var(--color-accent)' }} />
-              <span>Gợi ý cấu hình nhanh (Demo Presets):</span>
-            </div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              {PRESETS.map((p, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleApplyPreset(p)}
-                  style={{
-                    fontSize: 'var(--text-xs)',
-                    padding: '4px 10px',
-                    borderRadius: 'var(--radius-pill)',
-                    border: '1px solid var(--color-border)',
-                    backgroundColor: 'var(--color-surface)',
-                    color: 'var(--color-text-primary)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--color-accent)';
-                    e.currentTarget.style.color = 'var(--color-accent)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--color-border)';
-                    e.currentTarget.style.color = 'var(--color-text-primary)';
-                  }}
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          </div>
+         
 
           {/* API Error Alert */}
           {apiError && (
@@ -489,9 +425,6 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
                   >
                     <RefreshCw size={14} />
                   </button>
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: 4 }}>
-                  Backend tạo <strong>ID UUID v4 chữ thường</strong>. Giao diện hiển thị mã <code>SHIP-001</code> để dễ đọc, nhưng hệ thống và ESP32 ký dùng UUID cho route, phân công và telemetry.
                 </div>
                 {errors.code && (
                   <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger)' }}>
@@ -898,73 +831,6 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
                 </strong>
               </span>
             </div>
-          </div>
-
-          {/* X-Admin-Key Authentication Section */}
-          <div
-            style={{
-              padding: 'var(--space-3) var(--space-4)',
-              backgroundColor: 'var(--color-surface-secondary)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--space-2)',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <label
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  color: 'var(--color-text-primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                <Lock size={12} style={{ color: 'var(--color-accent)' }} />
-                X-Admin-Key (Khóa quản trị Backend) *
-              </label>
-              <label
-                style={{
-                  fontSize: '11px',
-                  color: 'var(--color-text-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={saveAdminKey}
-                  onChange={(e) => setSaveAdminKey(e.target.checked)}
-                />
-                Lưu vào trình duyệt
-              </label>
-            </div>
-            <input
-              type="password"
-              value={adminKey}
-              onChange={(e) => setAdminKey(e.target.value)}
-              placeholder="Nhập ADMIN_API_KEY cấu hình ở Backend..."
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-border)',
-                fontSize: 'var(--text-sm)',
-                backgroundColor: 'var(--color-surface)',
-                fontFamily: 'monospace',
-              }}
-            />
           </div>
 
           {/* Footer Actions */}

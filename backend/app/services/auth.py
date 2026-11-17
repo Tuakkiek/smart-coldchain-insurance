@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import ipaddress
+import base64
+import hashlib
 import logging
 import secrets
 import threading
@@ -12,8 +14,11 @@ from typing import Any
 
 from fastapi import Request
 import jwt
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from app.core.config import Settings
+from app.core.config import Settings, validate_admin_bootstrap
+from app.models import AdminAccount
 
 
 logger = logging.getLogger(__name__)
@@ -228,16 +233,65 @@ def decode_and_verify_token(
     return payload
 
 
-def authenticate_admin(username: str, password: str, settings: Settings) -> bool:
-    """Constant-time check of admin credentials against configured environment settings."""
+PASSWORD_ITERATIONS = 600_000
+
+
+def hash_password(password: str) -> str:
+    """PBKDF2-HMAC-SHA256 with a fresh 128-bit salt; never store plaintext."""
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS)
+    return "pbkdf2_sha256${}${}${}".format(
+        PASSWORD_ITERATIONS, base64.b64encode(salt).decode("ascii"), base64.b64encode(digest).decode("ascii"),
+    )
+
+
+def verify_password(password: str, encoded: str) -> bool:
+    try:
+        algorithm, rounds, salt, expected = encoded.split("$")
+        iterations = int(rounds)
+        if algorithm != "pbkdf2_sha256" or not PASSWORD_ITERATIONS <= iterations <= 2_000_000:
+            return False
+        salt_bytes = base64.b64decode(salt, validate=True)
+        digest_bytes = base64.b64decode(expected, validate=True)
+        if len(salt_bytes) != 16 or len(digest_bytes) != 32:
+            return False
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt_bytes, iterations)
+        return secrets.compare_digest(actual, digest_bytes)
+    except (ValueError, TypeError):
+        return False
+
+
+def initialize_admin(session: Session, settings: Settings) -> AdminAccount:
+    """Seed id=1 once, tolerate concurrent starts, never reset an existing account."""
+    account = session.get(AdminAccount, 1)
+    if account is not None:
+        return account
+    validate_admin_bootstrap(settings.admin_username, settings.admin_password)
+    account = AdminAccount(id=1, username=settings.admin_username.strip(), password_hash=hash_password(settings.admin_password))
+    session.add(account)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        account = session.get(AdminAccount, 1)
+        if account is None:
+            raise
+    return account
+
+
+def auth_account(session: Session, settings: Settings) -> AdminAccount:
+    try:
+        return initialize_admin(session, settings)
+    except ValueError:
+        raise AuthError(503, "ADMIN_NOT_INITIALIZED", "Chưa khởi tạo tài khoản Admin. Cấu hình thông tin khởi tạo ở Backend và chạy upgrade-db.") from None
+    except SQLAlchemyError:
+        # No environment-credential fallback when MySQL/schema is unavailable.
+        raise AuthError(503, "AUTH_STORAGE_UNAVAILABLE", "Không thể truy cập tài khoản Admin trong database. Kiểm tra kết nối MySQL và migration.") from None
+
+
+def authenticate_admin(username: str, password: str, account: AdminAccount) -> bool:
     if not isinstance(username, str) or not isinstance(password, str):
         return False
-    username_match = secrets.compare_digest(
-        username.encode("utf-8"),
-        settings.admin_username.encode("utf-8"),
-    )
-    password_match = secrets.compare_digest(
-        password.encode("utf-8"),
-        settings.admin_password.encode("utf-8"),
-    )
+    username_match = secrets.compare_digest(username.encode("utf-8"), account.username.encode("utf-8"))
+    password_match = verify_password(password, account.password_hash)
     return username_match and password_match

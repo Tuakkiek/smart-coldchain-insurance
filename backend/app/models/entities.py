@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import BigInteger, Computed, DateTime, Double, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, Computed, DateTime, Double, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,6 +17,16 @@ def utc_now() -> datetime:
 
 
 UTC_DATETIME = DateTime(timezone=True).with_variant(mysql.DATETIME(fsp=6), "mysql")
+
+
+class AdminAccount(Base):
+    __tablename__ = "admin_accounts"
+    __table_args__ = (CheckConstraint("id = 1", name="ck_admin_accounts_singleton"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False, default=1)
+    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)
 
 
 class Shipment(Base):

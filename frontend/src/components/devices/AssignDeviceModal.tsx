@@ -2,14 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { AdminDeviceViewOut, DeviceItemOut, ShipmentOut } from '../../types/api';
 import { assignDevice, getDevices } from '../../api/devices';
 import { getShipments } from '../../api/shipments';
-import { apiClient, ApiError } from '../../api/client';
+import { ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import {
   Link2,
   Unlink,
   X,
-  Lock,
   Cpu,
   Package,
   AlertCircle,
@@ -30,8 +29,6 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
   onSuccess,
   initialDeviceId,
 }) => {
-  const [adminKey, setAdminKey] = useState(apiClient.getAdminKey() || '');
-  const [saveAdminKey, setSaveAdminKey] = useState(true);
 
   const [devices, setDevices] = useState<DeviceItemOut[]>([]);
   const [shipments, setShipments] = useState<ShipmentOut[]>([]);
@@ -46,7 +43,6 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setAdminKey(apiClient.getAdminKey() || '');
       setError(null);
       setIsConflict409(false);
       setLoading(true);
@@ -81,10 +77,6 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
 
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminKey.trim()) {
-      setError('Vui lòng nhập X-Admin-Key (Khóa quản trị Backend)');
-      return;
-    }
     if (!selectedDeviceId) {
       setError('Vui lòng chọn thiết bị');
       return;
@@ -98,18 +90,13 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
     setError(null);
     setIsConflict409(false);
 
-    if (saveAdminKey) {
-      apiClient.setAdminKey(adminKey.trim());
-    }
-
     try {
       const result = await assignDevice(
         selectedDeviceId,
         {
           shipment_id: selectedShipmentId,
           active: true,
-        },
-        adminKey.trim()
+        }
       );
       const chosenShipment = shipments.find((s) => s.id === selectedShipmentId);
       const shipLabel = chosenShipment?.code || selectedShipmentId.slice(0, 8);
@@ -124,7 +111,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
               `Thiết bị '${selectedDeviceId}' đã có liên kết kích hoạt với chuyến hàng khác (${currentAssignedShipmentCode || currentAssignedShipmentId}). Mỗi thiết bị chỉ được có 1 liên kết active. Vui lòng bấm 'Bỏ liên kết cũ' trước khi gán mới!`
           );
         } else if (err.status === 401 || err.code === 'UNAUTHORIZED') {
-          setError('Xác thực thất bại: X-Admin-Key không chính xác.');
+          setError('Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.');
         } else {
           setError(err.message || 'Lỗi khi gán thiết bị vào chuyến hàng');
         }
@@ -148,8 +135,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
         {
           shipment_id: currentAssignedShipmentId,
           active: false,
-        },
-        adminKey.trim()
+        }
       );
 
       // Cập nhật local state
@@ -294,72 +280,6 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
             </div>
           )}
 
-          {/* Admin API Key Section */}
-          <div
-            style={{
-              marginBottom: 'var(--space-4)',
-              padding: 'var(--space-3) var(--space-4)',
-              backgroundColor: 'var(--color-surface-secondary)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 6,
-              }}
-            >
-              <label
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  color: 'var(--color-text-primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                <Lock size={12} style={{ color: 'var(--color-accent)' }} />
-                X-Admin-Key (Khóa quản trị Backend) *
-              </label>
-              <label
-                style={{
-                  fontSize: '11px',
-                  color: 'var(--color-text-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={saveAdminKey}
-                  onChange={(e) => setSaveAdminKey(e.target.checked)}
-                />
-                Lưu vào trình duyệt
-              </label>
-            </div>
-            <input
-              type="password"
-              value={adminKey}
-              onChange={(e) => setAdminKey(e.target.value)}
-              placeholder="Nhập ADMIN_API_KEY cấu hình ở Backend..."
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-border)',
-                fontSize: 'var(--text-sm)',
-                backgroundColor: 'var(--color-surface)',
-                fontFamily: 'monospace',
-              }}
-            />
-          </div>
-
           {/* Device Selection Dropdown */}
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <label
@@ -444,7 +364,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
                   disabled={submitting}
                   icon={<Unlink size={13} />}
                 >
-                  Bỏ liên kết cũ (active=false)
+                  Bỏ liên kết chuyến hàng
                 </Button>
               )}
             </div>

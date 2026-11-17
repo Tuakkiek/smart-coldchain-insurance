@@ -35,7 +35,7 @@ cp .env.example .env
 ```
 
 Các biến môi trường:
-- `VITE_API_BASE_URL`: Địa chỉ REST API Backend (mặc định: `https://smart-coldchain-insurance.onrender.com` hoặc `http://localhost:8000` khi chạy local).
+- `VITE_API_BASE_URL`: Địa chỉ REST API Backend (mặc định development: `http://127.0.0.1:8000`; production dùng URL Render đã cấu hình).
 - `VITE_USE_MOCK`: Bật dữ liệu Mock độc lập (`true` hoặc `false`). Hữu ích khi Backend chưa chạy hoặc muốn demo nhanh 3 kịch bản chuẩn.
 - `VITE_ENABLE_DEMO`: Cho phép hiển thị tab Demo kịch bản (`true` hoặc `false`).
 
@@ -52,6 +52,29 @@ Truy cập trên trình duyệt tại: `http://localhost:5173` (hoặc cổng hi
 ```bash
 npm run build
 ```
+
+---
+
+### 2.5. Đăng nhập Admin / JWT
+
+- Mở `/login`, nhập username/password của **Admin duy nhất đã cấu hình ở Backend**. Frontend gọi JSON `POST /api/v1/auth/login`; không cấu hình username/password/JWT secret trong `VITE_*`.
+- Access Token được giữ trong bộ nhớ và `sessionStorage` của tab. API client tự gửi `Authorization: Bearer <access_token>` cho các API quản trị/giám sát; không còn ô nhập API key trong các modal. Credential cũ trong localStorage được xóa khi app khởi động.
+- Reload tab giữ phiên còn hạn. Hết hạn hoặc Backend trả `401` sẽ xóa phiên, unmount nội dung quản trị, dừng polling và hủy request đang chạy, rồi về Login. Response cũ không được đưa vào phiên mới. Lỗi `403` hiển thị lỗi thao tác, không tự đăng xuất.
+- Nút **Đăng xuất** xóa token và state của Dashboard. Đây là logout tại trình duyệt; JWT đã cấp vẫn có hiệu lực ở Backend tới `exp`. Không refresh token, Register, Forgot Password hoặc quản lý tài khoản.
+- Sai thông tin đăng nhập trả `401`; `429` hiển thị thời gian chờ từ `Retry-After` và khóa nút tới lúc thử lại. Không tự retry POST login. Mật khẩu giữ nguyên khoảng trắng khi gửi, không lưu/log sau khi submit.
+- Backend cho phép CORS đúng frontend origin với `Authorization`/`Content-Type` và expose `Retry-After`. Production dùng HTTPS và static host phải rewrite đường dẫn SPA (như `/login`, `/devices`) về `index.html`.
+- Login luôn dùng **Backend thật**, kể cả khi bật mock cho dữ liệu giám sát. Mock không tạo credential hay bỏ qua đăng nhập. ESP32/telemetry giữ cơ chế xác thực P-256 riêng, không dùng JWT Admin.
+
+Chạy kiểm thử auth và production build từ `frontend/`:
+
+```bash
+npm test
+npm run build
+```
+
+Tests dùng fetch fixtures, không truy cập deployment thật hoặc giao dịch Blockchain. Bao gồm route guard/deep link, login/logout, expiry, 401/403/429, token phiên, Bearer cho các thao tác cũ và response trả về muộn sau logout.
+
+Vitest 5 yêu cầu Node.js `^22.12.0 || ^24.0.0 || >=26.0.0`; môi trường kiểm chứng hiện tại dùng Node.js 22.18.0.
 
 ---
 
@@ -111,3 +134,5 @@ frontend/
 - Trạng thái bảo hiểm và Blockchain do Backend quản lý và trả về qua REST API; Frontend không tự kết luận đã chi trả khi chưa có xác nhận từ Backend.
 - Không lưu private key hoặc seed phrase trong Frontend.
 
+
+Local Vite mặc định gọi `http://127.0.0.1:8000` khi không đặt `VITE_API_BASE_URL`; production vẫn dùng Backend được cấu hình, không tự fallback. Admin đăng nhập bằng tài khoản đã seed trong MySQL/Aiven; `.env` Backend chỉ cung cấp credential khởi tạo lần đầu.

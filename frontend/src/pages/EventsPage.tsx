@@ -85,7 +85,6 @@ export const EventsPage: React.FC = () => {
     <div>
       <PageHeader
         title="Dòng Sự kiện & Vi phạm"
-        description="Ghi nhận tập trung các cảnh báo ngưỡng nhiệt độ và quyết định kích hoạt hợp đồng thông minh."
         action={
           <Button variant="secondary" size="sm" onClick={fetchEvents}>
             Làm mới

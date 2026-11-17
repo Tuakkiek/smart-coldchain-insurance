@@ -54,6 +54,7 @@ def test_runtime_settings_use_mysql_and_keep_special_password(monkeypatch):
 
 
 def test_database_url_takes_precedence_and_uses_pymysql(monkeypatch):
+    monkeypatch.delenv("MYSQL_SSL_CA", raising=False)
     monkeypatch.setenv(
         "DATABASE_URL",
         "mysql://provider:p%40ss%2Fword@mysql.example.com:25060/coldchain?ssl-mode=REQUIRED",

@@ -51,6 +51,10 @@ def assign(client, device_id, shipment_id, active=True):
                        json={"shipment_id": shipment_id, "active": active})
 
 
+def delete_device(client, device_id):
+    return client.delete(f"/api/v1/devices/{device_id}", headers=ADMIN)
+
+
 def provision(client, device_id="ESP32-001"):
     key = ec.generate_private_key(ec.SECP256R1())
     pem = key.public_key().public_bytes(
@@ -109,6 +113,7 @@ def test_registration_validates_identity_and_name(registry_api, body):
     ("POST", "/api/v1/devices", {"device_id": "A", "device_name": "Sensor"}),
     ("GET", "/api/v1/devices", None),
     ("GET", "/api/v1/devices/A", None),
+    ("DELETE", "/api/v1/devices/A", None),
     ("POST", "/api/v1/shipments", SHIPMENT),
     ("POST", "/api/v1/devices/A/keys", {"key_id": "v1", "public_key_pem": "invalid"}),
     ("POST", "/api/v1/devices/A/assignments", {"shipment_id": str(uuid4()), "active": True}),
@@ -186,6 +191,54 @@ def test_assignment_idempotency_multiple_devices_and_transfer_preserve_history(r
         session.rollback()
 
 
+def test_delete_device_requires_unassignment_and_removes_setup_records(registry_api):
+    client, app = registry_api
+    register(client)
+    provision(client)
+    shipment_id = shipment(client)
+    assert assign(client, "ESP32-001", shipment_id).status_code == 200
+
+    blocked = delete_device(client, "ESP32-001")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "DEVICE_ASSIGNED"
+
+    # active=false is the existing unlink operation. After unlinking, an unused
+    # registered device and its setup-only records can be deleted.
+    assert assign(client, "ESP32-001", shipment_id, False).status_code == 200
+    deleted = delete_device(client, "ESP32-001")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"device_id": "ESP32-001", "deleted": True}
+    assert client.get("/api/v1/devices/ESP32-001", headers=ADMIN).status_code == 404
+    assert client.get("/api/v1/devices", headers=ADMIN).json() == {"items": [], "total": 0}
+
+    with app.state.session_factory() as session:
+        assert session.get(Device, "ESP32-001") is None
+        assert session.scalar(select(func.count(DeviceKey.device_id))) == 0
+        assert session.scalar(select(func.count(DeviceAssignment.device_id))) == 0
+
+
+def test_delete_device_preserves_existing_telemetry_evidence(registry_api):
+    client, app = registry_api
+    register(client)
+    shipment_id = shipment(client)
+    key = provision(client)
+    assert assign(client, "ESP32-001", shipment_id).status_code == 200
+    response = client.post(
+        f"/api/v1/shipments/{shipment_id}/telemetry",
+        json=signed(key, shipment_id, 1),
+    )
+    assert response.status_code == 201
+    assert assign(client, "ESP32-001", shipment_id, False).status_code == 200
+
+    blocked = delete_device(client, "ESP32-001")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "DEVICE_HAS_DATA"
+    with app.state.session_factory() as session:
+        assert session.get(Device, "ESP32-001") is not None
+        assert session.scalar(select(func.count(SignedTelemetryReceipt.telemetry_id))) == 1
+        assert session.scalar(select(func.count(IntegrityBatch.id))) == 1
+
+
 def test_key_endpoint_rejects_private_wrong_curve_and_duplicate_keys(registry_api):
     client, app = registry_api
     register(client)
@@ -245,12 +298,18 @@ def test_openapi_and_browser_admin_header_match_the_new_contract(registry_api):
     assert preflight.headers["access-control-allow-origin"] == "http://localhost:5173"
     listing = client.get("/api/v1/devices", headers=ADMIN | {"Origin": "http://localhost:5173"})
     assert "x-request-id" in listing.headers["access-control-expose-headers"].lower()
+    delete_preflight = client.options("/api/v1/devices/ESP32-001", headers={
+        "Origin": "http://localhost:5173", "Access-Control-Request-Method": "DELETE",
+        "Access-Control-Request-Headers": "authorization",
+    })
+    assert delete_preflight.status_code == 200
+    assert "DELETE" in delete_preflight.headers["access-control-allow-methods"]
 
 
 def test_unconfigured_admin_api_fails_closed():
     with pytest.raises(ValueError, match="JWT_SECRET_KEY"):
         Settings(database_url="sqlite://", admin_username="admin", admin_password="valid-test-password-12345", jwt_secret_key="")
-    with pytest.raises(ValueError, match="ADMIN_USERNAME"):
-        Settings(database_url="sqlite://", admin_username="", admin_password="valid-test-password-12345", jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!")
-    with pytest.raises(ValueError, match="ADMIN_PASSWORD"):
-        Settings(database_url="sqlite://", admin_username="admin", admin_password="", jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!")
+    # Bootstrap credentials may be removed once the single Admin is in MySQL.
+    # Empty-database login still fails closed (test_admin_accounts.py).
+    settings = Settings(database_url="sqlite://", admin_username="", admin_password="", jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!")
+    assert settings.admin_username == settings.admin_password == ""

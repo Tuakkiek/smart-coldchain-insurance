@@ -17,7 +17,7 @@ import {
 import { LoadingState } from '../components/feedback/LoadingState';
 import { EmptyState } from '../components/feedback/EmptyState';
 import { useBackendConnectionState } from '../components/feedback/ConnectionStatus';
-import { getDevices } from '../api/devices';
+import { deleteDevice, getDevices } from '../api/devices';
 import {
   DeviceItemOut,
 } from '../types/api';
@@ -45,7 +45,7 @@ import {
   Plus,
   CheckCircle2,
   Link2,
-  Unlink,
+  Trash2,
 } from 'lucide-react';
 
 export const DevicesPage: React.FC = () => {
@@ -70,6 +70,8 @@ export const DevicesPage: React.FC = () => {
   const [isAdminDetailModalOpen, setIsAdminDetailModalOpen] = useState(false);
   const [adminModalDeviceId, setAdminModalDeviceId] = useState<string | null>(null);
   const [adminSuccessMsg, setAdminSuccessMsg] = useState<string | null>(null);
+  const [adminErrorMsg, setAdminErrorMsg] = useState<string | null>(null);
+  const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -161,6 +163,43 @@ export const DevicesPage: React.FC = () => {
     setTimeout(() => setCopiedKeyId(null), 2000);
   };
 
+  const handleDeleteDevice = async (device: DeviceItemOut) => {
+    setAdminSuccessMsg(null);
+    setAdminErrorMsg(null);
+
+    if (device.assigned_shipment_id) {
+      setAdminErrorMsg(
+        `Thiết bị ${device.device_id} đang liên kết với chuyến hàng ${device.assigned_shipment_code || device.assigned_shipment_id}. Hãy bỏ liên kết trước khi xóa.`
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Xóa thiết bị ${device.device_id}? Public key và các liên kết cũ chưa kích hoạt của thiết bị cũng sẽ bị xóa.`
+    );
+    if (!confirmed) return;
+
+    setDeletingDeviceId(device.device_id);
+    try {
+      await deleteDevice(device.device_id);
+      setDevices((current) => current.filter((item) => item.device_id !== device.device_id));
+      if (selectedDeviceId === device.device_id) setSelectedDeviceId(null);
+      setAdminSuccessMsg(`Đã xóa thiết bị ${device.device_id} thành công.`);
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.code === 'DEVICE_ASSIGNED') {
+        setAdminErrorMsg('Không thể xóa: thiết bị vẫn đang liên kết với một chuyến hàng.');
+      } else if (err instanceof ApiError && err.code === 'DEVICE_HAS_DATA') {
+        setAdminErrorMsg(
+          'Không thể xóa thiết bị đã có dữ liệu telemetry vì cần giữ lịch sử đối soát. Hãy thu hồi thiết bị thay thế.'
+        );
+      } else {
+        setAdminErrorMsg(err instanceof Error ? err.message : 'Không thể xóa thiết bị.');
+      }
+    } finally {
+      setDeletingDeviceId(null);
+    }
+  };
+
   const selectedDevice = devices.find((d) => d.device_id === selectedDeviceId);
 
   // Format timestamp helper
@@ -214,7 +253,6 @@ export const DevicesPage: React.FC = () => {
     <div>
       <PageHeader
         title="Quản lý Thiết bị ESP32 & Toàn vẹn Phần cứng"
-        description="Kiểm soát danh tính phần cứng, chữ ký số ECDSA P-256, sequence number, heartbeat và dải mất gói tin (gap ranges)."
         action={
           <div className="flex-row items-center gap-3">
             <label
@@ -308,6 +346,41 @@ export const DevicesPage: React.FC = () => {
         </div>
       )}
 
+      {adminErrorMsg && (
+        <div
+          style={{
+            marginBottom: 'var(--space-4)',
+            padding: 'var(--space-3) var(--space-4)',
+            backgroundColor: 'var(--color-danger-soft)',
+            border: '1px solid var(--color-danger)',
+            borderRadius: 'var(--radius-md)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
+          }}
+        >
+          <div className="flex-row items-center gap-2">
+            <AlertTriangle size={16} style={{ color: 'var(--color-danger)' }} />
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-danger)', fontWeight: 600 }}>
+              {adminErrorMsg}
+            </span>
+          </div>
+          <button
+            onClick={() => setAdminErrorMsg(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--color-text-tertiary)',
+              fontSize: 'var(--text-sm)',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Backend Cold Start vs Device Offline Alert */}
       <BackendStatusAlert
         isColdStart={isEffectiveColdStart}
@@ -341,51 +414,7 @@ export const DevicesPage: React.FC = () => {
         </div>
       )}
 
-      {/* Mandatory principle notice from Roadmap §3.3 */}
-      <IntegrityPrincipleNotice />
 
-      {/* Banner Quy trình Admin tối giản dùng chung */}
-      <div
-        style={{
-          marginBottom: 'var(--space-5)',
-          padding: 'var(--space-4) var(--space-5)',
-          backgroundColor: 'var(--color-surface)',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--color-border)',
-          boxShadow: 'var(--shadow-sm)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            marginBottom: 'var(--space-2)',
-          }}
-        >
-          <ShieldCheck size={18} style={{ color: 'var(--color-accent)' }} />
-          <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
-            Quy trình Admin tối giản dùng chung:
-          </span>
-        </div>
-        <div
-          style={{
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-secondary)',
-            lineHeight: 1.7,
-          }}
-        >
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>1. Admin đăng ký thiết bị</span> (chỉ cần device_id & device_name) →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>2. Admin đăng ký chuyến hàng</span> (nhập mã SHIP-001 vào code, Backend sinh ID UUID v4) →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>3. Liên kết thiết bị với chuyến hàng</span> (1 assignment active/device, đổi chuyến bằng bỏ gán cũ rồi gán mới) →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>4. Cấp khóa cho ESP32 ngoài browser</span> (Script Python NTK tạo cặp P-256 trên máy tin cậy → nạp USB → nạp SPKI public key qua API Admin) →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>5. ESP32 ký ECDSA P-256 & gửi telemetry</span> →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>6. Backend xác minh Public Key & sequence</span> →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>7. Lưu MySQL</span> →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>8. Bằng chứng Merkle & Neo Blockchain</span> →{' '}
-          <span style={{ fontWeight: 600, color: 'var(--color-accent)' }}>9. Oracle xử lý bảo hiểm tự động</span>
-        </div>
-      </div>
 
       {/* KPI Cards Grid */}
       <div
@@ -410,14 +439,14 @@ export const DevicesPage: React.FC = () => {
           accentColor={isEffectiveColdStart ? 'var(--color-warning)' : 'var(--color-success)'}
         />
         <MetricCard
-          title="Chữ ký Hợp lệ (VALID)"
+          title="Chữ ký Hợp lệ"
           value={validSigCount}
           icon={<ShieldCheck size={20} />}
           subtitle={`${invalidSigCount} lỗi / ${unknownKeyCount} khóa lạ`}
           accentColor="var(--color-success)"
         />
         <MetricCard
-          title="Thiết bị mất gói (Gap)"
+          title="Thiết bị mất gói"
           value={gapCount}
           icon={<AlertTriangle size={20} />}
           subtitle={`Tổng ${totalMissingPackets} sequence bị mất`}
@@ -435,7 +464,6 @@ export const DevicesPage: React.FC = () => {
               : 'Offline'
           }
           icon={<Server size={20} />}
-          subtitle="Độc lập với trạng thái ESP32"
           accentColor={
             backendConnectionState === 'ONLINE'
               ? 'var(--color-success)'
@@ -555,9 +583,6 @@ export const DevicesPage: React.FC = () => {
           >
             <div style={{ fontWeight: 600, fontSize: 'var(--text-md)' }}>
               Danh sách Thiết bị ESP32 ({filteredDevices.length})
-            </div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-              Chọn thiết bị để xem bảng theo dõi Sequence & Dải mất gói
             </div>
           </div>
 
@@ -770,6 +795,32 @@ export const DevicesPage: React.FC = () => {
                               <Link2 size={12} />
                               <span>{dev.assigned_shipment_id ? 'Đổi chuyến' : 'Gán chuyến'}</span>
                             </button>
+                            <button
+                              onClick={() => handleDeleteDevice(dev)}
+                              disabled={deletingDeviceId === dev.device_id}
+                              style={{
+                                background: 'var(--color-surface)',
+                                border: '1px solid var(--color-danger)',
+                                borderRadius: 'var(--radius-sm)',
+                                padding: '3px 8px',
+                                cursor: deletingDeviceId === dev.device_id ? 'wait' : 'pointer',
+                                fontSize: '11px',
+                                color: 'var(--color-danger)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                whiteSpace: 'nowrap',
+                                opacity: deletingDeviceId === dev.device_id ? 0.6 : 1,
+                              }}
+                              title={
+                                dev.assigned_shipment_id
+                                  ? 'Cần bỏ liên kết chuyến hàng trước khi xóa thiết bị'
+                                  : 'Xóa thiết bị đã đăng ký'
+                              }
+                            >
+                              <Trash2 size={12} />
+                              <span>{deletingDeviceId === dev.device_id ? 'Đang xóa...' : 'Xóa'}</span>
+                            </button>
                             <ChevronRight
                               size={16}
                               style={{
@@ -951,7 +1002,7 @@ export const DevicesPage: React.FC = () => {
                   icon={<ShieldCheck size={14} />}
                   style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-xs)' }}
                 >
-                  Xem chi tiết bảo mật (X-Admin-Key View) →
+                  Xem chi tiết quản trị thiết bị →
                 </Button>
               </div>
             </Card>

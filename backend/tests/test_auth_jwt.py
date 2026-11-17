@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import jwt
 import pytest
 
-from app.core.config import Settings, load_settings, validate_auth_config
+from app.core.config import Settings, load_settings, validate_auth_config, validate_admin_bootstrap
 from app.core.database import Base
 from app.main import create_app
 from app.services.auth import (
@@ -198,8 +198,13 @@ def test_startup_config_validation_fails_closed(monkeypatch, param, value, error
     monkeypatch.setenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 
     monkeypatch.setenv(param, value)
-    with pytest.raises(ValueError, match=error_match):
-        load_settings()
+    if param.startswith('ADMIN_'):
+        settings = load_settings()
+        with pytest.raises(ValueError, match=error_match):
+            validate_admin_bootstrap(settings.admin_username, settings.admin_password)
+    else:
+        with pytest.raises(ValueError, match=error_match):
+            load_settings()
 
 
 def test_startup_invalid_ttl_fails_closed(monkeypatch):
@@ -362,6 +367,7 @@ def test_protected_routes_matrix(auth_api):
         ("POST", "/api/v1/shipments", {"json": TEST_SHIPMENT}),
         ("GET", "/api/v1/shipments", {}),
         ("GET", f"/api/v1/shipments/{shipment_id}", {}),
+        ("DELETE", f"/api/v1/shipments/{shipment_id}", {}),
         ("POST", "/api/v1/devices", {"json": {"device_id": "DEV-AUTH-02", "device_name": "Sensor 2"}}),
         ("GET", "/api/v1/devices", {}),
         ("GET", "/api/v1/devices/DEV-AUTH-01", {}),
@@ -501,7 +507,7 @@ def test_cors_preflight_allows_authorization(auth_api):
 @pytest.mark.parametrize("app_env", ["development", "production"])
 def test_direct_settings_missing_all_auth_fails_closed(app_env):
     """Calling Settings without auth credentials fails closed regardless of APP_ENV."""
-    with pytest.raises(ValueError, match="ADMIN_USERNAME"):
+    with pytest.raises(ValueError, match="JWT_SECRET_KEY"):
         Settings(
             database_url="sqlite://",
             app_env=app_env,
@@ -537,8 +543,13 @@ def test_direct_settings_missing_or_invalid_field_fails_closed(kwargs, error_mat
         "jwt_access_token_expire_minutes": 30,
     }
     valid_base.update(kwargs)
-    with pytest.raises(ValueError, match=error_match):
-        Settings(**valid_base)
+    if any(key.startswith('admin_') for key in kwargs):
+        settings = Settings(**valid_base)
+        with pytest.raises(ValueError, match=error_match):
+            validate_admin_bootstrap(settings.admin_username, settings.admin_password)
+    else:
+        with pytest.raises(ValueError, match=error_match):
+            Settings(**valid_base)
 
 
 def test_create_app_fails_closed_if_unconfigured_via_env(monkeypatch):
@@ -546,7 +557,7 @@ def test_create_app_fails_closed_if_unconfigured_via_env(monkeypatch):
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
     monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
-    with pytest.raises(ValueError, match="ADMIN_USERNAME"):
+    with pytest.raises(ValueError, match="JWT_SECRET_KEY"):
         create_app()
 
 

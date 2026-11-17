@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AdminDeviceViewOut } from '../../types/api';
 import { getAdminDeviceDetails } from '../../api/devices';
-import { apiClient, ApiError } from '../../api/client';
+import { ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import {
   ShieldCheck,
   X,
-  Lock,
   RefreshCw,
   Cpu,
   KeyRound,
@@ -29,31 +28,25 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const [adminKey, setAdminKey] = useState(apiClient.getAdminKey() || '');
+  const requestId = useRef(0);
   const [deviceDetail, setDeviceDetail] = useState<AdminDeviceViewOut | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchDetails = async (keyToUse?: string) => {
+  const fetchDetails = useCallback(async () => {
     if (!deviceId) return;
-    const key = keyToUse || adminKey || apiClient.getAdminKey();
-    if (!key) {
-      setError('Cần cung cấp X-Admin-Key để truy cập dữ liệu bảo mật thiết bị.');
-      return;
-    }
+    const id = ++requestId.current;
 
     setLoading(true);
     setError(null);
     try {
-      const data = await getAdminDeviceDetails(deviceId, key);
-      setDeviceDetail(data);
-      apiClient.setAdminKey(key);
+      const data = await getAdminDeviceDetails(deviceId);
+      if (id === requestId.current) setDeviceDetail(data);
     } catch (err: unknown) {
+      if (id !== requestId.current) return;
       if (err instanceof ApiError) {
         if (err.status === 401 || err.code === 'UNAUTHORIZED') {
-          setError('Xác thực thất bại: X-Admin-Key không hợp lệ hoặc đã bị thay đổi.');
-        } else if (err.status === 503 || err.code === 'ADMIN_UNAVAILABLE') {
-          setError('Backend chưa bật cấu hình ADMIN_API_KEY.');
+          setError('Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.');
         } else {
           setError(err.message || 'Lỗi khi tải chi tiết quản trị thiết bị.');
         }
@@ -61,21 +54,18 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
         setError(err instanceof Error ? err.message : 'Lỗi không xác định.');
       }
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
-  };
+  }, [deviceId]);
 
   useEffect(() => {
     if (isOpen && deviceId) {
-      const savedKey = apiClient.getAdminKey() || '';
-      setAdminKey(savedKey);
       setDeviceDetail(null);
       setError(null);
-      if (savedKey) {
-        fetchDetails(savedKey);
-      }
+      fetchDetails();
     }
-  }, [isOpen, deviceId]);
+    return () => { requestId.current += 1; };
+  }, [isOpen, deviceId, fetchDetails]);
 
   if (!isOpen || !deviceId) return null;
 
@@ -175,43 +165,10 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
 
         {/* Modal Body */}
         <div style={{ overflowY: 'auto', padding: 'var(--space-5)' }}>
-          {/* Admin Key Input Bar */}
-          <div
-            style={{
-              marginBottom: 'var(--space-4)',
-              padding: 'var(--space-3) var(--space-4)',
-              backgroundColor: 'var(--color-surface-secondary)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-3)',
-            }}
-          >
-            <Lock size={16} style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }} />
-            <input
-              type="password"
-              placeholder="Nhập X-Admin-Key để truy cập..."
-              value={adminKey}
-              onChange={(e) => setAdminKey(e.target.value)}
-              style={{
-                flex: 1,
-                padding: '6px 10px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-border)',
-                fontSize: 'var(--text-xs)',
-                fontFamily: 'monospace',
-              }}
-            />
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => fetchDetails()}
-              disabled={loading || !adminKey.trim()}
-              style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-            >
-              <RefreshCw size={12} className={loading ? 'animate-spin' : undefined} />
-              {loading ? 'Đang xác thực...' : 'Tải dữ liệu'}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
+            <Button size="sm" variant="secondary" onClick={() => fetchDetails()} disabled={loading}
+              icon={<RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />}>
+              {loading ? 'Đang tải...' : 'Làm mới dữ liệu'}
             </Button>
           </div>
 

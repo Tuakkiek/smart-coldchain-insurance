@@ -20,7 +20,6 @@ import { getShipmentById, getShipmentTelemetry } from '../api/shipments';
 import { getShipmentDevices } from '../api/devices';
 import { getShipmentEvents } from '../api/events';
 import { getIntegrityBatches, verifyBatch } from '../api/integrity';
-import { apiClient } from '../api/client';
 import {
   ShipmentOut,
   TelemetryOut,
@@ -166,10 +165,9 @@ export const ShipmentDetailPage: React.FC = () => {
     setVerificationResult(null);
     setVerifyError(null);
 
-    const adminKey = apiClient.getAdminKey() || undefined;
 
     try {
-      const result = await verifyBatch(batchId, adminKey);
+      const result = await verifyBatch(batchId);
       if (isMountedRef.current) {
         setVerificationResult(result);
         const isTampered = result.verification_status === 'DATA_INTEGRITY_FAILED';

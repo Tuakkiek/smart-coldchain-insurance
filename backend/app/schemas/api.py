@@ -201,6 +201,11 @@ class DevicesOut(BaseModel):
     total: int
 
 
+class DeviceDeleteOut(BaseModel):
+    device_id: str
+    deleted: Literal[True]
+
+
 class LocationOut(BaseModel):
     latitude: float
     longitude: float
@@ -248,6 +253,11 @@ class ShipmentOut(BaseModel):
     insurance: InsuranceOut
     blockchain: BlockchainOut | None
     created_at: datetime
+
+
+class ShipmentDeleteOut(BaseModel):
+    shipment_id: str
+    deleted: Literal[True]
 
 
 class ShipmentsOut(BaseModel):

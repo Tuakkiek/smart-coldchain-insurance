@@ -1,19 +1,26 @@
 import { ApiErrorResponse } from '../types/api';
+import { endSession, getActiveSession, getAuthSnapshot, subscribeAuth } from '../auth/session';
 
-const DEFAULT_API_BASE = 'https://smart-coldchain-insurance.onrender.com';
+// Local development uses the Backend that is running alongside Vite. Production
+// uses its configured Render origin; never silently switch servers after login fails.
+const DEFAULT_API_BASE = import.meta.env.DEV
+  ? 'http://127.0.0.1:8000'
+  : 'https://smart-coldchain-insurance.onrender.com';
 
 export class ApiError extends Error {
   code: string;
   details?: Array<{ field?: string; message: string }>;
   status: number;
   isBackendColdStart?: boolean;
+  retryAfterSeconds?: number;
 
   constructor(
     message: string,
     status: number,
     code: string = 'API_ERROR',
     details?: Array<{ field?: string; message: string }>,
-    isBackendColdStart = false
+    isBackendColdStart = false,
+    retryAfterSeconds?: number
   ) {
     super(message);
     this.name = 'ApiError';
@@ -21,12 +28,14 @@ export class ApiError extends Error {
     this.code = code;
     this.details = details;
     this.isBackendColdStart = isBackendColdStart;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
 class ApiClient {
   private baseUrl: string;
   private useMock: boolean;
+  private protectedRequests = new Set<AbortController>();
 
   constructor() {
     this.baseUrl = (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE).replace(/\/$/, '');
@@ -35,6 +44,10 @@ class ApiClient {
       import.meta.env.VITE_USE_MOCK === 'true' ||
       import.meta.env.VITE_USE_MOCKS === true ||
       import.meta.env.VITE_USE_MOCK === true;
+    subscribeAuth(() => {
+      this.protectedRequests.forEach((controller) => controller.abort());
+      this.protectedRequests.clear();
+    });
   }
 
   isMockEnabled(): boolean {
@@ -58,25 +71,48 @@ class ApiClient {
     return `${this.baseUrl}${cleanPath}`;
   }
 
-  async request<T>(path: string, options: RequestInit = {}, timeoutMs = 15000): Promise<T> {
+  async request<T>(path: string, options: RequestInit = {}, timeoutMs = 15000,
+    authenticated = true): Promise<T> {
+    const session = authenticated ? getActiveSession() : null;
+    if (authenticated && !session) {
+      throw new ApiError('Vui lòng đăng nhập lại để tiếp tục.', 401, 'UNAUTHORIZED');
+    }
+    const revision = getAuthSnapshot().revision;
     const url = this.buildUrl(path);
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      ...((options.headers as Record<string, string>) || {}),
-    };
+    const headers = new Headers(options.headers);
+    headers.set('Content-Type', 'application/json');
+    headers.set('Accept', 'application/json');
+    // Callers cannot override the current token or attach one to public login.
+    headers.delete('Authorization');
+    if (session) headers.set('Authorization', `Bearer ${session.accessToken}`);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    if (authenticated) this.protectedRequests.add(controller);
+    const abort = () => controller.abort();
+    options.signal?.addEventListener('abort', abort, { once: true });
+    if (options.signal?.aborted) controller.abort();
+    let timedOut = false;
+    const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+
+    const checkCurrentSession = () => {
+      if (controller.signal.aborted || (authenticated && getAuthSnapshot().revision !== revision)) {
+        throw new DOMException('Request cancelled', 'AbortError');
+      }
+      if (authenticated) {
+        getActiveSession();
+        if (getAuthSnapshot().revision !== revision) throw new DOMException('Session expired', 'AbortError');
+      }
+    };
 
     try {
+      checkCurrentSession();
       const response = await fetch(url, {
         ...options,
         headers,
         signal: controller.signal,
+        cache: 'no-store',
       });
-      clearTimeout(timeoutId);
+      checkCurrentSession();
 
       if (!response.ok) {
         let errBody: ApiErrorResponse | null = null;
@@ -85,22 +121,33 @@ class ApiClient {
         } catch {
           // If response is not JSON
         }
+        checkCurrentSession();
+        if (authenticated && response.status === 401) endSession('unauthorized');
 
         const message = errBody?.error?.message || `Lỗi yêu cầu HTTP ${response.status}: ${response.statusText}`;
         const code = errBody?.error?.code || `HTTP_${response.status}`;
         const details = errBody?.error?.details;
 
-        throw new ApiError(message, response.status, code, details);
+        const retryHeader = response.headers.get('Retry-After');
+        let retryAfterSeconds: number | undefined;
+        if (retryHeader) {
+          const seconds = Number(retryHeader);
+          const value = Number.isFinite(seconds) ? seconds : (Date.parse(retryHeader) - Date.now()) / 1000;
+          if (Number.isFinite(value)) retryAfterSeconds = Math.max(0, Math.ceil(value));
+        }
+        throw new ApiError(message, response.status, code, details, false, retryAfterSeconds);
       }
 
-      return (await response.json()) as T;
+      const result = await response.json() as T;
+      checkCurrentSession();
+      return result;
     } catch (err: unknown) {
-      clearTimeout(timeoutId);
       if (err instanceof ApiError) {
         throw err;
       }
 
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
+        if (!timedOut) throw new ApiError('Yêu cầu đã được hủy.', 0, 'REQUEST_CANCELLED');
         throw new ApiError(
           `Yêu cầu tới Backend (${this.baseUrl}) đã quá thời gian (${timeoutMs / 1000}s). Có thể dịch vụ Render đang khởi động (Cold Start).`,
           504,
@@ -110,39 +157,26 @@ class ApiClient {
         );
       }
 
-      const networkMessage = err instanceof Error ? err.message : 'Không thể kết nối đến máy chủ Backend';
       throw new ApiError(
-        `Không thể kết nối Backend (${this.baseUrl}): ${networkMessage}. Lưu ý: Lỗi máy chủ không phản ánh trạng thái thiết bị ngoại vi.`,
+        'Không thể kết nối Backend. Vui lòng kiểm tra kết nối và thử lại.',
         0,
         'NETWORK_ERROR'
       );
+    } finally {
+      clearTimeout(timeoutId);
+      options.signal?.removeEventListener('abort', abort);
+      this.protectedRequests.delete(controller);
     }
   }
 
-  getAdminKey(): string | null {
-    return (
-      localStorage.getItem('coldchain_admin_api_key') ||
-      import.meta.env.VITE_ADMIN_API_KEY ||
-      null
-    );
-  }
-
-  setAdminKey(key: string): void {
-    if (key && key.trim()) {
-      localStorage.setItem('coldchain_admin_api_key', key.trim());
-    } else {
-      localStorage.removeItem('coldchain_admin_api_key');
-    }
-  }
-
-  get<T>(path: string, timeoutMs?: number, customHeaders?: Record<string, string>): Promise<T> {
+  get<T>(path: string, timeoutMs?: number, authenticated = true): Promise<T> {
     return this.request<T>(
       path,
       {
         method: 'GET',
-        headers: customHeaders,
       },
-      timeoutMs
+      timeoutMs,
+      authenticated
     );
   }
 
@@ -150,16 +184,27 @@ class ApiClient {
     path: string,
     body?: unknown,
     timeoutMs?: number,
-    customHeaders?: Record<string, string>
+    authenticated = true
   ): Promise<T> {
     return this.request<T>(
       path,
       {
         method: 'POST',
-        headers: customHeaders,
-        body: body ? JSON.stringify(body) : undefined,
+        body: body === undefined ? undefined : JSON.stringify(body),
       },
-      timeoutMs
+      timeoutMs,
+      authenticated
+    );
+  }
+
+  delete<T>(path: string, timeoutMs?: number, authenticated = true): Promise<T> {
+    return this.request<T>(
+      path,
+      {
+        method: 'DELETE',
+      },
+      timeoutMs,
+      authenticated
     );
   }
 }

@@ -9,15 +9,22 @@ import {
   Layers,
   Cpu,
   Database,
+  LogOut,
 } from 'lucide-react';
+import { ConnectionStatus } from '../feedback/ConnectionStatus';
+import { Button } from '../ui/Button';
+import { useAuth } from '../../auth/AuthProvider';
+import { endSession } from '../../auth/session';
 
 interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
+  onRefresh?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh }) => {
   const enableDemo = import.meta.env.VITE_ENABLE_DEMO !== 'false';
+  const { session } = useAuth();
 
   const navItems = [
     { label: 'Tổng quan', path: '/', icon: <LayoutDashboard size={18} /> },
@@ -100,15 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 letterSpacing: '-0.01em',
               }}
             >
-              ColdChain Guard
-            </div>
-            <div
-              style={{
-                fontSize: '11px',
-                color: 'var(--color-text-tertiary)',
-              }}
-            >
-              Smart Insurance MVP
+              Smart Cold Chain Insurance
             </div>
           </div>
         </div>
@@ -124,18 +123,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             overflowY: 'auto',
           }}
         >
-          <div
-            style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              color: 'var(--color-text-tertiary)',
-              padding: 'var(--space-2) var(--space-3)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            Điều khiển
-          </div>
 
           {navItems.map((item) => (
             <NavLink
@@ -162,23 +149,50 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           ))}
         </nav>
 
-        {/* System architecture note */}
+        {/* Backend status and admin session */}
         <div
           style={{
             padding: 'var(--space-4) var(--space-5)',
             borderTop: '1px solid var(--color-border-subtle)',
             backgroundColor: 'var(--color-surface-secondary)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: 'var(--space-3)',
           }}
         >
-          <div className="flex-row items-center gap-2" style={{ marginBottom: '4px' }}>
-            <Layers size={13} style={{ color: 'var(--color-text-tertiary)' }} />
-            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
-              Kiến trúc 3 lớp
+          <ConnectionStatus onModeChange={onRefresh} />
+          <div
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 'var(--space-2)',
+            }}
+          >
+            <span
+              title={session?.username}
+              style={{
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                fontSize: 'var(--text-sm)',
+                color: 'var(--color-text-secondary)',
+              }}
+            >
+              {session?.username}
             </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<LogOut size={15} aria-hidden="true" />}
+              onClick={() => endSession()}
+            >
+              Đăng xuất
+            </Button>
           </div>
-          <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', lineHeight: '15px' }}>
-            ESP32 → Backend REST → Smart Contract
-          </p>
         </div>
       </aside>
     </>

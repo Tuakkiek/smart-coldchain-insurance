@@ -11,11 +11,11 @@ Tài liệu này mô tả API đã triển khai trong Backend, gồm Signed Tele
 - Tọa độ trong response là **mô phỏng ở Backend**, nội suy đường thẳng từ `origin` đến `destination` theo số mẫu telemetry đã nhận: mẫu đầu tiên ở 5%, mẫu thứ 20 ở 100%, các mẫu sau giữ vị trí đích. Đây không phải GPS hoặc đường giao thông thực. Mọi vị trí telemetry có `location_source: "backend_simulated"`. Khi chưa có telemetry, `status` là `created`, `latest_telemetry` và `location` là `null`.
 - `insured_amount_vnd` là số tiền mô tả chính sách demo bằng VND, **không phải** số token được chuyển trên chain. Việc cấu hình token demo do Member 2 thống nhất riêng.
 - POST telemetry hỗ trợ payload cũ chỉ trong `APP_ENV=development`; production bắt buộc signed v1. Mẫu cũ không được gọi là `DATA_VERIFIED` hoặc làm bằng chứng integrity. Các API integrity/anchoring ở cuối tài liệu đã có trong code.
-- Các thao tác admin dùng header `X-Admin-Key` khớp `ADMIN_API_KEY`: đăng ký/list/detail/status thiết bị, cấp/revoke key, assignment, tạo shipment, seal/anchor/verify batch và reconcile insurance. Thiếu/sai credential trả `401 UNAUTHORIZED`; Backend chưa cấu hình admin key trả `503 ADMIN_NOT_CONFIGURED`. CORS không thay auth. Không nhúng credential vào `VITE_*`, firmware hoặc log.
+- Admin/monitoring API dùng JWT Bearer: đăng nhập `POST /api/v1/auth/login` với JSON `{username, password}`, nhận `{access_token, token_type: "bearer"}`. Backend đọc username/password hash từ `admin_accounts` của MySQL/Aiven; env chỉ seed lần đầu. Sai credential/token trả 401; giới hạn login trả 429 cùng Retry-After; DB/schema lỗi trả 503 `AUTH_STORAGE_UNAVAILABLE`, chưa seed trả 503 `ADMIN_NOT_INITIALIZED`. Không Register/thêm Admin hoặc API key fallback. CORS không thay auth.
 
 ## Tạo lô hàng
 
-`POST /api/v1/shipments` → `201 Created`, yêu cầu `X-Admin-Key`; body response là **ShipmentDetail** bên dưới. `SHIP-001` được nhập vào `code`; UUID `id` trả về mới là `shipment_id` dùng cho assignment, firmware, signed payload và Blockchain. Tạo shipment lưu policy nghiệp vụ trong MySQL, không tự tạo/fund policy trên chain.
+`POST /api/v1/shipments` → `201 Created`, yêu cầu `Authorization: Bearer <access_token>`; body response là **ShipmentDetail** bên dưới. `SHIP-001` được nhập vào `code`; UUID `id` trả về mới là `shipment_id` dùng cho assignment, firmware, signed payload và Blockchain. Tạo shipment lưu policy nghiệp vụ trong MySQL, không tự tạo/fund policy trên chain.
 
 ```json
 {
@@ -113,6 +113,8 @@ Tài liệu này mô tả API đã triển khai trong Backend, gồm Signed Tele
 ```
 
 Mỗi phần tử `items` có cùng schema **ShipmentDetail**. Chưa có phân trang trong v1 MVP; `total` bằng số phần tử trả về.
+
+`DELETE /api/v1/shipments/{id}` xóa lô hàng chưa sử dụng. Nếu còn device assignment active, API trả `409 SHIPMENT_HAS_ASSIGNED_DEVICES`; admin cần bỏ liên kết thiết bị bằng `active=false` trước. Nếu đã có telemetry, event, ingestion audit, integrity batch hoặc dữ liệu Blockchain, API trả `409 SHIPMENT_HAS_DATA` để bảo toàn lịch sử vận hành và bằng chứng bảo hiểm. Khi hợp lệ, Backend xóa các assignment inactive còn lại và trả `200 {"shipment_id":"<UUID>","deleted":true}`.
 
 ## Telemetry
 
@@ -297,6 +299,8 @@ Device ID phân biệt hoa/thường ở giao thức, pattern `[A-Za-z0-9_-]{1,1
 
 `has_public_key` được suy ra từ key active; `current_shipment_id` suy ra từ assignment active hoặc `null`. Chúng không phải trạng thái UI tự ghi. `status=active` chưa có nghĩa device đủ điều kiện gửi. View chỉ trả metadata `keys=[{key_id,status}]`, `assignments=[{shipment_id,active}]`; không trả PEM/private key. Có public key trong DB chưa chứng minh board đã flash đúng khóa; cần mẫu ký thật được Backend chấp nhận.
 
+`DELETE /api/v1/devices/{device_id}` (admin) xóa một thiết bị đăng ký nhầm hoặc chưa sử dụng. Thiết bị còn assignment active trả `409 DEVICE_ASSIGNED`; admin phải bỏ liên kết bằng `active=false` trước. Thiết bị đã có signed telemetry/integrity batch trả `409 DEVICE_HAS_DATA` để giữ nguyên bằng chứng đối soát và chỉ nên được revoke. Khi xóa thành công, Backend xóa public key và các assignment inactive còn lại, rồi trả `200 {"device_id":"ESP32-001","deleted":true}`.
+
 ### Liên kết hoặc bỏ liên kết
 
 `POST /api/v1/devices/{device_id}/assignments`, auth admin:
@@ -342,11 +346,11 @@ API integrity hiện có:
 - `GET /api/v1/batches`: danh sách toàn bộ Merkle batch đã seal trong hệ thống.
 - `GET /api/v1/shipments/{shipment_id}/integrity`: tổng số batch/record cùng trạng thái verification và anchoring tổng hợp theo chuyến hàng.
 - `GET /api/v1/shipments/{shipment_id}/batches`: danh sách batch đã seal theo chuyến hàng.
-- `POST /api/v1/shipments/{shipment_id}/batches/seal`: đóng phần telemetry ký số chưa được batch; yêu cầu `X-Admin-Key`, body `{"device_id":"ESP32-001","force":true}`.
+- `POST /api/v1/shipments/{shipment_id}/batches/seal`: đóng phần telemetry ký số chưa được batch; yêu cầu `Authorization: Bearer <access_token>`, body `{"device_id":"ESP32-001","force":true}`.
 - `GET /api/v1/batches/{batch_id}`: metadata và Merkle root bất biến.
-- `POST /api/v1/batches/{batch_id}/anchor`: yêu cầu `X-Admin-Key`; dispatch/retry đúng outbox và signed transaction đã lưu.
-- `POST /api/v1/batches/{batch_id}/verify`: yêu cầu `X-Admin-Key`; tính lại leaf/root từ dữ liệu đang lưu; mismatch chuyển `verification_status` thành `DATA_INTEGRITY_FAILED` và tạo một event `INTEGRITY_MISMATCH`.
-- `POST /api/v1/shipments/{shipment_id}/insurance/reconcile`: yêu cầu `X-Admin-Key`; tính lại evidence state và chỉ dispatch/retry payout khi toàn bộ gate đạt.
+- `POST /api/v1/batches/{batch_id}/anchor`: yêu cầu `Authorization: Bearer <access_token>`; dispatch/retry đúng outbox và signed transaction đã lưu.
+- `POST /api/v1/batches/{batch_id}/verify`: yêu cầu `Authorization: Bearer <access_token>`; tính lại leaf/root từ dữ liệu đang lưu; mismatch chuyển `verification_status` thành `DATA_INTEGRITY_FAILED` và tạo một event `INTEGRITY_MISMATCH`.
+- `POST /api/v1/shipments/{shipment_id}/insurance/reconcile`: yêu cầu `Authorization: Bearer <access_token>`; tính lại evidence state và chỉ dispatch/retry payout khi toàn bộ gate đạt.
 
 Backend tự seal khi một cặp shipment/device đạt `INTEGRITY_BATCH_MAX_RECORDS` (mặc định 100) hoặc khi có mẫu mới sau `INTEGRITY_BATCH_MAX_AGE_MINUTES` (mặc định 5 phút). Batch nhỏ có thể seal thủ công khi kết thúc chuyến/mất kết nối. Mỗi telemetry chỉ thuộc một batch; membership, leaf index, leaf hash và root được ghi trong cùng transaction. Cùng transaction đó tạo `integration_outbox` loại `ANCHOR_BATCH` với idempotency key `anchor:{batch_id}`.
 

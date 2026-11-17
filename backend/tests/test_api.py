@@ -6,11 +6,13 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 
 from app.cli import seed_demo
 from app.core.config import Settings
 from app.core.database import Base
 from app.main import create_app
+from app.models import DeviceAssignment
 from app.services.clock import VirtualClock
 
 
@@ -94,6 +96,56 @@ def test_create_list_detail_and_persistence(api):
     with TestClient(fresh, headers=ADMIN) as second_client:
         assert second_client.get(f"/api/v1/shipments/{created['id']}").json() == created
     fresh.state.engine.dispose()
+
+
+def test_delete_unused_shipment_requires_device_unassignment(api):
+    client, app = api
+    created = create_shipment(client)
+    shipment_id = created["id"]
+    assert client.post("/api/v1/devices", json={
+        "device_id": "ESP32-DELETE", "device_name": "Delete Test Sensor",
+    }).status_code == 201
+    assignment_url = "/api/v1/devices/ESP32-DELETE/assignments"
+    assert client.post(assignment_url, json={
+        "shipment_id": shipment_id, "active": True,
+    }).status_code == 200
+
+    blocked = client.delete(f"/api/v1/shipments/{shipment_id}")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "SHIPMENT_HAS_ASSIGNED_DEVICES"
+
+    # active=false is the existing unlink operation.
+    assert client.post(assignment_url, json={
+        "shipment_id": shipment_id, "active": False,
+    }).status_code == 200
+    deleted = client.delete(f"/api/v1/shipments/{shipment_id}")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"shipment_id": shipment_id, "deleted": True}
+    assert client.get(f"/api/v1/shipments/{shipment_id}").status_code == 404
+    assert client.get("/api/v1/shipments").json() == {"items": [], "total": 0}
+    with app.state.session_factory() as session:
+        assert session.scalar(select(func.count(DeviceAssignment.device_id))) == 0
+
+
+def test_delete_shipment_preserves_operational_history(api):
+    client, _app = api
+    shipment_id = create_shipment(client)["id"]
+    response = client.post(f"/api/v1/shipments/{shipment_id}/telemetry", json={
+        "device_id": "ESP32-01", "temperature_c": 5.0, "humidity_pct": 70.0,
+    })
+    assert response.status_code == 201
+
+    blocked = client.delete(f"/api/v1/shipments/{shipment_id}")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "SHIPMENT_HAS_DATA"
+    assert client.get(f"/api/v1/shipments/{shipment_id}").status_code == 200
+
+
+def test_delete_missing_shipment_returns_404(api):
+    client, _app = api
+    response = client.delete("/api/v1/shipments/8b4fb8a2-2996-4da2-90b9-35019517f56f")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "SHIPMENT_NOT_FOUND"
 
 
 def test_multiple_telemetry_samples_and_simulated_location(api):

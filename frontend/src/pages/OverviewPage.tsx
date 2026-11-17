@@ -86,7 +86,6 @@ export const OverviewPage: React.FC = () => {
     <div>
       <PageHeader
         title="Bảng điều khiển Giám sát"
-        description="Theo dõi tình trạng chuỗi cung ứng lạnh, telemetry cảm biến và trạng thái bảo hiểm tự động."
         action={
           <Button variant="secondary" size="sm" onClick={fetchData}>
             Làm mới dữ liệu
@@ -94,46 +93,22 @@ export const OverviewPage: React.FC = () => {
         }
       />
 
-      {/* Mandatory note from ROADMAP: simulated location notification */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-2)',
-          padding: 'var(--space-3) var(--space-4)',
-          backgroundColor: 'var(--color-info-soft)',
-          color: 'var(--color-info)',
-          borderRadius: 'var(--radius-md)',
-          fontSize: 'var(--text-xs)',
-          marginBottom: 'var(--space-5)',
-        }}
-      >
-        <Info size={16} />
-        <span>
-          <strong>Lưu ý kiến trúc:</strong> Tọa độ và tuyến đường là <em>vị trí mô phỏng từ Backend</em>.
-          Hệ thống không thu thập GPS trực tiếp từ thiết bị.
-        </span>
-      </div>
-
       {/* 4 Metric cards */}
       <div className="metrics-grid">
         <MetricCard
           title="Tổng số lô hàng"
           value={totalShipments}
-          subtitle="Tất cả lô hàng đã tạo"
           icon={<Package size={20} />}
         />
         <MetricCard
           title="Đang vận chuyển"
           value={inTransitCount}
-          subtitle="Đang nhận telemetry"
           icon={<Truck size={20} />}
           accentColor="var(--color-accent)"
         />
         <MetricCard
           title="Nhiệt độ ngoài ngưỡng"
           value={breachCount}
-          subtitle="Cần theo dõi sát"
           icon={<AlertTriangle size={20} />}
           accentColor={breachCount > 0 ? 'var(--color-warning)' : undefined}
         />
@@ -259,7 +234,6 @@ export const OverviewPage: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
           <Card
             title="Cảnh báo gần nhất"
-            description="Sự kiện vi phạm & bảo hiểm tự động"
             action={
               <Button
                 variant="tertiary"
@@ -332,7 +306,6 @@ export const OverviewPage: React.FC = () => {
           {/* Device Integrity Quick Status Card */}
           <Card
             title="Tính toàn vẹn Thiết bị ESP32"
-            description="Xác thực chữ ký & chuỗi dữ liệu"
             action={
               <Button
                 variant="tertiary"
