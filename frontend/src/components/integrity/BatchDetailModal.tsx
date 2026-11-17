@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { IntegrityBatch } from '../../types/api';
 import { Button } from '../ui/Button';
 import { AnchorStatusBadge, VerificationStatusBadge } from '../data-display/StatusBadge';
@@ -36,6 +37,30 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
   const { toast } = useToast();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // Lock background scroll when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
+
+  // Close modal on Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isVerifying) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, isVerifying, onClose]);
+
   if (!isOpen || !batch) return null;
 
   const copyToClipboard = (text: string, key: string) => {
@@ -48,19 +73,24 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
 
   const isIntegrityFailed = batch.verification_status === 'DATA_INTEGRITY_FAILED';
 
-  return (
+  const modalContent = (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="batch-detail-modal-title"
       style={{
         position: 'fixed',
         inset: 0,
         backgroundColor: 'rgba(0, 0, 0, 0.45)',
         backdropFilter: 'blur(3px)',
-        zIndex: 100,
+        zIndex: 1000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 'var(--space-4)',
         animation: 'fadeIn 0.15s ease-out',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
       onClick={isVerifying ? undefined : onClose}
     >
@@ -75,7 +105,9 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '92vh',
+          maxHeight: 'min(90vh, 780px)',
+          margin: 'auto',
+          position: 'relative',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -406,5 +438,9 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };
 

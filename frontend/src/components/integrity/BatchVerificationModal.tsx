@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { BatchVerifyResultOut, IntegrityBatch } from '../../types/api';
 import { Button } from '../ui/Button';
 import { useToast } from '../feedback/Toast';
@@ -35,6 +36,30 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
   const { toast } = useToast();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // Lock background scroll when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
+
+  // Close modal on Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, loading, onClose]);
+
   if (!isOpen) return null;
 
   const copyToClipboard = (text: string, key: string) => {
@@ -55,19 +80,24 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
     headerBg = '#FFF1F2';
   }
 
-  return (
+  const modalContent = (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="batch-verification-modal-title"
       style={{
         position: 'fixed',
         inset: 0,
         backgroundColor: 'rgba(0, 0, 0, 0.45)',
         backdropFilter: 'blur(3px)',
-        zIndex: 100,
+        zIndex: 1000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 'var(--space-4)',
         animation: 'fadeIn 0.15s ease-out',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
       onClick={loading ? undefined : onClose}
     >
@@ -82,7 +112,9 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '90vh',
+          maxHeight: 'min(90vh, 760px)',
+          margin: 'auto',
+          position: 'relative',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -467,4 +499,8 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };

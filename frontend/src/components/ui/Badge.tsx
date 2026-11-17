@@ -67,6 +67,8 @@ export const Badge: React.FC<BadgeProps> = ({
         border: `1px solid ${current.border}`,
         lineHeight: 'var(--text-xs-lh)',
         whiteSpace: 'nowrap',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
         ...style,
       }}
       {...props}

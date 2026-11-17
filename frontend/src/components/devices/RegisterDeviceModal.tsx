@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { DeviceRegisterPayload, AdminDeviceViewOut } from '../../types/api';
 import { registerDevice } from '../../api/devices';
 import { ApiError } from '../../api/client';
@@ -10,7 +11,6 @@ import {
   AlertCircle,
   RefreshCw,
   Info,
-  ShieldCheck,
 } from 'lucide-react';
 
 interface RegisterDeviceModalProps {
@@ -43,6 +43,30 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
       setError(null);
     }
   }, [isOpen]);
+
+  // Lock background scroll when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
+
+  // Close modal on Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, submitting, onClose]);
 
   if (!isOpen) return null;
 
@@ -95,19 +119,24 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
     }
   };
 
-  return (
+  const modalContent = (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="register-device-modal-title"
       style={{
         position: 'fixed',
         inset: 0,
         backgroundColor: 'rgba(0, 0, 0, 0.45)',
         backdropFilter: 'blur(3px)',
-        zIndex: 100,
+        zIndex: 1000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 'var(--space-4)',
         animation: 'fadeIn 0.15s ease-out',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
       onClick={submitting ? undefined : onClose}
     >
@@ -122,11 +151,13 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '92vh',
+          maxHeight: 'min(90vh, 660px)',
+          margin: 'auto',
+          position: 'relative',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Header - Fixed & Stable */}
         <div
           style={{
             padding: 'var(--space-4) var(--space-5)',
@@ -135,6 +166,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
             alignItems: 'center',
             justifyContent: 'space-between',
             backgroundColor: 'var(--color-surface-secondary)',
+            flexShrink: 0,
           }}
         >
           <div className="flex-row items-center gap-3">
@@ -148,12 +180,14 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
               <Cpu size={20} />
             </div>
             <div>
               <h3
+                id="register-device-modal-title"
                 style={{
                   fontSize: 'var(--text-lg)',
                   fontWeight: 600,
@@ -178,6 +212,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
             type="button"
             onClick={onClose}
             disabled={submitting}
+            aria-label="Đóng"
             style={{
               background: 'none',
               border: 'none',
@@ -186,163 +221,193 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
               color: 'var(--color-text-tertiary)',
               padding: 4,
               borderRadius: 'var(--radius-sm)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             <X size={20} />
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} style={{ overflowY: 'auto', padding: 'var(--space-5)' }}>
-          {error && (
-            <div
-              style={{
-                marginBottom: 'var(--space-4)',
-                padding: 'var(--space-3) var(--space-4)',
-                backgroundColor: 'var(--color-danger-soft)',
-                border: '1px solid var(--color-danger)',
-                borderRadius: 'var(--radius-md)',
-                color: 'var(--color-danger)',
-                fontSize: 'var(--text-xs)',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8,
-              }}
-            >
-              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-              <div>{error}</div>
-            </div>
-          )}
-
-          {/* Device ID Input */}
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-                color: 'var(--color-text-secondary)',
-                marginBottom: 4,
-              }}
-            >
-              Mã Thiết Bị (Device ID) *
-            </label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input
-                type="text"
-                value={deviceId}
-                onChange={(e) => setDeviceId(e.target.value)}
-                placeholder="VD: ESP32-001"
+        {/* Form Container */}
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Scrollable Form Body */}
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              padding: 'var(--space-5)',
+            }}
+          >
+            {error && (
+              <div
                 style={{
-                  flex: 1,
+                  marginBottom: 'var(--space-4)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  backgroundColor: 'var(--color-danger-soft)',
+                  border: '1px solid var(--color-danger)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--color-danger)',
+                  fontSize: 'var(--text-xs)',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                }}
+              >
+                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                <div>{error}</div>
+              </div>
+            )}
+
+            {/* Device ID Input */}
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <label
+                htmlFor="register-device-id-input"
+                style={{
+                  display: 'block',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 600,
+                  color: 'var(--color-text-secondary)',
+                  marginBottom: 4,
+                }}
+              >
+                Mã Thiết Bị (Device ID) *
+              </label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  id="register-device-id-input"
+                  type="text"
+                  value={deviceId}
+                  onChange={(e) => setDeviceId(e.target.value)}
+                  placeholder="VD: ESP32-001"
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--color-border)',
+                    fontSize: 'var(--text-sm)',
+                    fontFamily: 'monospace',
+                    fontWeight: 600,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setDeviceId(generateRandomDeviceId())}
+                  title="Tạo mã ngẫu nhiên"
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--color-border)',
+                    backgroundColor: 'var(--color-surface-secondary)',
+                    cursor: 'pointer',
+                    color: 'var(--color-text-secondary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 'var(--text-xs)',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
+                >
+                  <RefreshCw size={13} />
+                  <span>Sinh mã</span>
+                </button>
+              </div>
+              <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: 4, display: 'block' }}>
+                Định dạng chuỗi: chữ cái, số, gạch nối (VD: ESP32-001, ESP32-002).
+              </span>
+            </div>
+
+            {/* Device Name Input */}
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <label
+                htmlFor="register-device-name-input"
+                style={{
+                  display: 'block',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 600,
+                  color: 'var(--color-text-secondary)',
+                  marginBottom: 4,
+                }}
+              >
+                Tên Thiết Bị (Device Name) *
+              </label>
+              <input
+                id="register-device-name-input"
+                type="text"
+                value={deviceName}
+                onChange={(e) => setDeviceName(e.target.value)}
+                placeholder="VD: Cold Chain Sensor 01"
+                style={{
+                  width: '100%',
                   padding: '8px 12px',
                   borderRadius: 'var(--radius-md)',
                   border: '1px solid var(--color-border)',
                   fontSize: 'var(--text-sm)',
-                  fontFamily: 'monospace',
-                  fontWeight: 600,
+                  boxSizing: 'border-box',
                 }}
               />
-              <button
-                type="button"
-                onClick={() => setDeviceId(generateRandomDeviceId())}
-                title="Tạo mã ngẫu nhiên"
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                  backgroundColor: 'var(--color-surface-secondary)',
-                  cursor: 'pointer',
-                  color: 'var(--color-text-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontSize: 'var(--text-xs)',
-                }}
-              >
-                <RefreshCw size={13} />
-                <span>Sinh mã</span>
-              </button>
+              <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: 4, display: 'block' }}>
+                Tên mô tả vị trí hoặc mục đích sử dụng (tối đa 100 ký tự).
+              </span>
             </div>
-            <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
-              Định dạng chuỗi: chữ cái, số, gạch nối (VD: ESP32-001, ESP32-002).
-            </span>
-          </div>
 
-          {/* Device Name Input */}
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-                color: 'var(--color-text-secondary)',
-                marginBottom: 4,
-              }}
-            >
-              Tên Thiết Bị (Device Name) *
-            </label>
-            <input
-              type="text"
-              value={deviceName}
-              onChange={(e) => setDeviceName(e.target.value)}
-              placeholder="VD: Cold Chain Sensor 01"
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border)',
-                fontSize: 'var(--text-sm)',
-              }}
-            />
-            <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
-              Tên mô tả vị trí hoặc mục đích sử dụng (tối đa 100 ký tự).
-            </span>
-          </div>
-
-          {/* Info Card: Key Provisioning Notice */}
-          <div
-            style={{
-              padding: 'var(--space-3) var(--space-4)',
-              backgroundColor: 'var(--color-surface-secondary)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border-subtle)',
-              marginBottom: 'var(--space-4)',
-              fontSize: 'var(--text-xs)',
-              color: 'var(--color-text-secondary)',
-              lineHeight: 1.5,
-            }}
-          >
+            {/* Info Card: Key Provisioning Notice */}
             <div
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                fontWeight: 600,
-                color: 'var(--color-text-primary)',
-                marginBottom: 4,
+                padding: 'var(--space-3) var(--space-4)',
+                backgroundColor: 'var(--color-surface-secondary)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border-subtle)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--color-text-secondary)',
+                lineHeight: 1.5,
               }}
             >
-              <Info size={14} style={{ color: 'var(--color-accent)' }} />
-              Cấp khóa tự động trên Backend local
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontWeight: 600,
+                  color: 'var(--color-text-primary)',
+                  marginBottom: 4,
+                }}
+              >
+                <Info size={14} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                <span>Cấp khóa tự động trên Backend local</span>
+              </div>
+              <p style={{ margin: 0 }}>
+                Khi đăng ký, Backend tạo một cặp khóa <strong>ECDSA P-256</strong> riêng cho thiết bị. Public key được lưu vào MySQL; private key chỉ được ghi vào file <code>config.h</code> đã cấu hình để bạn nạp firmware qua USB.
+              </p>
+              <p style={{ margin: '4px 0 0 0', color: 'var(--color-text-tertiary)' }}>
+                Trình duyệt không nhận hoặc hiển thị private key/public key. Thông báo thành công chỉ xuất hiện sau khi Backend cập nhật <code>config.h</code> xong.
+              </p>
             </div>
-            <p style={{ margin: 0 }}>
-              Khi đăng ký, Backend tạo một cặp khóa <strong>ECDSA P-256</strong> riêng cho thiết bị. Public key được lưu vào MySQL; private key chỉ được ghi vào file <code>config.h</code> đã cấu hình để bạn nạp firmware qua USB.
-            </p>
-            <p style={{ margin: '4px 0 0 0', color: 'var(--color-text-tertiary)' }}>
-              Trình duyệt không nhận hoặc hiển thị private key/public key. Thông báo thành công chỉ xuất hiện sau khi Backend cập nhật <code>config.h</code> xong.
-            </p>
           </div>
 
-          {/* Footer Actions */}
+          {/* Footer Actions - Fixed & Stable */}
           <div
             style={{
-              paddingTop: 'var(--space-4)',
+              padding: 'var(--space-3) var(--space-5)',
               borderTop: '1px solid var(--color-border-subtle)',
+              backgroundColor: 'var(--color-surface-secondary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'flex-end',
               gap: 'var(--space-3)',
+              flexShrink: 0,
             }}
           >
             <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>
@@ -361,4 +426,8 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };
