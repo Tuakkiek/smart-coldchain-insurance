@@ -13,7 +13,6 @@ import {
 } from '../components/data-display/StatusBadge';
 import { LoadingState } from '../components/feedback/LoadingState';
 import { ErrorState } from '../components/feedback/ErrorState';
-import { SimulatedRouteMap } from '../components/data-display/SimulatedRouteMap';
 import { TelemetryChart } from '../components/data-display/TelemetryChart';
 import { EventTimeline } from '../components/data-display/EventTimeline';
 import { getShipmentById, getShipmentTelemetry } from '../api/shipments';
@@ -241,7 +240,7 @@ export const ShipmentDetailPage: React.FC = () => {
   };
 
   if (loading && !shipment) {
-    return <LoadingState fullPage message="Đang nạp chi tiết lô hàng và bản đồ tuyến đường..." />;
+    return <LoadingState fullPage message="Đang nạp chi tiết lô hàng..." />;
   }
 
   if (error || !shipment) {
@@ -766,20 +765,6 @@ export const ShipmentDetailPage: React.FC = () => {
           </div>
         </Card>
       </div>
-
-      {/* PHASE 3: INTERACTIVE LEAFLET MAP PANEL */}
-      <Card
-        title="Bản đồ Lộ trình Tuyến xe (Mô phỏng)"
-        description="Vị trí xe và tiến độ hành trình được tính toán nội suy từ dữ liệu mẫu cảm biến Backend."
-        style={{ marginBottom: 'var(--space-6)' }}
-      >
-        <SimulatedRouteMap
-          origin={shipment.origin}
-          destination={shipment.destination}
-          currentLocation={shipment.location}
-          height="380px"
-        />
-      </Card>
 
       {/* PHASE 3: TELEMETRY CHART */}
       <Card
