@@ -90,5 +90,3 @@ services:
     envVars:
       - key: VITE_API_BASE_URL
         sync: false
-      - key: VITE_ENABLE_DEMO
-        value: "true"

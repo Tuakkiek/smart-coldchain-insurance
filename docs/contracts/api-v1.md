@@ -230,20 +230,12 @@ Mỗi mẫu được so với ngưỡng **bao gồm hai đầu mút** `[temp_min
 
 `blockchain: "unavailable"` là trạng thái bình thường khi `BLOCKCHAIN_ENABLED=false`; khi Blockchain đã bật mà RPC lỗi, `status` chuyển thành `degraded`. `GET /api/v1/ready` trả cùng schema, nhưng trả `503` nếu database không sẵn sàng. RPC lỗi không làm readiness thất bại vì telemetry vẫn phải được ghi MySQL trước và giao dịch Blockchain được retry qua outbox.
 
-`POST /api/v1/demo/shipments/{id}/scenario` chỉ tồn tại trong môi trường development, nhận `{"scenario":"normal"}` hoặc `{"scenario":"temperature_breach"}`. Trả `200 OK`:
-
-```json
-{"shipment_id":"8b4fb8a2-2996-4da2-90b9-35019517f56f","scenario":"temperature_breach","generated_samples":4,"shipment_status":"insurance_triggered"}
-```
-
-Demo gọi cùng service đánh giá như telemetry thật. `normal` tạo một mẫu trong ngưỡng; `temperature_breach` tạo các mẫu ngoài ngưỡng cách nhau tối đa `SENSOR_GAP_MINUTES`, dùng đồng hồ ảo để đạt đủ thời lượng chính sách mà không chờ thực tế. Với mặc định 15/5 phút, kịch bản tạo bốn mẫu. Nên dùng lô hàng demo riêng: đồng hồ ảo có thể tạo `received_at` trong tương lai, nhưng không trước `created_at` của lô hàng. Một kịch bản vượt 100 mẫu bị từ chối `422`. Production trả `404` và không liệt kê endpoint này trong OpenAPI.
-
 ## Lỗi chung
 
 | Mã | Khi nào |
 |---|---|
 | `400` | JSON sai cú pháp. |
-| `404` | Lô hàng không tồn tại hoặc endpoint demo bị tắt. |
+| `404` | Lô hàng không tồn tại. |
 | `409` | `code` lô hàng đã tồn tại. |
 | `422` | Dữ liệu hợp lệ về JSON nhưng vi phạm schema/ràng buộc. |
 | `500` | Lỗi nội bộ; response không chứa stack trace. |

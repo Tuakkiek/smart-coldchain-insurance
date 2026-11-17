@@ -14,7 +14,6 @@ vi.mock('../src/pages/ShipmentsPage', () => ({ ShipmentsPage: () => <h1>Danh sá
 vi.mock('../src/pages/ShipmentDetailPage', () => ({ ShipmentDetailPage: () => <h1>Chi tiết chuyến hàng</h1> }));
 vi.mock('../src/pages/DataIntegrityPage', () => ({ DataIntegrityPage: () => <h1>Toàn vẹn dữ liệu</h1> }));
 vi.mock('../src/pages/EventsPage', () => ({ EventsPage: () => <h1>Sự kiện riêng tư</h1> }));
-vi.mock('../src/pages/DemoPage', () => ({ DemoPage: () => <h1>Demo riêng tư</h1> }));
 vi.mock('../src/components/feedback/ConnectionStatus', () => ({ ConnectionStatus: () => <span>Backend Online</span> }));
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -34,7 +33,7 @@ beforeEach(() => {
 afterEach(() => { endSession(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('Admin Login and guarded routes', () => {
-  it.each(['/','/devices','/shipments','/shipments/example','/integrity','/events','/demo'])(
+  it.each(['/','/devices','/shipments','/shipments/example','/integrity','/events'])(
     'requires login for %s and never mounts private pages first', (path) => {
       window.history.replaceState({}, '', path);
       render(<App />);
@@ -127,6 +126,14 @@ describe('Admin Login and guarded routes', () => {
   it('never redirects a successful login to an external history target', async () => {
     startSession(tokenFor());
     window.history.replaceState({ usr: { from: '//external.example/' } }, '', '/login');
+    render(<App />);
+    await waitFor(() => { expect(window.location.pathname).toBe('/'); });
+    expect(screen.getByRole('heading', { name: 'Dashboard riêng tư' })).not.toBeNull();
+  });
+
+  it('redirects removed /demo route to fallback / for authenticated users', async () => {
+    startSession(tokenFor());
+    window.history.replaceState({}, '', '/demo');
     render(<App />);
     await waitFor(() => { expect(window.location.pathname).toBe('/'); });
     expect(screen.getByRole('heading', { name: 'Dashboard riêng tư' })).not.toBeNull();

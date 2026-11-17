@@ -36,7 +36,6 @@ cp .env.example .env
 
 Các biến môi trường:
 - `VITE_API_BASE_URL`: Địa chỉ REST API Backend (mặc định development: `http://localhost:8000`; production dùng URL Render đã cấu hình). Không trộn `localhost` với `127.0.0.1` vì refresh cookie được phân tách theo hostname.
-- `VITE_ENABLE_DEMO`: Cho phép hiển thị tab Demo kịch bản (`true` hoặc `false`).
 
 ### 2.3 Khởi chạy máy chủ phát triển (Dev Server)
 
@@ -84,13 +83,13 @@ Vitest 5 yêu cầu Node.js `^22.12.0 || ^24.0.0 || >=26.0.0`; môi trường ki
 frontend/
 ├── public/                 # Assets tĩnh (icon, favicon)
 ├── src/
-│   ├── api/                # Lớp gọi REST API duy nhất (client, shipments, events, demo)
+│   ├── api/                # Lớp gọi REST API duy nhất (client, shipments, events, devices, integrity)
 │   ├── components/         # Shared components
 │   │   ├── layout/         # AppShell, Sidebar, TopBar, PageHeader
 │   │   ├── ui/             # Button, Card, Badge, Input
 │   │   ├── feedback/       # LoadingState, EmptyState, ErrorState, ConnectionStatus
 │   │   └── data-display/   # MetricCard, StatusBadge
-│   ├── pages/              # OverviewPage, ShipmentsPage, ShipmentDetailPage, EventsPage, DemoPage
+│   ├── pages/              # OverviewPage, ShipmentsPage, ShipmentDetailPage, EventsPage, DevicesPage, DataIntegrityPage
 │   ├── styles/             # tokens.css (Design tokens), globals.css
 │   ├── types/              # TypeScript types chuẩn khớp docs/contracts/api-v1.md
 │   ├── App.tsx             # Định tuyến SPA
@@ -120,9 +119,6 @@ frontend/
    - Trạng thái hợp đồng bảo hiểm và transaction hash Blockchain.
 4. **Sự kiện & Vi phạm (`/events`):**
    - Tập hợp các sự kiện `TEMPERATURE_BREACH_STARTED`, `INSURANCE_TRIGGERED`, `SENSOR_DATA_GAP`.
-5. **Khu vực Demo (`/demo`):**
-   - Thực thi kịch bản kiểm thử "Nhiệt độ vượt ngưỡng" và "Khôi phục bình thường".
-   - Khóa nút chống click trùng khi kịch bản đang chạy, hiển thị phản hồi từ Backend.
 
 ---
 

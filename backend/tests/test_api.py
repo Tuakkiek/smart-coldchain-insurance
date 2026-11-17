@@ -270,50 +270,13 @@ def test_recovery_resets_breach_and_sensor_gap_breaks_streak(api):
     assert not any(event["type"] == "INSURANCE_TRIGGERED" for event in events)
 
 
-def test_demo_uses_same_policy_and_is_disabled_in_production(api, tmp_path):
+def test_demo_scenario_route_does_not_exist(api):
     client, _app = api
     shipment_id = create_shipment(client)["id"]
     route = f"/api/v1/demo/shipments/{shipment_id}/scenario"
-    response = client.post(route, json={"scenario": "temperature_breach"})
-    assert response.status_code == 200, response.text
-    assert response.json() == {
-        "shipment_id": shipment_id, "scenario": "temperature_breach",
-        "generated_samples": 4, "shipment_status": "insurance_triggered",
-    }
-    history = client.get(f"/api/v1/shipments/{shipment_id}/telemetry").json()["items"]
-    created_at = client.get(f"/api/v1/shipments/{shipment_id}").json()["created_at"]
-    assert datetime.fromisoformat(history[0]["received_at"].replace("Z", "+00:00")) >= datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-    assert client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"][-1]["type"] == "INSURANCE_TRIGGERED"
-    assert route.replace(shipment_id, "{shipment_id}") in client.get("/openapi.json").json()["paths"]
-
-    normal = client.post("/api/v1/shipments", json=SHIPMENT | {"code": "SHIP-NORMAL"}).json()
-    normal_route = f"/api/v1/demo/shipments/{normal['id']}/scenario"
-    assert client.post(normal_route, json={"scenario": "normal"}).json()["generated_samples"] == 1
-    assert client.get(f"/api/v1/shipments/{normal['id']}/events").json() == {"items": []}
-    assert client.post(normal_route, json={"scenario": "invalid"}).status_code == 422
-
-    long_policy = client.post("/api/v1/shipments", json=SHIPMENT | {
-        "code": "SHIP-LONG", "violation_duration_minutes": 501,
-    }).json()
-    too_long = client.post(
-        f"/api/v1/demo/shipments/{long_policy['id']}/scenario",
-        json={"scenario": "temperature_breach"},
-    )
-    assert too_long.status_code == 422
-    assert client.get(f"/api/v1/shipments/{long_policy['id']}/telemetry").json() == {"items": []}
-
-    production = create_app(Settings(
-        database_url=f"sqlite:///{(tmp_path / 'production.db').as_posix()}",
-        app_env="production",
-        admin_username="admin",
-        admin_password="test-admin-password-12345",
-        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
-        cors_origins=("https://coldchain.example.com",),
-    ))
-    with TestClient(production) as prod_client:
-        assert prod_client.post(route, json={"scenario": "normal"}).status_code == 404
-        assert route.replace(shipment_id, "{shipment_id}") not in prod_client.get("/openapi.json").json()["paths"]
-    production.state.engine.dispose()
+    response = client.post(route, json={"scenario": "normal"})
+    assert response.status_code == 404
+    assert route.replace(shipment_id, "{shipment_id}") not in client.get("/openapi.json").json()["paths"]
 
 
 @pytest.mark.parametrize(

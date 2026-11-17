@@ -33,7 +33,7 @@
    - Lưu ý kiến trúc: Limiter hiện tại dùng sliding window trong bộ nhớ tiến trình (in-memory). Nếu scale ra nhiều container hoặc tiến trình worker độc lập, mỗi tiến trình có bộ đếm riêng.
 
 4. **Bảo vệ toàn bộ API Quản trị & Giám sát**:
-   - Toàn bộ các route quản trị và giám sát (thiết bị, chuyến hàng, truy vấn telemetry, sự kiện, batches, verify, seal, anchor, reconcile, demo) đều yêu cầu header `Authorization: Bearer <access_token>`.
+   - Toàn bộ các route quản trị và giám sát (thiết bị, chuyến hàng, truy vấn telemetry, sự kiện, batches, verify, seal, anchor, reconcile) đều yêu cầu header `Authorization: Bearer <access_token>`.
    - Ingestion telemetry có chữ ký (`POST /api/v1/shipments/{id}/telemetry`) giữ nguyên xác thực độc lập bằng chữ ký ECDSA P-256 từ thiết bị phần cứng, không yêu cầu JWT và không bị JWT thay thế.
 
 ---
@@ -160,7 +160,6 @@ Authorization: Bearer <access_token>
 | `POST` | `/api/v1/shipments/{id}/batches/seal` | **Bearer JWT** | Đóng batch thủ công |
 | `POST` | `/api/v1/batches/{batch_id}/anchor` | **Bearer JWT** | Đưa batch lên Data Integrity Contract / Thử lại (retry) dispatch batch |
 | `POST` | `/api/v1/shipments/{id}/insurance/reconcile` | **Bearer JWT** | Đối soát bằng chứng bảo hiểm |
-| `POST` | `/api/v1/demo/shipments/{id}/scenario` | **Bearer JWT** | Chỉ khả dụng trong môi trường development (404 ở production) |
 
 *Ghi chú*: Không tồn tại endpoint `/batches/{batch_id}/retry`; chức năng retry khi việc neo batch gặp sự cố hoặc timeout được thực hiện trực tiếp thông qua endpoint `POST /api/v1/batches/{batch_id}/anchor`.
 
@@ -243,4 +242,4 @@ Các bộ kiểm thử mới và cập nhật tiêu biểu:
   - Preflight `OPTIONS` cho phép `Authorization` và `Content-Type`.
   - Ma trận route: Toàn bộ route admin trả 401 khi không có Bearer token hợp lệ; xác nhận `X-Admin-Key` cũ bị từ chối.
   - Xác nhận signed telemetry độc lập hoàn toàn với JWT Admin.
-  - Xác nhận endpoint demo bị ẩn (404) trong production.
+  - Xác nhận endpoint demo không còn đăng ký trên toàn bộ môi trường (404).

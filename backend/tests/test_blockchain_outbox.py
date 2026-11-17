@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -86,7 +86,9 @@ def run_breach(tmp_path, gateway_mode):
         payout_requires_anchored_evidence=False,
     ))
     Base.metadata.create_all(app.state.engine)
-    app.state.clock = VirtualClock(datetime(2026, 11, 4, tzinfo=timezone.utc))
+    start = datetime(2026, 11, 4, tzinfo=timezone.utc)
+    clock = VirtualClock(start)
+    app.state.clock = clock
     gateway = FakeGateway(app.state.session_factory)
     setattr(gateway, gateway_mode, True)
     coordinator = BlockchainCoordinator("localhost", gateway, receipt_timeout_seconds=1)
@@ -94,11 +96,13 @@ def run_breach(tmp_path, gateway_mode):
     with TestClient(app, headers=ADMIN) as client:
         shipment = client.post("/api/v1/shipments", json=SHIPMENT).json()
         shipment_id = shipment["id"]
-        response = client.post(
-            f"/api/v1/demo/shipments/{shipment_id}/scenario",
-            json={"scenario": "temperature_breach"},
-        )
-        assert response.status_code == 200, response.text
+        for minute in (0, 5, 10, 15):
+            clock.current = start + timedelta(minutes=minute)
+            res = client.post(
+                f"/api/v1/shipments/{shipment_id}/telemetry",
+                json={"device_id": "SIM-DEV-01", "temperature_c": 9.2, "humidity_pct": 70.0},
+            )
+            assert res.status_code == 201, res.text
         detail = client.get(f"/api/v1/shipments/{shipment_id}").json()
         events = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
         history = client.get(f"/api/v1/shipments/{shipment_id}/telemetry").json()["items"]
