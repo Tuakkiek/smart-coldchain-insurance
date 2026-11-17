@@ -364,7 +364,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
                   disabled={submitting}
                   icon={<Unlink size={13} />}
                 >
-                  Bỏ liên kết cũ (active=false)
+                  Bỏ liên kết chuyến hàng
                 </Button>
               )}
             </div>

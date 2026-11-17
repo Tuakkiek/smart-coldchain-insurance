@@ -15,7 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.routes import router
 from app.core.config import Settings, load_settings, validate_auth_config
 from app.core.database import make_engine, make_session_factory
-from app.services.shipments import DuplicateShipmentCode, ShipmentNotFound
+from app.services.shipments import DuplicateShipmentCode, ShipmentDeleteConflict, ShipmentNotFound
 from app.services.clock import SYSTEM_CLOCK
 from app.services.demo import DemoScenarioError
 from app.services.blockchain_outbox import configured_coordinator
@@ -151,7 +151,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CORSMiddleware,
             allow_origins=list(settings.cors_origins),
             allow_credentials=False,
-            allow_methods=["GET", "POST", "PATCH"],
+            allow_methods=["GET", "POST", "PATCH", "DELETE"],
             allow_headers=["Content-Type", "Authorization"],
             expose_headers=["X-Request-ID", "Retry-After"],
         )
@@ -188,6 +188,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(DuplicateShipmentCode)
     async def duplicate_code(_request: Request, _exc: DuplicateShipmentCode):
         return error_response(409, "DUPLICATE_SHIPMENT_CODE", "Mã lô hàng đã tồn tại")
+
+    @app.exception_handler(ShipmentDeleteConflict)
+    async def shipment_delete_conflict(_request: Request, exc: ShipmentDeleteConflict):
+        return error_response(409, exc.code, exc.message)
 
     @app.exception_handler(DemoScenarioError)
     async def demo_scenario_error(_request: Request, exc: DemoScenarioError):

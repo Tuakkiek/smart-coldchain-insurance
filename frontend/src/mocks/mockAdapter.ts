@@ -2,6 +2,7 @@ import {
   ShipmentOut,
   ShipmentsOut,
   ShipmentCreatePayload,
+  ShipmentDeleteOut,
   TelemetryCreatePayload,
   TelemetryOut,
   TelemetryListOut,
@@ -17,6 +18,7 @@ import {
   ShipmentDevicesOut,
   DeviceTelemetryStatus,
   DeviceRegisterPayload,
+  DeviceDeleteOut,
   DeviceAssignmentPayload,
   AdminDeviceViewOut,
   IntegrityBatch,
@@ -249,6 +251,32 @@ class MockAdapter {
     };
   }
 
+  async deleteDevice(deviceId: string): Promise<DeviceDeleteOut> {
+    const index = this.devices.findIndex((d) => d.device_id === deviceId);
+    if (index < 0) {
+      throw new ApiError(`Không tìm thấy thiết bị '${deviceId}'`, 404, 'DEVICE_NOT_FOUND');
+    }
+
+    const device = this.devices[index];
+    if (device.assigned_shipment_id) {
+      throw new ApiError(
+        'Hãy bỏ liên kết chuyến hàng trước khi xóa thiết bị.',
+        409,
+        'DEVICE_ASSIGNED'
+      );
+    }
+    if ((device.health.last_sequence_number ?? 0) > 0) {
+      throw new ApiError(
+        'Thiết bị đã có dữ liệu telemetry nên không thể xóa. Hãy thu hồi thiết bị thay thế.',
+        409,
+        'DEVICE_HAS_DATA'
+      );
+    }
+
+    this.devices.splice(index, 1);
+    return { device_id: deviceId, deleted: true };
+  }
+
   async assignDevice(deviceId: string, payload: DeviceAssignmentPayload): Promise<AdminDeviceViewOut> {
     const dev = this.devices.find((d) => d.device_id === deviceId);
     if (!dev) {
@@ -374,6 +402,40 @@ class MockAdapter {
       throw new Error(`Mock 404: Shipment ${id} not found`);
     }
     return JSON.parse(JSON.stringify(item));
+  }
+
+  async deleteShipment(id: string): Promise<ShipmentDeleteOut> {
+    const index = this.shipments.findIndex((shipment) => shipment.id === id);
+    if (index < 0) {
+      throw new ApiError(`Không tìm thấy lô hàng '${id}'`, 404, 'SHIPMENT_NOT_FOUND');
+    }
+
+    const assignedDevice = this.devices.some((device) => device.assigned_shipment_id === id);
+    if (assignedDevice) {
+      throw new ApiError(
+        'Hãy bỏ liên kết tất cả thiết bị trước khi xóa lô hàng.',
+        409,
+        'SHIPMENT_HAS_ASSIGNED_DEVICES'
+      );
+    }
+
+    const hasHistory =
+      (this.telemetry[id]?.length ?? 0) > 0 ||
+      (this.events[id]?.length ?? 0) > 0 ||
+      this.shipments[index].latest_telemetry !== null ||
+      this.batches.some((batch) => batch.shipment_id === id);
+    if (hasHistory) {
+      throw new ApiError(
+        'Lô hàng đã có dữ liệu vận hành nên không thể xóa.',
+        409,
+        'SHIPMENT_HAS_DATA'
+      );
+    }
+
+    this.shipments.splice(index, 1);
+    delete this.telemetry[id];
+    delete this.events[id];
+    return { shipment_id: id, deleted: true };
   }
 
   async listTelemetry(id: string): Promise<TelemetryListOut> {

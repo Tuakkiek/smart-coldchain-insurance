@@ -7,6 +7,7 @@ import {
   DeviceMissingSequencesOut,
   ShipmentDevicesOut,
   DeviceRegisterPayload,
+  DeviceDeleteOut,
   DeviceAssignmentPayload,
   AdminDeviceViewOut,
   SignatureStatus,
@@ -30,6 +31,20 @@ export async function registerDevice(
   }
 
   return apiClient.post<AdminDeviceViewOut>('/api/v1/devices', payload);
+}
+
+/**
+ * Delete a registered device that has no active shipment assignment.
+ * Devices with telemetry history are retained to preserve audit evidence.
+ */
+export async function deleteDevice(deviceId: string): Promise<DeviceDeleteOut> {
+  if (apiClient.isMockEnabled()) {
+    return mockAdapter.deleteDevice(deviceId);
+  }
+
+  return apiClient.delete<DeviceDeleteOut>(
+    `/api/v1/devices/${encodeURIComponent(deviceId)}`
+  );
 }
 
 /**

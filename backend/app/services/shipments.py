@@ -6,11 +6,12 @@ from datetime import datetime, timedelta, timezone
 from itertools import chain
 from uuid import uuid4
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Shipment, ShipmentEvent, SignedTelemetryReceipt, Telemetry
+from app.models import (DeviceAssignment, IngestionAudit, IntegrityBatch, Shipment,
+                        ShipmentEvent, SignedTelemetryReceipt, Telemetry)
 from app.schemas.api import ShipmentCreate, TelemetryCreate
 from app.services.route_simulator import location_for_sample
 from app.services.clock import Clock, SYSTEM_CLOCK
@@ -24,6 +25,13 @@ class ShipmentNotFound(Exception):
 
 class DuplicateShipmentCode(Exception):
     pass
+
+
+class ShipmentDeleteConflict(Exception):
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(message)
 
 
 def ensure_utc(value: datetime | None) -> datetime | None:
@@ -73,6 +81,52 @@ def get_shipment(session: Session, shipment_id: str) -> Shipment:
 
 def list_shipments(session: Session) -> list[Shipment]:
     return list(session.scalars(select(Shipment).order_by(Shipment.created_at, Shipment.id)))
+
+
+def delete_shipment(session: Session, shipment_id: str) -> None:
+    """Delete an unused shipment without removing operational evidence."""
+    shipment = session.scalar(
+        select(Shipment).where(Shipment.id == shipment_id).with_for_update()
+    )
+    if shipment is None:
+        raise ShipmentNotFound
+
+    active_assignment = session.scalar(select(DeviceAssignment.device_id).where(
+        DeviceAssignment.shipment_id == shipment_id,
+        DeviceAssignment.active.is_(True),
+    ).limit(1))
+    if active_assignment is not None:
+        raise ShipmentDeleteConflict(
+            "SHIPMENT_HAS_ASSIGNED_DEVICES",
+            "Unassign all devices from the shipment before deleting it",
+        )
+
+    # These records form the shipment's operational and integrity history.
+    # Keep them intact instead of cascading a destructive delete.
+    has_telemetry = session.scalar(select(Telemetry.id).where(
+        Telemetry.shipment_id == shipment_id,
+    ).limit(1)) is not None
+    has_event = session.scalar(select(ShipmentEvent.id).where(
+        ShipmentEvent.shipment_id == shipment_id,
+    ).limit(1)) is not None
+    has_batch = session.scalar(select(IntegrityBatch.id).where(
+        IntegrityBatch.shipment_id == shipment_id,
+    ).limit(1)) is not None
+    has_audit = session.scalar(select(IngestionAudit.id).where(
+        IngestionAudit.shipment_id == shipment_id,
+    ).limit(1)) is not None
+    has_blockchain_record = shipment.blockchain_network is not None or shipment.transaction_hash is not None
+    if has_telemetry or has_event or has_batch or has_audit or has_blockchain_record:
+        raise ShipmentDeleteConflict(
+            "SHIPMENT_HAS_DATA",
+            "Shipment has operational history and cannot be deleted",
+        )
+
+    # Inactive assignments are setup history only and are safe to remove for a
+    # shipment that never produced operational data.
+    session.execute(delete(DeviceAssignment).where(DeviceAssignment.shipment_id == shipment_id))
+    session.delete(shipment)
+    session.commit()
 
 
 def list_telemetry(session: Session, shipment_id: str) -> list[Telemetry]:

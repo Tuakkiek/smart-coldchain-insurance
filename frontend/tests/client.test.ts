@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../src/api/client';
 import { loginAdmin } from '../src/api/auth';
 import { endSession, getActiveSession, getAuthSnapshot, startSession } from '../src/auth/session';
-import { registerDevice, assignDevice, getAdminDeviceDetails } from '../src/api/devices';
-import { createShipment } from '../src/api/shipments';
+import { registerDevice, deleteDevice, assignDevice, getAdminDeviceDetails } from '../src/api/devices';
+import { createShipment, deleteShipment } from '../src/api/shipments';
 import { verifyBatch } from '../src/api/integrity';
 import { jsonResponse, tokenFor } from './helpers';
 
@@ -41,9 +41,11 @@ describe('Bearer API client', () => {
     fetchMock.mockImplementation(async () => jsonResponse({ verification_status: 'MATCHED', merkle_root: '0x00' }));
     await apiClient.get('/api/v1/shipments');
     await registerDevice({ device_id: 'ESP32-001', device_name: 'Sensor' });
+    await deleteDevice('ESP32-001');
     await assignDevice('ESP32-001', { shipment_id: 'shipment-id', active: true });
     await getAdminDeviceDetails('ESP32-001');
     await createShipment({} as Parameters<typeof createShipment>[0]);
+    await deleteShipment('shipment-id');
     await verifyBatch('batch-id');
     for (const [, options] of fetchMock.mock.calls) {
       const headers = new Headers(options!.headers);
@@ -51,6 +53,7 @@ describe('Bearer API client', () => {
       expect(headers.has('X-Admin-Key')).toBe(false);
       expect(options!.cache).toBe('no-store');
     }
+    expect(fetchMock.mock.calls.some(([, options]) => options!.method === 'DELETE')).toBe(true);
   });
 
   it('keeps login/health public and does not attach a token selected by a caller', async () => {

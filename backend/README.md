@@ -51,6 +51,8 @@ Quy trình admin mới, mọi thao tác quản trị và giám sát đều yêu 
 2. **Tạo chuyến** bằng `POST /api/v1/shipments` với `code=SHIP-001` và DTO hiện có.
    Lấy `id` UUID trong response, không dùng code thay `shipment_id`. Policy trong MySQL
    chưa đồng nghĩa policy đã fund trên chain.
+   Xóa chuyến chưa sử dụng bằng `DELETE /api/v1/shipments/{id}`. API chặn nếu còn device
+   active (`SHIPMENT_HAS_ASSIGNED_DEVICES`) hoặc đã có dữ liệu vận hành (`SHIPMENT_HAS_DATA`).
 3. **Gán device** bằng `POST /api/v1/devices/ESP32-001/assignments`,
    body `{"shipment_id":"<UUID trả về>","active":true}`. Mỗi device chỉ có một chuyến
    active, nhiều device có thể cùng chuyến; cùng cặp retry idempotent. Gán sang chuyến khác
@@ -67,6 +69,11 @@ Quy trình admin mới, mọi thao tác quản trị và giám sát đều yêu 
    DeviceView có `device_name`, `has_public_key`, `current_shipment_id` (UUID hoặc null),
    sequence/last seen và metadata keys/assignments; không trả PEM/private key. Có key trong DB
    chưa chứng minh đã nạp firmware đúng; xác nhận bằng mẫu signed đầu tiên.
+
+6. **Bỏ liên kết hoặc xóa device**: gửi assignment hiện tại với `active=false` để bỏ liên kết.
+   `DELETE /api/v1/devices/{device_id}` chỉ xóa khi không còn assignment active và chưa có
+   signed telemetry/integrity batch. Hai trường hợp bị chặn lần lượt trả `409 DEVICE_ASSIGNED`
+   và `409 DEVICE_HAS_DATA`; device đã có dữ liệu nên được revoke để giữ lịch sử đối soát.
 
 DTO đăng ký gộp cũ không còn được nhận. Frontend phải chuyển sang form ID/tên và gọi
 assignment riêng, gửi header `Authorization: Bearer <access_token>` khi tạo shipment, list device,
@@ -199,7 +206,7 @@ Với `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true` (mặc định), `INSURANCE_TRIGG
 
 Để cấu hình ESP32, sao chép `device/cold_chain_device/config.example.h` thành `config.h` cùng thư mục và xem `device/README.md`. Sketch yêu cầu HTTPS với CA hợp lệ. Để thử Backend local qua HTTP, dùng Python simulator trên localhost; không đưa dịch vụ HTTP phát triển trực tiếp ra Internet.
 
-Endpoint hiện có: `GET /api/v1/health`, `GET /api/v1/ready`, `POST/GET /api/v1/shipments`, `GET /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, các endpoint integrity bên dưới và endpoint demo trong development. Tọa độ vẫn là mô phỏng ở Backend.
+Endpoint hiện có: `GET /api/v1/health`, `GET /api/v1/ready`, `POST/GET /api/v1/shipments`, `GET/DELETE /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, các endpoint integrity bên dưới và endpoint demo trong development. Tọa độ vẫn là mô phỏng ở Backend.
 
 ## Integrity batch (Phase 4)
 
