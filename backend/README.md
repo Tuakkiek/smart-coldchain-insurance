@@ -216,11 +216,9 @@ Mỗi mẫu được so với `[temp_min_c, temp_max_c]` của lô hàng. Mẫu 
 
 Với `PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true` (mặc định), `INSURANCE_TRIGGERED` chỉ là đủ điều kiện nghiệp vụ. Backend giữ `payout_status: evidence_pending` cho tới khi mọi telemetry trong chuỗi đều có chữ ký hợp lệ, cùng thiết bị, không gap, thuộc batch đã tính lại `MATCHED`, đã `DATA_ANCHORED` và đọc lại on-chain khớp. Event lưu `violation_evidence_id`, telemetry IDs, batch IDs/root/anchor transaction, `policy_version`, `gap_status`, `evidence_status` và lý do chờ/từ chối. Tamper, batch pending hoặc RPC lỗi không gọi Oracle.
 
-Ở `APP_ENV=development`, endpoint `POST /api/v1/demo/shipments/{id}/scenario` nhận `{"scenario":"normal"}` hoặc `{"scenario":"temperature_breach"}`. Kịch bản vi phạm dùng đồng hồ ảo, tạo bốn mẫu cho chính sách 15 phút/ngưỡng gap 5 phút và chạy qua cùng service với ESP32. Hãy dùng lô hàng demo riêng vì đồng hồ ảo có thể đưa `received_at` vào tương lai. Endpoint không được đăng ký trong production.
-
 Để cấu hình ESP32, sao chép `device/cold_chain_device/config.example.h` thành `config.h` cùng thư mục và xem `device/README.md`. Sketch yêu cầu HTTPS với CA hợp lệ. Để thử Backend local qua HTTP, dùng Python simulator trên localhost; không đưa dịch vụ HTTP phát triển trực tiếp ra Internet.
 
-Endpoint hiện có: `GET /api/v1/health`, `GET /api/v1/ready`, `POST/GET /api/v1/shipments`, `GET/DELETE /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, các endpoint integrity bên dưới và endpoint demo trong development. Tọa độ vẫn là mô phỏng ở Backend.
+Endpoint hiện có: `GET /api/v1/health`, `GET /api/v1/ready`, `POST/GET /api/v1/shipments`, `GET/DELETE /api/v1/shipments/{id}`, `POST/GET /api/v1/shipments/{id}/telemetry`, `GET /api/v1/shipments/{id}/events`, và các endpoint integrity bên dưới. Tọa độ vẫn là mô phỏng ở Backend.
 
 ## Integrity batch (Phase 4)
 

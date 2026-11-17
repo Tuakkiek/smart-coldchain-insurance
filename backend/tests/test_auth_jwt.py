@@ -393,7 +393,6 @@ def test_protected_routes_matrix(auth_api):
         ("POST", f"/api/v1/batches/{fake_uuid}/anchor", {}),
         ("POST", f"/api/v1/batches/{fake_uuid}/verify", {}),
         ("POST", f"/api/v1/shipments/{shipment_id}/insurance/reconcile", {}),
-        ("POST", f"/api/v1/demo/shipments/{shipment_id}/scenario", {"json": {"scenario": "normal"}}),
     ]
 
     for method, path, kwargs in protected_routes:
@@ -470,26 +469,26 @@ def test_signed_telemetry_does_not_require_jwt_and_jwt_cannot_bypass_ecdsa(auth_
     assert tampered_resp.json()["error"]["code"] in {"INVALID_SIGNATURE", "VALIDATION_ERROR"}
 
 
-def test_production_disables_demo_routes(tmp_path):
-    prod_settings = Settings(
-        database_url=f"sqlite:///{(tmp_path / 'prod_demo.db').as_posix()}",
-        app_env="production",
+def test_demo_routes_removed_in_all_environments(tmp_path):
+    settings = Settings(
+        database_url=f"sqlite:///{(tmp_path / 'demo_removed.db').as_posix()}",
+        app_env="development",
         admin_username=VALID_USERNAME,
         admin_password=VALID_PASSWORD,
         jwt_secret_key=VALID_SECRET,
         cors_origins=("https://app.coldchain.com",),
     )
-    prod_app = create_app(prod_settings)
+    app = create_app(settings)
     token = create_access_token(VALID_USERNAME, VALID_SECRET)
-    with TestClient(prod_app) as prod_client:
-        # Calling demo endpoint even with valid JWT returns 404
-        resp = prod_client.post(
+    with TestClient(app) as client:
+        # Calling demo endpoint even in development returns 404
+        resp = client.post(
             f"/api/v1/demo/shipments/{uuid4()}/scenario",
             json={"scenario": "normal"},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 404
-    prod_app.state.engine.dispose()
+    app.state.engine.dispose()
 
 
 def test_cors_preflight_allows_authorization(auth_api):

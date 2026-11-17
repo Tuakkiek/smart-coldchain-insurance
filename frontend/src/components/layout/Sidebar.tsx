@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Truck,
   BellRing,
-  FlaskConical,
   Shield,
   Layers,
   Cpu,
@@ -25,7 +24,6 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh, isRefreshing }) => {
-  const enableDemo = import.meta.env.VITE_ENABLE_DEMO !== 'false';
   const { session } = useAuth();
 
   const navItems = [
@@ -35,14 +33,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh, is
     { label: 'Toàn vẹn Dữ liệu (Merkle)', path: '/integrity', icon: <Database size={18} /> },
     { label: 'Sự kiện & Vi phạm', path: '/events', icon: <BellRing size={18} /> },
   ];
-
-  if (enableDemo) {
-    navItems.push({
-      label: 'Kịch bản Demo',
-      path: '/demo',
-      icon: <FlaskConical size={18} />,
-    });
-  }
 
   return (
     <>

@@ -14,8 +14,6 @@ from sqlalchemy import select
 from app.core.database import get_session
 from app.schemas.api import (
     EventListOut,
-    DemoScenarioIn,
-    DemoScenarioOut,
     HealthOut,
     LoginIn,
     LoginOut,
@@ -62,7 +60,6 @@ from app.services.health import service_health
 
 
 router = APIRouter(prefix="/api/v1")
-demo_router = APIRouter(prefix="/api/v1/demo")
 DbSession = Annotated[Session, Depends(get_session)]
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -465,18 +462,3 @@ def reconcile_insurance_evidence(shipment_id: UUID4, request: Request, session: 
         request.app.state.settings.sensor_gap_minutes,
     )
 
-
-@demo_router.post("/shipments/{shipment_id}/scenario", response_model=DemoScenarioOut)
-def demo_scenario(shipment_id: UUID4, payload: DemoScenarioIn, request: Request, session: AdminSession):
-    from app.services.demo import run_scenario
-
-    return run_scenario(
-        session,
-        str(shipment_id),
-        payload,
-        request.app.state.clock,
-        request.app.state.settings.sensor_gap_minutes,
-        request.app.state.settings.max_sample_gap_seconds,
-        request.app.state.blockchain,
-        request.app.state.insurance_evidence,
-    )

@@ -228,7 +228,7 @@ Các tên trên là nhóm ý nghĩa/nhãn UI. Giữ wire enum hiện có: teleme
 | `POST` | `/api/v1/batches/{batch_id}/verify` | Có `AdminSession`; nút gọi bằng JWT sau khi NTK đổi dependency |
 | `POST` | `/api/v1/shipments/{shipment_id}/batches/seal`, `/api/v1/batches/{batch_id}/anchor`, `/api/v1/shipments/{shipment_id}/insurance/reconcile` | Đã có Admin routes; JWT cho seal/retry/reconcile khi UI cần, không cấp quyền blockchain owner |
 | `GET` | `/api/v1/health`, `/api/v1/ready` | Có; health/readiness an toàn |
-| `POST` | `/api/v1/demo/shipments/{shipment_id}/scenario` | Có `normal`/`temperature_breach` ở dev; scenario khác chỉ khi NTK triển khai |
+| `POST` | `/api/v1/demo/shipments/{shipment_id}/scenario` | **Đã xóa ở Issue #50** | Endpoint kịch bản demo và tab UI đã được loại bỏ hoàn toàn |
 
 **API dành cho actor khác, không tạo form browser:** `POST /api/v1/devices/{device_id}/keys` đã có; script NTK login rồi gửi `{key_id, public_key_pem}` cùng **JWT Bearer**, nhận `201 DeviceView`. Không thêm `/public-key`; UI chỉ refetch status. POST telemetry do ESP32/simulator ký ECDSA P-256 và gửi, không dùng JWT Admin, `201` cho mẫu mới/`200` duplicate hợp lệ; React không sinh chữ ký hoặc nhận private key. Token/password Admin không được ghi vào `config.h`.
 

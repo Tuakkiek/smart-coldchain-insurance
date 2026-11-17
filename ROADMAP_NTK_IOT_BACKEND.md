@@ -341,7 +341,7 @@ Backend validate min/max, thời lượng và số tiền; giữ `cargo_type` v�
 | `POST` | `/api/v1/batches/{batch_id}/anchor` | **Admin:** dispatch/retry anchor | Có; giữ nguyên |
 | `POST` | `/api/v1/shipments/{shipment_id}/insurance/reconcile` | **Admin:** đối soát evidence/payout | Có; giữ nguyên |
 | `GET` | `/api/v1/health`, `/api/v1/ready` | Health/readiness không lộ secret | Có |
-| `POST` | `/api/v1/demo/shipments/{shipment_id}/scenario` | **Dev/local only** | Có `normal`, `temperature_breach`; mở rộng scenario chỉ khi triển khai thật |
+| `POST` | `/api/v1/demo/shipments/{shipment_id}/scenario` | **Đã xóa ở Issue #50** | Endpoint kịch bản demo đã được loại bỏ hoàn toàn khỏi hệ thống |
 
 **Auth mục tiêu — chưa triển khai:** một dependency FastAPI chung `require_admin` xác minh `Authorization: Bearer <jwt_token>`; có thể giữ tên `AdminSession` để ghép session DB với dependency đó. Bảo vệ **mọi API quản trị và monitoring**: device/key/assignment, create/list/detail shipment, đọc telemetry/events/device health/integrity/batch, verify/seal/anchor retry, insurance reconcile và demo khi development. Health/readiness tối thiểu và login được public; POST signed telemetry dùng ECDSA riêng, không yêu cầu JWT Admin. Route demo vẫn tắt ở production dù JWT hợp lệ. Script provisioning đăng nhập rồi dùng Bearer Token ngắn hạn để upload public key; không ghi password/JWT vào `config.h`. CORS cho phép `Authorization` và `Content-Type`, không thay xác thực. Baseline API key phải bị loại bỏ hoàn toàn khỏi runtime mới, không có fallback cho header cũ.
 

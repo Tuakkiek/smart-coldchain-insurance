@@ -358,17 +358,6 @@ class IntegritySummaryOut(BaseModel):
     anchor_status: Literal["NOT_READY", "BLOCKCHAIN_PENDING", "DATA_ANCHORED", "BLOCKCHAIN_FAILED"]
 
 
-class DemoScenarioIn(StrictBody):
-    scenario: Literal["normal", "temperature_breach"]
-
-
-class DemoScenarioOut(BaseModel):
-    shipment_id: str
-    scenario: Literal["normal", "temperature_breach"]
-    generated_samples: int
-    shipment_status: Literal["created", "in_transit", "sensor_data_gap", "insurance_triggered"]
-
-
 class HealthOut(BaseModel):
     status: Literal["ok", "degraded"]
     database: Literal["ok", "degraded", "unavailable"]

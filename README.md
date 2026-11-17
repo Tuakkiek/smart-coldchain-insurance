@@ -239,7 +239,6 @@ Không có yêu cầu cảm biến GPS thật cho MVP. Backend nội suy vị tr
 | `POST` | `/integrity/batches/{batch_id}/verify` | Tính lại root/đối chiếu (admin) |
 | `GET` | `/integrity/audit` | Audit log (admin) |
 | `GET` | `/blockchain/transactions/{transaction_id}` | Theo dõi giao dịch Blockchain |
-| `POST` | `/demo/shipments/{shipment_id}/scenario` | Scenario demo; **chỉ development/test** |
 
 Ví dụ nhanh khi Backend đã chạy:
 
@@ -252,7 +251,7 @@ Tài liệu API tương tác theo cấu hình FastAPI dự kiến:
 - Local Swagger UI: `http://localhost:8000/docs`
 - Local OpenAPI JSON: `http://localhost:8000/openapi.json`
 
-**Lưu ý về quyền:** public API URL không có nghĩa tất cả endpoint công khai. Các route tạo/sửa, quản trị khóa, integrity verify, audit và demo cần authentication/authorization phía Backend. CORS **không** thay thế xác thực.
+**Lưu ý về quyền:** public API URL không có nghĩa tất cả endpoint công khai. Các route tạo/sửa, quản trị khóa, integrity verify và audit cần authentication/authorization phía Backend. CORS **không** thay thế xác thực.
 
 ## 7. Trạng thái hệ thống dùng chung
 
