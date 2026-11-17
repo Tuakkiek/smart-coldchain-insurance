@@ -59,8 +59,8 @@ npm run build
 
 - Mở `/login`, nhập username/password của **Admin duy nhất đã cấu hình ở Backend**. Frontend gọi JSON `POST /api/v1/auth/login`; không cấu hình username/password/JWT secret trong `VITE_*`.
 - Access token được giữ trong bộ nhớ và `localStorage` với key `coldchain_admin_session`; key cùng tên trong `sessionStorage` được dọn khi migrate. API client tự gửi `Authorization: Bearer <access_token>` cho API quản trị/giám sát.
-- Refresh token không được JavaScript đọc hoặc lưu. Trình duyệt tự nhận/gửi cookie `HttpOnly` khi login, refresh và logout dùng `credentials: 'include'`; các request API thường dùng `credentials: 'omit'`.
-- Reload trang khôi phục access token còn hạn. Khi token hết hạn hoặc API trả `401`, client gọi refresh tối đa một lần rồi retry request tối đa một lần. Nhiều request `401` đồng thời dùng chung một refresh promise; refresh thất bại sẽ xóa phiên và về Login, không tạo vòng lặp.
+- Refresh token được lưu phía Frontend dưới dạng cookie `HttpOnly` do trình duyệt quản lý nên JavaScript không thể đọc trực tiếp. Login, refresh và logout dùng `credentials: 'include'`; các request API thường dùng `credentials: 'omit'`.
+- Reload trang khôi phục access token còn hạn. Client chủ động dùng refresh cookie để lấy access token mới trước khi token hiện tại hết hạn; các request đồng thời dùng chung một refresh promise. Request đã gửi không được tự động phát lại khi nhận `401`; khi đó phiên local bị xóa và người dùng quay về Login.
 - Nút **Đăng xuất** gọi Backend để revoke/xóa refresh cookie và luôn xóa access token local, kể cả khi Backend tạm thời không kết nối được. Login/refresh/logout không tự retry.
 - Sai thông tin đăng nhập trả `401`; `429` hiển thị thời gian chờ từ `Retry-After` và khóa nút tới lúc thử lại. Không tự retry POST login. Mật khẩu giữ nguyên khoảng trắng khi gửi, không lưu/log sau khi submit.
 - Backend cho phép CORS đúng frontend origin với `Authorization`/`Content-Type` và expose `Retry-After`. Production dùng HTTPS và static host phải rewrite đường dẫn SPA (như `/login`, `/devices`) về `index.html`.
@@ -73,7 +73,7 @@ npm test
 npm run build
 ```
 
-Tests dùng fetch fixtures, không truy cập deployment thật hoặc giao dịch Blockchain. Bao gồm localStorage migration, startup refresh, login/logout, refresh thành công/thất bại, retry một lần, refresh đồng thời, route guard và response trả về muộn sau đổi phiên.
+Tests dùng fetch fixtures, không truy cập deployment thật hoặc giao dịch Blockchain. Bao gồm localStorage migration, startup refresh, login/logout, refresh chủ động thành công/thất bại, refresh đồng thời, không replay request, route guard và response trả về muộn sau đổi phiên.
 
 Vitest 5 yêu cầu Node.js `^22.12.0 || ^24.0.0 || >=26.0.0`; môi trường kiểm chứng hiện tại dùng Node.js 22.18.0.
 

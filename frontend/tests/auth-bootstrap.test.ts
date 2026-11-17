@@ -35,7 +35,7 @@ describe('auth startup refresh', () => {
   it('clears a restored access token when startup refresh is rejected', async () => {
     localStorage.setItem('coldchain_admin_session', tokenFor('persisted-admin'));
     fetchMock.mockResolvedValue(jsonResponse({
-      error: { code: 'REFRESH_TOKEN_REVOKED', message: 'Revoked' },
+      error: { code: 'REFRESH_TOKEN_EXPIRED', message: 'Expired' },
     }, 401));
     const { initializeAdminSession } = await import('../src/api/auth');
     const { getAuthSnapshot } = await import('../src/auth/session');
