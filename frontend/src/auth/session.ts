@@ -8,6 +8,7 @@ export interface AuthSnapshot {
   readonly session: AdminSession | null;
   readonly reason: 'expired' | 'unauthorized' | null;
   readonly revision: number;
+  readonly initializing: boolean;
 }
 
 const STORAGE_KEY = 'coldchain_admin_session';
@@ -34,10 +35,10 @@ function readSession(accessToken: string): AdminSession | null {
 
 function persist(token: string | null): void {
   try {
-    if (token) window.sessionStorage.setItem(STORAGE_KEY, token);
-    else window.sessionStorage.removeItem(STORAGE_KEY);
+    if (token) window.localStorage.setItem(STORAGE_KEY, token);
+    else window.localStorage.removeItem(STORAGE_KEY);
   } catch {
-    // Storage can be disabled. The current tab still works with memory only.
+    // Storage can be disabled. The current page still works with memory only.
   }
 }
 
@@ -46,16 +47,23 @@ function restore(): AuthSnapshot {
   try {
     // Remove the previous credential without reading or reusing it.
     window.localStorage.removeItem('coldchain_admin_api_key');
+    // Migrate away from the old per-tab access-token storage without reusing it.
+    window.sessionStorage.removeItem(STORAGE_KEY);
   } catch { /* Storage may be disabled. */ }
   try {
-    accessToken = window.sessionStorage.getItem(STORAGE_KEY);
+    accessToken = window.localStorage.getItem(STORAGE_KEY);
   } catch { /* Continue with an in-memory session. */ }
   const session = accessToken ? readSession(accessToken) : null;
   if (session && session.expiresAt > Date.now()) {
-    return { session, reason: null, revision: 0 };
+    return { session, reason: null, revision: 0, initializing: false };
   }
   persist(null);
-  return { session: null, reason: session ? 'expired' : null, revision: 0 };
+  return {
+    session: null,
+    reason: session ? 'expired' : null,
+    revision: 0,
+    initializing: true,
+  };
 }
 
 let snapshot = restore();
@@ -73,14 +81,30 @@ export function startSession(accessToken: string): void {
     throw new Error('Phản hồi đăng nhập không hợp lệ hoặc token đã hết hạn. Vui lòng thử lại.');
   }
   persist(accessToken);
-  snapshot = { session, reason: null, revision: snapshot.revision + 1 };
+  snapshot = { session, reason: null, revision: snapshot.revision + 1, initializing: false };
   listeners.forEach((listener) => listener());
 }
 
 export function endSession(reason: AuthSnapshot['reason'] = null): void {
   persist(null);
-  if (!snapshot.session && snapshot.reason === reason) return;
-  snapshot = { session: null, reason, revision: snapshot.revision + 1 };
+  if (!snapshot.session && snapshot.reason === reason && !snapshot.initializing) return;
+  snapshot = {
+    session: null,
+    reason,
+    revision: snapshot.revision + 1,
+    initializing: false,
+  };
+  listeners.forEach((listener) => listener());
+}
+
+export function finishSessionInitialization(reason: AuthSnapshot['reason'] = snapshot.reason): void {
+  if (!snapshot.initializing) return;
+  snapshot = {
+    session: null,
+    reason,
+    revision: snapshot.revision + 1,
+    initializing: false,
+  };
   listeners.forEach((listener) => listener());
 }
 

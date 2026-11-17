@@ -14,7 +14,7 @@ import {
 import { ConnectionStatus } from '../feedback/ConnectionStatus';
 import { Button } from '../ui/Button';
 import { useAuth } from '../../auth/AuthProvider';
-import { endSession } from '../../auth/session';
+import { logoutAdmin } from '../../api/auth';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -188,7 +188,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh }) 
               size="sm"
               variant="secondary"
               icon={<LogOut size={15} aria-hidden="true" />}
-              onClick={() => endSession()}
+              onClick={() => { void logoutAdmin().catch(() => undefined); }}
             >
               Đăng xuất
             </Button>

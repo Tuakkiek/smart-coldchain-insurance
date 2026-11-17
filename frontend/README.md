@@ -35,7 +35,7 @@ cp .env.example .env
 ```
 
 Các biến môi trường:
-- `VITE_API_BASE_URL`: Địa chỉ REST API Backend (mặc định development: `http://127.0.0.1:8000`; production dùng URL Render đã cấu hình).
+- `VITE_API_BASE_URL`: Địa chỉ REST API Backend (mặc định development: `http://localhost:8000`; production dùng URL Render đã cấu hình). Không trộn `localhost` với `127.0.0.1` vì refresh cookie được phân tách theo hostname.
 - `VITE_USE_MOCK`: Bật dữ liệu Mock độc lập (`true` hoặc `false`). Hữu ích khi Backend chưa chạy hoặc muốn demo nhanh 3 kịch bản chuẩn.
 - `VITE_ENABLE_DEMO`: Cho phép hiển thị tab Demo kịch bản (`true` hoặc `false`).
 
@@ -58,9 +58,10 @@ npm run build
 ### 2.5. Đăng nhập Admin / JWT
 
 - Mở `/login`, nhập username/password của **Admin duy nhất đã cấu hình ở Backend**. Frontend gọi JSON `POST /api/v1/auth/login`; không cấu hình username/password/JWT secret trong `VITE_*`.
-- Access Token được giữ trong bộ nhớ và `sessionStorage` của tab. API client tự gửi `Authorization: Bearer <access_token>` cho các API quản trị/giám sát; không còn ô nhập API key trong các modal. Credential cũ trong localStorage được xóa khi app khởi động.
-- Reload tab giữ phiên còn hạn. Hết hạn hoặc Backend trả `401` sẽ xóa phiên, unmount nội dung quản trị, dừng polling và hủy request đang chạy, rồi về Login. Response cũ không được đưa vào phiên mới. Lỗi `403` hiển thị lỗi thao tác, không tự đăng xuất.
-- Nút **Đăng xuất** xóa token và state của Dashboard. Đây là logout tại trình duyệt; JWT đã cấp vẫn có hiệu lực ở Backend tới `exp`. Không refresh token, Register, Forgot Password hoặc quản lý tài khoản.
+- Access token được giữ trong bộ nhớ và `localStorage` với key `coldchain_admin_session`; key cùng tên trong `sessionStorage` được dọn khi migrate. API client tự gửi `Authorization: Bearer <access_token>` cho API quản trị/giám sát.
+- Refresh token không được JavaScript đọc hoặc lưu. Trình duyệt tự nhận/gửi cookie `HttpOnly` khi login, refresh và logout dùng `credentials: 'include'`; các request API thường dùng `credentials: 'omit'`.
+- Reload trang khôi phục access token còn hạn. Khi token hết hạn hoặc API trả `401`, client gọi refresh tối đa một lần rồi retry request tối đa một lần. Nhiều request `401` đồng thời dùng chung một refresh promise; refresh thất bại sẽ xóa phiên và về Login, không tạo vòng lặp.
+- Nút **Đăng xuất** gọi Backend để revoke/xóa refresh cookie và luôn xóa access token local, kể cả khi Backend tạm thời không kết nối được. Login/refresh/logout không tự retry.
 - Sai thông tin đăng nhập trả `401`; `429` hiển thị thời gian chờ từ `Retry-After` và khóa nút tới lúc thử lại. Không tự retry POST login. Mật khẩu giữ nguyên khoảng trắng khi gửi, không lưu/log sau khi submit.
 - Backend cho phép CORS đúng frontend origin với `Authorization`/`Content-Type` và expose `Retry-After`. Production dùng HTTPS và static host phải rewrite đường dẫn SPA (như `/login`, `/devices`) về `index.html`.
 - Login luôn dùng **Backend thật**, kể cả khi bật mock cho dữ liệu giám sát. Mock không tạo credential hay bỏ qua đăng nhập. ESP32/telemetry giữ cơ chế xác thực P-256 riêng, không dùng JWT Admin.
@@ -72,7 +73,7 @@ npm test
 npm run build
 ```
 
-Tests dùng fetch fixtures, không truy cập deployment thật hoặc giao dịch Blockchain. Bao gồm route guard/deep link, login/logout, expiry, 401/403/429, token phiên, Bearer cho các thao tác cũ và response trả về muộn sau logout.
+Tests dùng fetch fixtures, không truy cập deployment thật hoặc giao dịch Blockchain. Bao gồm localStorage migration, startup refresh, login/logout, refresh thành công/thất bại, retry một lần, refresh đồng thời, route guard và response trả về muộn sau đổi phiên.
 
 Vitest 5 yêu cầu Node.js `^22.12.0 || ^24.0.0 || >=26.0.0`; môi trường kiểm chứng hiện tại dùng Node.js 22.18.0.
 
@@ -135,4 +136,4 @@ frontend/
 - Không lưu private key hoặc seed phrase trong Frontend.
 
 
-Local Vite mặc định gọi `http://127.0.0.1:8000` khi không đặt `VITE_API_BASE_URL`; production vẫn dùng Backend được cấu hình, không tự fallback. Admin đăng nhập bằng tài khoản đã seed trong MySQL/Aiven; `.env` Backend chỉ cung cấp credential khởi tạo lần đầu.
+Local Vite mặc định gọi `http://localhost:8000` khi không đặt `VITE_API_BASE_URL`; production vẫn dùng Backend được cấu hình, không tự fallback. Admin đăng nhập bằng tài khoản đã seed trong MySQL/Aiven; `.env` Backend chỉ cung cấp credential khởi tạo lần đầu.
