@@ -170,7 +170,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
                   margin: 0,
                 }}
               >
-                Quy trình tối giản: Đăng ký ID & Tên thiết bị • Cấp khóa P-256 qua USB ngoài browser
+                Đăng ký ID & Tên thiết bị • Backend local tự động cấp khóa P-256
               </p>
             </div>
           </div>
@@ -324,13 +324,13 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
               }}
             >
               <Info size={14} style={{ color: 'var(--color-accent)' }} />
-              Cấp khóa mật mã ngoài trình duyệt (An toàn tuyệt đối)
+              Cấp khóa tự động trên Backend local
             </div>
             <p style={{ margin: 0 }}>
-              Sau khi đăng ký thiết bị, kỹ thuật viên chạy script Python của NTK trên máy tính tin cậy để tạo cặp khóa <strong>ECDSA P-256</strong> riêng cho thiết bị. Private key được nạp trực tiếp vào firmware ESP32 qua cổng USB và chỉ có public key SPKI PEM được gửi lên API Backend.
+              Khi đăng ký, Backend tạo một cặp khóa <strong>ECDSA P-256</strong> riêng cho thiết bị. Public key được lưu vào MySQL; private key chỉ được ghi vào file <code>config.h</code> đã cấu hình để bạn nạp firmware qua USB.
             </p>
             <p style={{ margin: '4px 0 0 0', color: 'var(--color-text-tertiary)' }}>
-              Trình duyệt không sinh/nhập/hiển thị private key. Trạng thái public key sẽ tự động hiển thị sau khi nạp xong.
+              Trình duyệt không nhận hoặc hiển thị private key/public key. Thông báo thành công chỉ xuất hiện sau khi Backend cập nhật <code>config.h</code> xong.
             </p>
           </div>
 

@@ -1,7 +1,7 @@
 #pragma once
 
-// Copy to config.h (ignored by Git) and replace every placeholder.
-// Use a new device key; a key previously committed to Git must be revoked.
+// config.h is generated/updated by the local Backend when an Admin registers
+// a device. It is ignored by Git because it contains the device private key.
 #define API_BASE_URL "https://YOUR-SERVICE.onrender.com"
 #define WIFI_SSID "YOUR_WIFI_SSID"
 #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
@@ -10,7 +10,7 @@
 #define KEY_ID "YOUR_KEY_ID"
 
 static const char DEVICE_PRIVATE_KEY_PEM[] = R"PEM(-----BEGIN EC PRIVATE KEY-----
-PASTE_NEW_DEVICE_PRIVATE_KEY_HERE
+GENERATED_BY_LOCAL_BACKEND
 -----END EC PRIVATE KEY-----
 )PEM";
 

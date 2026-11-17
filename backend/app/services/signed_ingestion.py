@@ -56,7 +56,8 @@ def _shipment_id(value: str) -> str:
     return value
 
 
-def register_device(session: Session, device_id: str, device_name: str) -> Device:
+def prepare_device(session: Session, device_id: str, device_name: str) -> Device:
+    """Validate and stage a new device without committing the transaction."""
     _identity(device_id, "device_id")
     device_name = device_name.strip()
     if not 1 <= len(device_name) <= 100:
@@ -65,6 +66,12 @@ def register_device(session: Session, device_id: str, device_name: str) -> Devic
         raise IngestionError(409, "DEVICE_EXISTS", "Device already exists")
     device = Device(id=device_id, device_name=device_name, status="active", last_sequence_number=0)
     session.add(device)
+    return device
+
+
+def register_device(session: Session, device_id: str, device_name: str) -> Device:
+    """Register without local key provisioning (used by the manual/cloud mode)."""
+    device = prepare_device(session, device_id, device_name)
     try:
         session.commit()
     except IntegrityError as exc:

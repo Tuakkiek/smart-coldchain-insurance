@@ -27,6 +27,7 @@ from app.schemas.api import (
     SignedTelemetryCreate,
     SignedTelemetryOut,
     DeviceRegister,
+    DeviceRegistrationOut,
     DeviceOut,
     DevicesOut,
     DeviceDeleteOut,
@@ -280,11 +281,27 @@ def add_telemetry(shipment_id: UUID4, payload: SignedTelemetryCreate | Telemetry
     return shipments.telemetry_dict(sample)
 
 
-@router.post("/devices", response_model=DeviceOut, status_code=201)
-def register_device(payload: DeviceRegister, session: AdminSession):
-    device = signed_ingestion.register_device(
-        session, payload.device_id, payload.device_name,
-    )
+@router.post(
+    "/devices",
+    response_model=DeviceRegistrationOut,
+    response_model_exclude_unset=True,
+    status_code=201,
+)
+def register_device(payload: DeviceRegister, request: Request, session: AdminSession):
+    if request.app.state.settings.device_provisioning_mode == "local":
+        device, key_id = request.app.state.device_provisioner.provision(
+            session,
+            payload.device_id,
+            payload.device_name,
+        )
+        result = signed_ingestion.device_view(session, device)
+        result.update({"key_id": key_id, "provisioning_status": "ready"})
+        return result
+
+    # Hosted backends cannot modify config.h on the Admin's personal computer.
+    # Manual mode preserves the existing authenticated public-key API without
+    # claiming that a local firmware file was updated.
+    device = signed_ingestion.register_device(session, payload.device_id, payload.device_name)
     return signed_ingestion.device_view(session, device)
 
 

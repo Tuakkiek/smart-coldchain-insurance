@@ -14,6 +14,7 @@ from sqlalchemy.exc import ArgumentError
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainInsurance.json"
 DEFAULT_INTEGRITY_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainDataIntegrity.json"
+DEFAULT_DEVICE_CONFIG_PATH = BACKEND_DIR.parent / "device/cold_chain_device/config.h"
 
 
 def is_placeholder(val: str | None) -> bool:
@@ -139,6 +140,8 @@ class Settings:
     blockchain_confirmations: int = 1
     blockchain_receipt_timeout_seconds: int = 15
     public_api_base_url: str = ""
+    device_provisioning_mode: str = "manual"
+    device_config_path: Path = DEFAULT_DEVICE_CONFIG_PATH
 
     def __post_init__(self) -> None:
         if self.refresh_cookie_secure is None:
@@ -159,6 +162,14 @@ class Settings:
             self.refresh_cookie_domain,
             self.cors_origins,
         )
+        if self.device_provisioning_mode not in {"local", "manual"}:
+            raise ValueError("DEVICE_PROVISIONING_MODE must be local or manual")
+        config_path = Path(self.device_config_path)
+        if config_path.name != "config.h":
+            raise ValueError("DEVICE_CONFIG_PATH must point to a file named config.h")
+        if not config_path.is_absolute():
+            config_path = BACKEND_DIR.parent / config_path
+        object.__setattr__(self, "device_config_path", config_path.resolve(strict=False))
 
 
 def _mysql_url() -> URL:
@@ -314,6 +325,10 @@ def load_settings() -> Settings:
     integrity_batch_max_age_minutes = int(os.getenv("INTEGRITY_BATCH_MAX_AGE_MINUTES", "5"))
     if integrity_batch_max_age_minutes <= 0:
         raise ValueError("INTEGRITY_BATCH_MAX_AGE_MINUTES must be positive")
+    device_provisioning_mode = os.getenv(
+        "DEVICE_PROVISIONING_MODE",
+        "manual" if app_env == "production" else "local",
+    ).strip().lower()
     return Settings(
         database_url=_mysql_url(),
         app_env=app_env,
@@ -350,4 +365,9 @@ def load_settings() -> Settings:
         blockchain_confirmations=confirmations,
         blockchain_receipt_timeout_seconds=receipt_timeout,
         public_api_base_url=os.getenv("PUBLIC_API_BASE_URL", "").strip().rstrip("/"),
+        device_provisioning_mode=device_provisioning_mode,
+        device_config_path=Path(os.getenv(
+            "DEVICE_CONFIG_PATH",
+            "device/cold_chain_device/config.h",
+        ).strip()),
     )
