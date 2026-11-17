@@ -11,30 +11,32 @@ import { DemoPage } from './pages/DemoPage';
 import { LoginPage } from './pages/LoginPage';
 import { AuthProvider } from './auth/AuthProvider';
 import { RequireAuth } from './auth/RequireAuth';
+import { ToastProvider } from './components/feedback/Toast';
 
 export const App: React.FC = () => {
   return (
     <AuthProvider>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route element={<RequireAuth />}>
-            <Route path="/" element={<AppShell />}>
-              <Route index element={<OverviewPage />} />
-              <Route path="shipments" element={<ShipmentsPage />} />
-              <Route path="shipments/:id" element={<ShipmentDetailPage />} />
-              <Route path="devices" element={<DevicesPage />} />
-              <Route path="integrity" element={<DataIntegrityPage />} />
-              <Route path="events" element={<EventsPage />} />
-              <Route path="demo" element={<DemoPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
+        <ToastProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route element={<RequireAuth />}>
+              <Route path="/" element={<AppShell />}>
+                <Route index element={<OverviewPage />} />
+                <Route path="shipments" element={<ShipmentsPage />} />
+                <Route path="shipments/:id" element={<ShipmentDetailPage />} />
+                <Route path="devices" element={<DevicesPage />} />
+                <Route path="integrity" element={<DataIntegrityPage />} />
+                <Route path="events" element={<EventsPage />} />
+                <Route path="demo" element={<DemoPage />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
             </Route>
-          </Route>
-        </Routes>
+          </Routes>
+        </ToastProvider>
       </BrowserRouter>
     </AuthProvider>
   );
 };
 
 export default App;
-

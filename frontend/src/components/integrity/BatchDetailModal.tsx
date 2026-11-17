@@ -58,7 +58,7 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
         padding: 'var(--space-4)',
         animation: 'fadeIn 0.15s ease-out',
       }}
-      onClick={onClose}
+      onClick={isVerifying ? undefined : onClose}
     >
       <div
         style={{
@@ -127,12 +127,15 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={onClose}
+            disabled={isVerifying}
             style={{
               background: 'none',
               border: 'none',
               color: 'var(--color-text-tertiary)',
-              cursor: 'pointer',
+              cursor: isVerifying ? 'not-allowed' : 'pointer',
+              opacity: isVerifying ? 0.5 : 1,
               padding: '6px',
               borderRadius: 'var(--radius-sm)',
               display: 'flex',
@@ -391,7 +394,7 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
                 Kiểm tra lại tính toàn vẹn
               </Button>
             )}
-            <Button variant="secondary" size="sm" onClick={onClose}>
+            <Button variant="secondary" size="sm" onClick={onClose} disabled={isVerifying}>
               Đóng
             </Button>
           </div>

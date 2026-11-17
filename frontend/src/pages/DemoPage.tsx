@@ -9,6 +9,7 @@ import { ErrorState } from '../components/feedback/ErrorState';
 import { getShipments } from '../api/shipments';
 import { triggerDemoScenario } from '../api/demo';
 import { ShipmentOut, DemoScenarioOut } from '../types/api';
+import { useToast } from '../components/feedback/Toast';
 import {
   FlaskConical,
   Play,
@@ -25,17 +26,21 @@ import {
 } from 'lucide-react';
 
 export const DemoPage: React.FC = () => {
+  const { toast } = useToast();
   const [shipments, setShipments] = useState<ShipmentOut[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [runningScenario, setRunningScenario] = useState<string | null>(null);
   const [scenarioResult, setScenarioResult] = useState<DemoScenarioOut | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const fetchShipmentsList = async () => {
-    setLoading(true);
+  const fetchShipmentsList = async (isBackground = false) => {
+    if (!isBackground && !hasLoadedOnce) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const data = await getShipments();
@@ -43,8 +48,11 @@ export const DemoPage: React.FC = () => {
       if (data.items.length > 0 && !selectedId) {
         setSelectedId(data.items[0].id);
       }
+      setHasLoadedOnce(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Lỗi tải danh sách lô hàng demo');
+      if (!isBackground && !hasLoadedOnce) {
+        setError(err instanceof Error ? err.message : 'Lỗi tải danh sách lô hàng demo');
+      }
     } finally {
       setLoading(false);
     }
@@ -63,29 +71,35 @@ export const DemoPage: React.FC = () => {
     try {
       const result = await triggerDemoScenario(selectedId, { scenario });
       setScenarioResult(result);
-      // Refresh shipments list to show updated state
-      await fetchShipmentsList();
+      const successMsg =
+        scenario === 'temperature_breach'
+          ? `Đã kích hoạt vi phạm nhiệt độ (${result.generated_samples} mẫu dữ liệu)!`
+          : `Đã thiết lập trạng thái vận hành chuẩn (${result.generated_samples} mẫu dữ liệu)!`;
+      toast.success(successMsg, { title: 'Kịch bản Demo' });
+      // Refresh shipments list to show updated state without unmounting page
+      await fetchShipmentsList(true);
     } catch (err: unknown) {
-      setActionError(
+      const errorMsg =
         err instanceof Error
           ? err.message
-          : 'Không thể kích hoạt kịch bản demo trên Backend'
-      );
+          : 'Không thể kích hoạt kịch bản demo trên Backend';
+      setActionError(errorMsg);
+      toast.error(errorMsg, { title: 'Lỗi kích hoạt Demo' });
     } finally {
       setRunningScenario(null);
     }
   };
 
-  if (loading) {
-    return <LoadingState message="Đang nạp môi trường kiểm thử demo..." />;
+  if (loading && !hasLoadedOnce) {
+    return <LoadingState fullPage message="Đang nạp môi trường kiểm thử demo..." />;
   }
 
-  if (error) {
+  if (error && !hasLoadedOnce) {
     return (
       <ErrorState
         title="Lỗi khởi tạo khu vực demo"
         message={error}
-        onRetry={fetchShipmentsList}
+        onRetry={() => fetchShipmentsList(false)}
       />
     );
   }

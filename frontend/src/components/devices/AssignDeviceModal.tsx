@@ -178,7 +178,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
         padding: 'var(--space-4)',
         animation: 'fadeIn 0.15s ease-out',
       }}
-      onClick={onClose}
+      onClick={submitting ? undefined : onClose}
     >
       <div
         style={{
@@ -244,11 +244,14 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            disabled={submitting}
             style={{
               background: 'none',
               border: 'none',
-              cursor: 'pointer',
+              cursor: submitting ? 'not-allowed' : 'pointer',
+              opacity: submitting ? 0.5 : 1,
               color: 'var(--color-text-tertiary)',
               padding: 4,
               borderRadius: 'var(--radius-sm)',
@@ -460,7 +463,12 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
             <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>
               Đóng
             </Button>
-            <Button type="submit" variant="primary" disabled={submitting}>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={submitting}
+              disabled={loading || submitting}
+            >
               {submitting ? 'Đang xử lý...' : 'Liên Kết Chuyến Hàng'}
             </Button>
           </div>

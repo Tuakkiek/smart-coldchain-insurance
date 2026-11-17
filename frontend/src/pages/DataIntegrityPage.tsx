@@ -13,6 +13,7 @@ import { MerkleBatchTable } from '../components/integrity/MerkleBatchTable';
 import { IntegrityViolationAlert } from '../components/integrity/IntegrityViolationAlert';
 import { BatchVerificationModal } from '../components/integrity/BatchVerificationModal';
 import { BatchDetailModal } from '../components/integrity/BatchDetailModal';
+import { useToast } from '../components/feedback/Toast';
 import {
   getIntegrityBatches,
   getIntegritySummary,
@@ -37,6 +38,7 @@ import {
 } from 'lucide-react';
 
 export const DataIntegrityPage: React.FC = () => {
+  const { toast } = useToast();
   const backendConnectionState = useBackendConnectionState();
   const [batches, setBatches] = useState<IntegrityBatch[]>([]);
   const [summary, setSummary] = useState<IntegritySummaryOut | null>(null);
@@ -141,6 +143,17 @@ export const DataIntegrityPage: React.FC = () => {
       if (isMountedRef.current) {
         setVerificationResult(result);
         const isTampered = result.verification_status === 'DATA_INTEGRITY_FAILED';
+        if (isTampered) {
+          toast.warning(
+            `Phát hiện sai lệch tính toàn vẹn Merkle Batch '${batchId.slice(0, 8)}...'!`,
+            { title: 'Toàn vẹn dữ liệu' }
+          );
+        } else {
+          toast.success(
+            `Xác minh tính toàn vẹn Merkle Batch '${batchId.slice(0, 8)}...' trùng khớp hoàn toàn!`,
+            { title: 'Toàn vẹn dữ liệu' }
+          );
+        }
 
         // Update local batch list state with the new verification status
         setBatches((prev) =>
@@ -181,6 +194,7 @@ export const DataIntegrityPage: React.FC = () => {
             ? err.message
             : 'Lỗi kết nối hoặc quyền truy cập khi gửi yêu cầu xác minh tới Backend';
         setVerifyError(errorMsg);
+        toast.error(errorMsg, { title: 'Lỗi xác minh Merkle' });
         // CRITICAL: Do NOT fabricate DATA_INTEGRITY_FAILED on API/network errors!
       }
     } finally {
@@ -199,8 +213,8 @@ export const DataIntegrityPage: React.FC = () => {
   const isEffectiveColdStart =
     isColdStart || backendConnectionState === 'COLD_START';
 
-  if (loading) {
-    return <LoadingState message="Đang nạp danh sách Merkle Batches và trạng thái neo Blockchain..." />;
+  if (loading && batches.length === 0) {
+    return <LoadingState fullPage message="Đang nạp danh sách Merkle Batches và trạng thái neo Blockchain..." />;
   }
 
   if (error && batches.length === 0) {
@@ -264,9 +278,10 @@ export const DataIntegrityPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => fetchData(false)}
+            onClick={() => fetchData(true)}
             loading={refreshing}
-            icon={<RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />}
+            disabled={loading || refreshing}
+            icon={<RefreshCw size={14} />}
           >
             Làm mới
           </Button>

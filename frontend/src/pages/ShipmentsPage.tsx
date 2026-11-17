@@ -10,14 +10,18 @@ import { EmptyState } from '../components/feedback/EmptyState';
 import { deleteShipment, getShipments } from '../api/shipments';
 import { ApiError } from '../api/client';
 import { ShipmentOut, ShipmentStatus } from '../types/api';
-import { Search, MapPin, Thermometer, Shield, Plus, CheckCircle, ArrowRight, AlertTriangle, Trash2 } from 'lucide-react';
+import { Search, MapPin, Thermometer, Shield, Plus, CheckCircle, ArrowRight, AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
 import { CreateShipmentModal } from '../components/shipments/CreateShipmentModal';
+import { useToast } from '../components/feedback/Toast';
 
 export const ShipmentsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [shipments, setShipments] = useState<ShipmentOut[]>([]);
   const [filtered, setFiltered] = useState<ShipmentOut[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [successShipment, setSuccessShipment] = useState<ShipmentOut | null>(null);
@@ -28,23 +32,38 @@ export const ShipmentsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const fetchShipments = async () => {
-    setLoading(true);
+  const fetchShipments = async (isBackground = false) => {
+    if (!isBackground && !hasLoadedOnce) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     setError(null);
     try {
       const data = await getShipments();
       setShipments(data.items);
       setFiltered(data.items);
+      setHasLoadedOnce(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Không thể tải danh sách lô hàng');
+      if (!isBackground && !hasLoadedOnce) {
+        setError(err instanceof Error ? err.message : 'Không thể tải danh sách lô hàng');
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   const handleShipmentCreated = (newShipment: ShipmentOut) => {
     setShipments((prev) => [newShipment, ...prev]);
     setSuccessShipment(newShipment);
+    toast.success(`Đã tạo thành công lô hàng mới: ${newShipment.code}`, {
+      title: 'Tạo lô hàng thành công',
+      action: {
+        label: 'Xem chi tiết',
+        onClick: () => navigate(`/shipments/${newShipment.id}`),
+      },
+    });
   };
 
   const handleDeleteShipment = async (shipment: ShipmentOut) => {
@@ -103,16 +122,16 @@ export const ShipmentsPage: React.FC = () => {
     setFiltered(result);
   }, [searchTerm, statusFilter, shipments]);
 
-  if (loading) {
-    return <LoadingState message="Đang tải danh sách lô hàng..." />;
+  if (loading && !hasLoadedOnce) {
+    return <LoadingState fullPage message="Đang tải danh sách lô hàng..." />;
   }
 
-  if (error) {
+  if (error && !hasLoadedOnce) {
     return (
       <ErrorState
         title="Lỗi tải danh sách lô hàng"
         message={error}
-        onRetry={fetchShipments}
+        onRetry={() => fetchShipments(false)}
       />
     );
   }
@@ -123,7 +142,14 @@ export const ShipmentsPage: React.FC = () => {
         title="Danh sách Lô hàng Lạnh"
         action={
           <div className="flex-row items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={fetchShipments}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => fetchShipments(true)}
+              loading={refreshing}
+              disabled={loading || refreshing}
+              icon={<RefreshCw size={14} />}
+            >
               Làm mới
             </Button>
             <Button
@@ -365,6 +391,7 @@ export const ShipmentsPage: React.FC = () => {
                       variant="danger"
                       size="sm"
                       loading={deletingShipmentId === shipment.id}
+                      disabled={deletingShipmentId !== null}
                       icon={<Trash2 size={13} />}
                       onClick={(event) => {
                         event.stopPropagation();

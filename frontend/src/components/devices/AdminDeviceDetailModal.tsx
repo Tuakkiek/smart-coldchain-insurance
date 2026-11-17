@@ -4,6 +4,7 @@ import { getAdminDeviceDetails } from '../../api/devices';
 import { ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { LoadingState } from '../feedback/LoadingState';
 import {
   ShieldCheck,
   X,
@@ -166,9 +167,15 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
         {/* Modal Body */}
         <div style={{ overflowY: 'auto', padding: 'var(--space-5)' }}>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
-            <Button size="sm" variant="secondary" onClick={() => fetchDetails()} disabled={loading}
-              icon={<RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />}>
-              {loading ? 'Đang tải...' : 'Làm mới dữ liệu'}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => fetchDetails()}
+              loading={loading}
+              disabled={loading}
+              icon={<RefreshCw size={14} />}
+            >
+              Làm mới dữ liệu
             </Button>
           </div>
 
@@ -190,6 +197,10 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
               <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
               <div>{error}</div>
             </div>
+          )}
+
+          {loading && !deviceDetail && !error && (
+            <LoadingState message="Đang nạp chi tiết thiết bị..." minHeight="200px" />
           )}
 
           {deviceDetail && (

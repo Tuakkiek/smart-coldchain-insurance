@@ -25,6 +25,7 @@ import { ApiError } from '../api/client';
 import { RegisterDeviceModal } from '../components/devices/RegisterDeviceModal';
 import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { AdminDeviceDetailModal } from '../components/devices/AdminDeviceDetailModal';
+import { useToast } from '../components/feedback/Toast';
 import {
   Cpu,
   KeyRound,
@@ -48,6 +49,7 @@ import {
 } from 'lucide-react';
 
 export const DevicesPage: React.FC = () => {
+  const { toast } = useToast();
   const backendConnectionState = useBackendConnectionState();
   const [devices, setDevices] = useState<DeviceItemOut[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
@@ -150,12 +152,14 @@ export const DevicesPage: React.FC = () => {
     if (!pem) return;
     navigator.clipboard.writeText(pem);
     setCopiedKey(true);
+    toast.info('Đã sao chép khóa công khai (PEM) vào bộ nhớ tạm.');
     setTimeout(() => setCopiedKey(false), 2000);
   };
 
   const copyKeyId = (keyId: string) => {
     navigator.clipboard.writeText(keyId);
     setCopiedKeyId(keyId);
+    toast.info(`Đã sao chép Key ID '${keyId}' vào bộ nhớ tạm.`);
     setTimeout(() => setCopiedKeyId(null), 2000);
   };
 
@@ -242,7 +246,7 @@ export const DevicesPage: React.FC = () => {
   );
 
   if (loading && devices.length === 0) {
-    return <LoadingState message="Đang nạp dữ liệu xác thực và tình trạng thiết bị ESP32..." />;
+    return <LoadingState fullPage message="Đang nạp dữ liệu xác thực và tình trạng thiết bị ESP32..." />;
   }
 
   return (
@@ -271,14 +275,10 @@ export const DevicesPage: React.FC = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => fetchDevicesList(false)}
+              onClick={() => fetchDevicesList(true)}
+              loading={refreshing}
               disabled={loading || refreshing}
-              icon={
-                <RefreshCw
-                  size={14}
-                  className={loading || refreshing ? 'animate-spin' : undefined}
-                />
-              }
+              icon={<RefreshCw size={14} />}
             >
               Làm mới
             </Button>
@@ -1347,9 +1347,9 @@ export const DevicesPage: React.FC = () => {
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
         onSuccess={(res) => {
-          setAdminSuccessMsg(
-            `Đã đăng ký thành công thiết bị ${res.device_id} (${res.device_name || 'Cold Chain Sensor'}).`
-          );
+          const msg = `Đã đăng ký thành công thiết bị ${res.device_id} (${res.device_name || 'Cold Chain Sensor'}).`;
+          setAdminSuccessMsg(msg);
+          toast.success(msg, { title: 'Đăng ký thiết bị' });
           fetchDevicesList(false);
         }}
       />
@@ -1363,6 +1363,7 @@ export const DevicesPage: React.FC = () => {
         initialDeviceId={assignModalDeviceId}
         onSuccess={(_res, msg) => {
           setAdminSuccessMsg(msg);
+          toast.success(msg, { title: 'Liên kết thiết bị' });
           fetchDevicesList(true);
         }}
       />

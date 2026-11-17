@@ -247,6 +247,7 @@ export const IntegrityViolationAlert: React.FC<IntegrityViolationAlertProps> = (
                         size="sm"
                         onClick={() => onVerifyBatch(batch.batch_id)}
                         loading={isVerifying}
+                        disabled={Boolean(verifyingBatchId)}
                         icon={<RefreshCw size={14} />}
                         title="Yêu cầu Backend tính lại Merkle root từ MySQL và so sánh với on-chain root"
                       >
