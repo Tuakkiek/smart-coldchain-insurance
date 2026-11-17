@@ -310,7 +310,10 @@ export const ShipmentDetailPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => fetchData(true)}
+            onClick={() => {
+              fetchData(true);
+              toast.info('Đang làm mới chi tiết lô hàng...', { title: 'Làm mới', duration: 2500 });
+            }}
             loading={refreshing}
             disabled={loading || refreshing}
             icon={<RefreshCw size={14} />}

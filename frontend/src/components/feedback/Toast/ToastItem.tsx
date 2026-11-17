@@ -65,6 +65,7 @@ export const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
 
   const config = TYPE_CONFIG[toast.type];
   const IconComponent = config.icon;
+  const displayTitle = toast.title !== undefined ? toast.title : config.defaultTitle;
 
   useEffect(() => {
     if (toast.duration <= 0) return;
@@ -93,6 +94,7 @@ export const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
     <div
       role={config.role}
       aria-live={config.ariaLive}
+      className="coldchain-toast-item"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{
@@ -126,7 +128,7 @@ export const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        {toast.title && (
+        {displayTitle && (
           <div
             style={{
               fontSize: 'var(--text-sm)',
@@ -136,13 +138,13 @@ export const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
               marginBottom: '2px',
             }}
           >
-            {toast.title}
+            {displayTitle}
           </div>
         )}
         <div
           style={{
             fontSize: 'var(--text-sm)',
-            color: toast.title ? 'var(--color-text-secondary)' : 'var(--color-text-primary)',
+            color: displayTitle ? 'var(--color-text-secondary)' : 'var(--color-text-primary)',
             lineHeight: 'var(--text-sm-lh)',
             wordBreak: 'break-word',
           }}
@@ -188,12 +190,20 @@ export const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
           border: 'none',
           color: 'var(--color-text-tertiary)',
           cursor: 'pointer',
-          padding: '2px',
+          padding: '4px',
           marginLeft: 'var(--space-1)',
           marginTop: '1px',
           borderRadius: 'var(--radius-sm)',
           flexShrink: 0,
           transition: 'color 0.15s ease, background-color 0.15s ease',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = 'var(--color-text-primary)';
+          e.currentTarget.style.backgroundColor = 'var(--color-surface-hover)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = 'var(--color-text-tertiary)';
+          e.currentTarget.style.backgroundColor = 'transparent';
         }}
       >
         <X size={15} />

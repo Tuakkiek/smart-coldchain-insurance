@@ -7,12 +7,14 @@ import { Badge } from '../components/ui/Badge';
 import { LoadingState } from '../components/feedback/LoadingState';
 import { ErrorState } from '../components/feedback/ErrorState';
 import { EmptyState } from '../components/feedback/EmptyState';
+import { useToast } from '../components/feedback/Toast';
 import { getAllEvents } from '../api/events';
 import { EventOut, EventType } from '../types/api';
 import { BellRing, AlertTriangle, ShieldAlert, WifiOff, ArrowRight, RefreshCw } from 'lucide-react';
 
 export const EventsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [events, setEvents] = useState<EventOut[]>([]);
   const [filtered, setFiltered] = useState<EventOut[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +101,10 @@ export const EventsPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => fetchEvents(true)}
+            onClick={() => {
+              fetchEvents(true);
+              toast.info('Đang làm mới dòng sự kiện...', { title: 'Làm mới', duration: 2500 });
+            }}
             loading={refreshing}
             disabled={loading || refreshing}
             icon={<RefreshCw size={14} />}

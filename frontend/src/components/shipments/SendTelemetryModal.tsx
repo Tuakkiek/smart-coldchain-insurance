@@ -3,6 +3,7 @@ import { TelemetryCreatePayload, TelemetryOut } from '../../types/api';
 import { postShipmentTelemetry } from '../../api/shipments';
 import { Button } from '../ui/Button';
 import { ApiError } from '../../api/client';
+import { useToast } from '../feedback/Toast';
 import {
   Radio,
   X,
@@ -36,6 +37,7 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
   assignedDevices,
   onSuccess,
 }) => {
+  const { toast } = useToast();
   const defaultDevice = assignedDevices.length > 0 ? assignedDevices[0] : 'ESP32-01';
   const midTemp = ((tempMin + tempMax) / 2).toFixed(1);
 
@@ -67,17 +69,23 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deviceId.trim()) {
-      setError('Mã thiết bị (Device ID) không được để trống');
+      const msg = 'Mã thiết bị (Device ID) không được để trống';
+      setError(msg);
+      toast.warning(msg, { title: 'Thông tin chưa đầy đủ' });
       return;
     }
     const t = parseFloat(temperature);
     if (isNaN(t)) {
-      setError('Nhiệt độ không hợp lệ');
+      const msg = 'Nhiệt độ không hợp lệ';
+      setError(msg);
+      toast.warning(msg, { title: 'Thông tin chưa hợp lệ' });
       return;
     }
     const h = parseFloat(humidity);
     if (isNaN(h) || h < 0 || h > 100) {
-      setError('Độ ẩm phải từ 0% đến 100%');
+      const msg = 'Độ ẩm phải từ 0% đến 100%';
+      setError(msg);
+      toast.warning(msg, { title: 'Thông tin chưa hợp lệ' });
       return;
     }
 
@@ -96,19 +104,20 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
       onSuccess(sample);
       onClose();
     } catch (err: unknown) {
+      let msg = '';
       if (err instanceof ApiError) {
         if (err.code === 'SIGNED_TELEMETRY_REQUIRED' || err.status === 403) {
-          setError(
-            'Backend trên Production yêu cầu Signed Telemetry v1 (có chữ ký mật mã ECDSA P-256 từ ESP32). Trên Development, bạn có thể gửi dữ liệu trực tiếp khi backend cho phép unauthenticated telemetry.'
-          );
+          msg = 'Backend yêu cầu Signed Telemetry v1 (có chữ ký mật mã ECDSA P-256 từ ESP32).';
         } else if (err.code === 'SHIPMENT_NOT_FOUND') {
-          setError('Không tìm thấy lô hàng này trên máy chủ.');
+          msg = 'Không tìm thấy lô hàng này trên máy chủ.';
         } else {
-          setError(err.message || 'Lỗi gửi dữ liệu đo cảm biến');
+          msg = err.message || 'Lỗi gửi dữ liệu đo cảm biến';
         }
       } else {
-        setError(err instanceof Error ? err.message : 'Lỗi không xác định khi gửi telemetry');
+        msg = err instanceof Error ? err.message : 'Lỗi không xác định khi gửi telemetry';
       }
+      setError(msg);
+      toast.error(msg, { title: 'Gửi Telemetry thất bại' });
     } finally {
       setSubmitting(false);
     }

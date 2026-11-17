@@ -282,7 +282,10 @@ export const DataIntegrityPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => fetchData(true)}
+            onClick={() => {
+              fetchData(true);
+              toast.info('Đang làm mới dữ liệu Merkle Batches...', { title: 'Làm mới', duration: 2500 });
+            }}
             loading={refreshing}
             disabled={loading || refreshing}
             icon={<RefreshCw size={14} />}

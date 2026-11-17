@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { IntegrityBatch } from '../../types/api';
 import { Button } from '../ui/Button';
 import { AnchorStatusBadge, VerificationStatusBadge } from '../data-display/StatusBadge';
+import { useToast } from '../feedback/Toast';
 import {
   Layers,
   Copy,
@@ -32,6 +33,7 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
   onVerify,
   isVerifying = false,
 }) => {
+  const { toast } = useToast();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   if (!isOpen || !batch) return null;
@@ -39,6 +41,8 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
+    const label = key === 'root' ? 'Merkle Root' : key === 'tx' ? 'Transaction Hash' : 'Dữ liệu';
+    toast.info(`Đã sao chép ${label} vào bộ nhớ tạm.`, { title: 'Sao chép' });
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
