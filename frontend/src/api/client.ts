@@ -48,7 +48,6 @@ class ApiClient {
   private protectedRequests = new Set<AbortController>();
   private refreshPromise: Promise<AdminSession> | null = null;
   private refreshController: AbortController | null = null;
-  private refreshGeneration = 0;
   private refreshEpoch = 0;
 
   constructor() {
@@ -159,7 +158,6 @@ class ApiClient {
         throw new ApiError('Yêu cầu đã được hủy.', 0, 'REQUEST_CANCELLED');
       }
       const session = this.readTokenResponse(result, 'refresh');
-      this.refreshGeneration += 1;
       return session;
     } catch (error: unknown) {
       if (error instanceof ApiError) throw error;
@@ -197,7 +195,8 @@ class ApiClient {
 
   private async sessionForProtectedRequest(): Promise<AdminSession> {
     const current = getAuthSnapshot().session;
-    if (current && current.expiresAt > Date.now()) return current;
+    // Refresh shortly before expiry so a protected request only needs to be sent once.
+    if (current && current.expiresAt > Date.now() + 30_000) return current;
     try {
       return await this.refreshAccessToken();
     } catch (error: unknown) {
@@ -227,14 +226,22 @@ class ApiClient {
       controller.abort();
     }, timeoutMs);
 
-    const fetchAttempt = async (session: AdminSession | null) => {
+    try {
+      if (controller.signal.aborted) throw new DOMException('Request cancelled', 'AbortError');
+      const currentSession = authenticated ? getAuthSnapshot().session : null;
+      const session = authenticated
+        ? (currentSession && currentSession.expiresAt > Date.now() + 30_000
+          ? currentSession
+          : await this.sessionForProtectedRequest())
+        : null;
+      if (controller.signal.aborted) throw new DOMException('Request cancelled', 'AbortError');
+
       const headers = new Headers(options.headers);
       headers.set('Content-Type', 'application/json');
       headers.set('Accept', 'application/json');
       headers.delete('Authorization');
       if (session) headers.set('Authorization', `Bearer ${session.accessToken}`);
       const revision = getAuthSnapshot().revision;
-      const generation = this.refreshGeneration;
       const response = await fetch(url, {
         ...options,
         headers,
@@ -242,66 +249,25 @@ class ApiClient {
         cache: 'no-store',
         credentials: useCookie ? 'include' : 'omit',
       });
-      return { response, revision, generation };
-    };
 
-    try {
-      if (controller.signal.aborted) throw new DOMException('Request cancelled', 'AbortError');
-      const currentSession = authenticated ? getAuthSnapshot().session : null;
-      let session = authenticated
-        ? (currentSession && currentSession.expiresAt > Date.now()
-          ? currentSession
-          : await this.sessionForProtectedRequest())
-        : null;
-      if (controller.signal.aborted) throw new DOMException('Request cancelled', 'AbortError');
-      let attempt = await fetchAttempt(session);
-      let retried = false;
-
-      while (true) {
-        if (controller.signal.aborted) throw new DOMException('Request cancelled', 'AbortError');
-        if (authenticated) {
-          const current = getAuthSnapshot();
-          const changed = current.revision !== attempt.revision;
-          const refreshedElsewhere = this.refreshGeneration > attempt.generation;
-
-          if (changed && !(attempt.response.status === 401 && refreshedElsewhere && current.session)) {
-            throw new DOMException('Session changed', 'AbortError');
-          }
-
-          if (attempt.response.status === 401 && !retried) {
-            try {
-              session = refreshedElsewhere && current.session
-                ? current.session
-                : await this.refreshAccessToken();
-            } catch (error: unknown) {
-              if (!(error instanceof ApiError && error.code === 'REQUEST_CANCELLED')) {
-                endSession('unauthorized');
-              }
-              throw error;
-            }
-            if (controller.signal.aborted) throw new DOMException('Request cancelled', 'AbortError');
-            retried = true;
-            attempt = await fetchAttempt(session);
-            continue;
-          }
-        }
-
-        if (!attempt.response.ok) {
-          const error = await this.errorFromResponse(attempt.response);
-          if (authenticated && attempt.response.status === 401 &&
-              getAuthSnapshot().revision === attempt.revision) {
-            endSession('unauthorized');
-          }
-          throw error;
-        }
-
-        if (attempt.response.status === 204) return undefined as T;
-        const result = await attempt.response.json() as T;
-        if (authenticated && getAuthSnapshot().revision !== attempt.revision) {
-          throw new DOMException('Session changed', 'AbortError');
-        }
-        return result;
+      if (authenticated && getAuthSnapshot().revision !== revision) {
+        throw new DOMException('Session changed', 'AbortError');
       }
+      if (!response.ok) {
+        const error = await this.errorFromResponse(response);
+        if (authenticated && response.status === 401 &&
+            getAuthSnapshot().revision === revision) {
+          endSession('unauthorized');
+        }
+        throw error;
+      }
+
+      if (response.status === 204) return undefined as T;
+      const result = await response.json() as T;
+      if (authenticated && getAuthSnapshot().revision !== revision) {
+        throw new DOMException('Session changed', 'AbortError');
+      }
+      return result;
     } catch (error: unknown) {
       if (error instanceof ApiError) throw error;
       if (controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {

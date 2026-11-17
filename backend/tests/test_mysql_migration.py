@@ -82,6 +82,7 @@ def test_production_requires_admin_secret_and_explicit_cors(monkeypatch):
         load_settings()
 
     monkeypatch.setenv("CORS_ORIGINS", "https://frontend.example.com/")
+    monkeypatch.setenv("REFRESH_COOKIE_SECURE", "true")
     settings = load_settings()
     assert settings.app_env == "production"
     assert settings.cors_origins == ("https://frontend.example.com",)

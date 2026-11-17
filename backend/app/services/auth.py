@@ -6,13 +6,12 @@ from datetime import datetime, timedelta, timezone
 import ipaddress
 import base64
 import hashlib
-import hmac
 import logging
 import secrets
 import threading
 import time
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import Request
 import jwt
@@ -164,6 +163,8 @@ def create_access_token(
 
     payload = {
         "sub": username,
+        "jti": str(uuid4()),
+        "type": "access",
         "iat": now_ts,
         "exp": exp_ts,
     }
@@ -181,12 +182,13 @@ def decode_and_verify_token(
     Enforces:
     - Fixed server-side HS256 algorithm (client-selected algorithms rejected).
     - Signature verification.
-    - Presence of 'sub', 'iat', 'exp' claims.
+    - Presence of 'sub', 'jti', 'type', 'iat', 'exp' claims.
+    - The token type must be 'access' (a refresh JWT cannot be used as Bearer).
     - Expiration check against current time.
     - Subject must match configured single admin username exactly.
     """
     options = {
-        "require": ["sub", "iat", "exp"],
+        "require": ["sub", "jti", "type", "iat", "exp"],
         "verify_signature": True,
         "verify_exp": clock is None,
         "verify_iat": clock is None,
@@ -220,12 +222,19 @@ def decode_and_verify_token(
         ) from exc
 
     sub = payload.get("sub")
+    token_id = payload.get("jti")
+    try:
+        valid_id = isinstance(token_id, str) and str(UUID(token_id)) == token_id
+    except ValueError:
+        valid_id = False
     if (
         not isinstance(sub, str)
         or not isinstance(expected_username, str)
         or not secrets.compare_digest(sub.encode("utf-8"), expected_username.encode("utf-8"))
+        or payload.get("type") != "access"
+        or not valid_id
     ):
-        logger.warning("JWT subject mismatch")
+        logger.warning("JWT access claims mismatch")
         raise AuthError(
             401,
             "UNAUTHORIZED",
@@ -306,40 +315,28 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-def _refresh_token_hash(token: str, secret_key: str) -> str:
-    return hmac.new(
-        secret_key.encode("utf-8"), token.encode("utf-8"), hashlib.sha256
-    ).hexdigest()
-
-
-def _account_snapshot_hash(account: AdminAccount, secret_key: str) -> str:
-    snapshot = "\0".join(
-        (str(account.id), account.username, account.password_hash, str(account.security_version))
-    )
-    return hmac.new(
-        secret_key.encode("utf-8"), snapshot.encode("utf-8"), hashlib.sha256
-    ).hexdigest()
-
-
 def _new_refresh_token(
     account: AdminAccount,
     settings: Settings,
     now: datetime,
-    family_id: str | None = None,
-    expires_at: datetime | None = None,
 ) -> tuple[str, RefreshToken]:
-    plaintext = secrets.token_urlsafe(48)
+    token_id = str(uuid4())
+    expires_at = now + timedelta(days=settings.jwt_refresh_token_expire_days)
+    payload = {
+        "sub": account.username,
+        "jti": token_id,
+        "type": "refresh",
+        "security_version": account.security_version,
+        "iat": int(now.timestamp()),
+        "exp": int(expires_at.timestamp()),
+    }
+    token = jwt.encode(payload, settings.jwt_secret_key, algorithm="HS256")
     row = RefreshToken(
-        id=str(uuid4()),
-        family_id=family_id or str(uuid4()),
+        id=token_id,
         admin_account_id=account.id,
-        token_hash=_refresh_token_hash(plaintext, settings.jwt_secret_key),
-        account_snapshot_hash=_account_snapshot_hash(account, settings.jwt_secret_key),
-        expires_at=expires_at
-        or now + timedelta(days=settings.jwt_refresh_token_expire_days),
-        created_at=now,
+        expires_at=expires_at,
     )
-    return plaintext, row
+    return token, row
 
 
 def issue_refresh_token(
@@ -348,43 +345,54 @@ def issue_refresh_token(
     settings: Settings,
     now: datetime | None = None,
 ) -> tuple[str, datetime]:
-    """Create the first opaque token in a refresh family and persist only its HMAC."""
+    """Create a signed refresh JWT and persist only its ID and expiry."""
     issued_at = _as_utc(now or datetime.now(timezone.utc))
-    plaintext, row = _new_refresh_token(account, settings, issued_at)
+    token, row = _new_refresh_token(account, settings, issued_at)
     session.add(row)
     session.commit()
-    return plaintext, _as_utc(row.expires_at)
+    return token, _as_utc(row.expires_at)
 
 
 def _refresh_error(code: str, message: str) -> AuthError:
     return AuthError(401, code, message)
 
 
-def _find_refresh_token(
-    session: Session, token: str, settings: Settings
-) -> RefreshToken | None:
-    if not isinstance(token, str) or not 1 <= len(token) <= 256:
-        return None
-    token_hash = _refresh_token_hash(token, settings.jwt_secret_key)
+def _decode_refresh_token(token: str, settings: Settings) -> dict[str, Any]:
+    if not isinstance(token, str) or not 1 <= len(token) <= 4096:
+        raise _refresh_error("REFRESH_TOKEN_INVALID", "Refresh token không hợp lệ")
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=["HS256"],
+            options={"require": ["sub", "jti", "type", "security_version", "iat", "exp"]},
+        )
+    except jwt.ExpiredSignatureError as exc:
+        raise _refresh_error("REFRESH_TOKEN_EXPIRED", "Phiên đăng nhập đã hết hạn") from exc
+    except jwt.PyJWTError as exc:
+        raise _refresh_error("REFRESH_TOKEN_INVALID", "Refresh token không hợp lệ") from exc
+
+    token_id = payload.get("jti")
+    try:
+        valid_id = isinstance(token_id, str) and str(UUID(token_id)) == token_id
+    except ValueError:
+        valid_id = False
+    if (
+        not valid_id
+        or payload.get("type") != "refresh"
+        or not isinstance(payload.get("sub"), str)
+        or type(payload.get("security_version")) is not int
+    ):
+        raise _refresh_error("REFRESH_TOKEN_INVALID", "Refresh token không hợp lệ")
+    return payload
+
+
+def _find_refresh_token(session: Session, token_id: str) -> RefreshToken | None:
     return session.scalar(
         select(RefreshToken)
-        .where(RefreshToken.token_hash == token_hash)
+        .where(RefreshToken.id == token_id)
         .with_for_update()
     )
-
-
-def _revoke_family(
-    session: Session, family_id: str, now: datetime, reason: str
-) -> None:
-    rows = session.scalars(
-        select(RefreshToken)
-        .where(RefreshToken.family_id == family_id)
-        .with_for_update()
-    ).all()
-    for row in rows:
-        if row.revoked_at is None:
-            row.revoked_at = now
-            row.revoke_reason = reason
 
 
 def rotate_refresh_token(
@@ -393,58 +401,31 @@ def rotate_refresh_token(
     settings: Settings,
     now: datetime | None = None,
 ) -> tuple[str, datetime, AdminAccount]:
-    """Consume one refresh token exactly once and issue its replacement."""
+    """Expire one refresh JWT and issue its signed replacement."""
     rotated_at = _as_utc(now or datetime.now(timezone.utc))
-    current = _find_refresh_token(session, token, settings)
+    payload = _decode_refresh_token(token, settings)
+    current = _find_refresh_token(session, payload["jti"])
     if current is None:
         raise _refresh_error("REFRESH_TOKEN_INVALID", "Refresh token không hợp lệ")
 
-    if current.used_at is not None:
-        _revoke_family(session, current.family_id, rotated_at, "reuse_detected")
-        session.commit()
-        raise _refresh_error(
-            "REFRESH_TOKEN_REUSED", "Refresh token đã được sử dụng; phiên đã bị thu hồi"
-        )
-    if current.revoked_at is not None:
-        if current.revoke_reason == "expired":
-            raise _refresh_error("REFRESH_TOKEN_EXPIRED", "Phiên đăng nhập đã hết hạn")
-        if current.revoke_reason == "account_changed":
-            raise _refresh_error("SESSION_INVALID", "Phiên đăng nhập không còn hợp lệ")
-        raise _refresh_error("REFRESH_TOKEN_REVOKED", "Phiên đăng nhập đã bị thu hồi")
     if _as_utc(current.expires_at) <= rotated_at:
-        current.revoked_at = rotated_at
-        current.revoke_reason = "expired"
-        session.commit()
         raise _refresh_error("REFRESH_TOKEN_EXPIRED", "Phiên đăng nhập đã hết hạn")
 
     account = session.get(AdminAccount, current.admin_account_id)
     valid_account = (
         account is not None
         and account.is_active
-        and secrets.compare_digest(
-            current.account_snapshot_hash,
-            _account_snapshot_hash(account, settings.jwt_secret_key),
-        )
+        and secrets.compare_digest(payload["sub"].encode("utf-8"), account.username.encode("utf-8"))
+        and payload["security_version"] == account.security_version
     )
     if not valid_account:
-        _revoke_family(session, current.family_id, rotated_at, "account_changed")
-        session.commit()
         raise _refresh_error("SESSION_INVALID", "Phiên đăng nhập không còn hợp lệ")
 
-    plaintext, replacement = _new_refresh_token(
-        account,
-        settings,
-        rotated_at,
-        family_id=current.family_id,
-        expires_at=_as_utc(current.expires_at),
-    )
+    current.expires_at = rotated_at
+    replacement_token, replacement = _new_refresh_token(account, settings, rotated_at)
     session.add(replacement)
-    # The replacement must exist before the self-referencing FK is assigned.
-    session.flush()
-    current.used_at = rotated_at
-    current.replaced_by_id = replacement.id
     session.commit()
-    return plaintext, _as_utc(replacement.expires_at), account
+    return replacement_token, _as_utc(replacement.expires_at), account
 
 
 def revoke_refresh_token(
@@ -453,12 +434,16 @@ def revoke_refresh_token(
     settings: Settings,
     now: datetime | None = None,
 ) -> None:
-    """Revoke the server-side token family. Unknown/missing tokens keep logout idempotent."""
+    """Expire the current refresh-token row. Unknown tokens keep logout idempotent."""
     if not token:
         return
-    revoked_at = _as_utc(now or datetime.now(timezone.utc))
-    current = _find_refresh_token(session, token, settings)
+    try:
+        payload = _decode_refresh_token(token, settings)
+    except AuthError:
+        return
+    expired_at = _as_utc(now or datetime.now(timezone.utc))
+    current = _find_refresh_token(session, payload["jti"])
     if current is None:
         return
-    _revoke_family(session, current.family_id, revoked_at, "logout")
+    current.expires_at = expired_at
     session.commit()

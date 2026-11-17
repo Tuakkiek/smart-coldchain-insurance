@@ -33,22 +33,10 @@ class AdminAccount(Base):
 
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
-    __table_args__ = (
-        Index("ix_refresh_tokens_family_id", "family_id"),
-        Index("ix_refresh_tokens_admin_account_id", "admin_account_id"),
-    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    family_id: Mapped[str] = mapped_column(String(36), nullable=False)
     admin_account_id: Mapped[int] = mapped_column(ForeignKey("admin_accounts.id"), nullable=False)
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    account_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)
-    used_at: Mapped[datetime | None] = mapped_column(UTC_DATETIME)
-    revoked_at: Mapped[datetime | None] = mapped_column(UTC_DATETIME)
-    revoke_reason: Mapped[str | None] = mapped_column(String(32))
-    replaced_by_id: Mapped[str | None] = mapped_column(ForeignKey("refresh_tokens.id"))
 
 
 class Shipment(Base):

@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import jwt
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect, select
 
@@ -76,34 +77,107 @@ def test_login_sets_httponly_cookie_and_never_returns_refresh_token(refresh_api)
     assert f"path={settings.refresh_cookie_path}" in cookie_header
     assert "secure" not in cookie_header
 
-    plaintext = _cookie_value(client, settings)
+    access_token = response.json()["access_token"]
+    refresh_token = _cookie_value(client, settings)
+    assert len(access_token.split(".")) == 3
+    assert len(refresh_token.split(".")) == 3
+    assert jwt.get_unverified_header(access_token) == {"alg": "HS256", "typ": "JWT"}
+    assert jwt.get_unverified_header(refresh_token) == {"alg": "HS256", "typ": "JWT"}
+    access_payload = jwt.decode(access_token, settings.jwt_secret_key, algorithms=["HS256"])
+    refresh_payload = jwt.decode(refresh_token, settings.jwt_secret_key, algorithms=["HS256"])
+    assert access_payload["type"] == "access"
+    assert refresh_payload["type"] == "refresh"
+    assert refresh_payload["sub"] == USERNAME
+    assert refresh_payload["security_version"] == 1
+    as_bearer = client.get(
+        "/api/v1/shipments",
+        headers={"Authorization": f"Bearer {refresh_token}"},
+    )
+    assert as_bearer.status_code == 401
+
     with app.state.session_factory() as session:
         stored = session.scalar(select(RefreshToken))
         assert stored is not None
-        assert stored.token_hash != plaintext
-        assert plaintext not in stored.token_hash
+        assert stored.id == refresh_payload["jti"]
+        assert stored.admin_account_id == 1
 
 
-def test_refresh_rotates_once_and_reuse_revokes_the_family(refresh_api):
-    client, _app, settings = refresh_api
-    assert _login(client).status_code == 200
+def test_refresh_expires_old_token_and_issues_a_new_jwt(refresh_api):
+    client, app, settings = refresh_api
+    login = _login(client)
+    assert login.status_code == 200
+    old_access_token = login.json()["access_token"]
     old_token = _cookie_value(client, settings)
+    old_id = jwt.decode(old_token, settings.jwt_secret_key, algorithms=["HS256"])["jti"]
 
     refreshed = client.post("/api/v1/auth/refresh")
     assert refreshed.status_code == 200
     assert set(refreshed.json()) == {"access_token", "token_type"}
+    new_access_token = refreshed.json()["access_token"]
+    assert new_access_token != old_access_token
+    assert jwt.decode(
+        new_access_token, settings.jwt_secret_key, algorithms=["HS256"]
+    )["type"] == "access"
     new_token = _cookie_value(client, settings)
     assert new_token != old_token
+    new_id = jwt.decode(new_token, settings.jwt_secret_key, algorithms=["HS256"])["jti"]
+    assert new_id != old_id
+
+    with app.state.session_factory() as session:
+        old_row = session.get(RefreshToken, old_id)
+        new_row = session.get(RefreshToken, new_id)
+        assert old_row is not None and new_row is not None
+        old_expiry = old_row.expires_at
+        if old_expiry.tzinfo is None:
+            old_expiry = old_expiry.replace(tzinfo=timezone.utc)
+        assert old_expiry <= datetime.now(timezone.utc)
 
     _use_cookie(client, settings, old_token)
-    reused = client.post("/api/v1/auth/refresh")
-    assert reused.status_code == 401
-    assert reused.json()["error"]["code"] == "REFRESH_TOKEN_REUSED"
+    expired = client.post("/api/v1/auth/refresh")
+    assert expired.status_code == 401
+    assert expired.json()["error"]["code"] == "REFRESH_TOKEN_EXPIRED"
 
     _use_cookie(client, settings, new_token)
-    revoked = client.post("/api/v1/auth/refresh")
-    assert revoked.status_code == 401
-    assert revoked.json()["error"]["code"] == "REFRESH_TOKEN_REVOKED"
+    assert client.post("/api/v1/auth/refresh").status_code == 200
+
+
+def test_successful_refresh_renews_the_cookie_lifetime(refresh_api):
+    client, app, settings = refresh_api
+    assert _login(client).status_code == 200
+    old_token = _cookie_value(client, settings)
+    old_id = jwt.decode(old_token, settings.jwt_secret_key, algorithms=["HS256"])["jti"]
+    shortened_expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+
+    with app.state.session_factory() as session:
+        current = session.get(RefreshToken, old_id)
+        assert current is not None
+        current.expires_at = shortened_expiry
+        session.commit()
+
+    refreshed = client.post("/api/v1/auth/refresh")
+    assert refreshed.status_code == 200
+    replacement_token = _cookie_value(client, settings)
+    replacement_id = jwt.decode(
+        replacement_token, settings.jwt_secret_key, algorithms=["HS256"]
+    )["jti"]
+
+    with app.state.session_factory() as session:
+        current = session.get(RefreshToken, old_id)
+        replacement = session.get(RefreshToken, replacement_id)
+        assert current is not None
+        assert replacement is not None
+        current_expiry = current.expires_at
+        if current_expiry.tzinfo is None:
+            current_expiry = current_expiry.replace(tzinfo=timezone.utc)
+        assert current_expiry <= datetime.now(timezone.utc)
+        replacement_expiry = replacement.expires_at
+        if replacement_expiry.tzinfo is None:
+            replacement_expiry = replacement_expiry.replace(tzinfo=timezone.utc)
+        assert replacement_expiry > shortened_expiry + timedelta(days=6)
+        assert replacement_expiry <= datetime.now(timezone.utc) + timedelta(
+            days=settings.jwt_refresh_token_expire_days,
+            seconds=5,
+        )
 
 
 def test_invalid_missing_and_expired_refresh_errors_are_consistent(refresh_api):
@@ -119,7 +193,7 @@ def test_invalid_missing_and_expired_refresh_errors_are_consistent(refresh_api):
 
     assert _login(client).status_code == 200
     with app.state.session_factory() as session:
-        row = session.scalar(select(RefreshToken).order_by(RefreshToken.created_at.desc()))
+        row = session.scalar(select(RefreshToken))
         assert row is not None
         row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
         session.commit()
@@ -146,10 +220,10 @@ def test_logout_revokes_server_session_and_clears_cookie(refresh_api):
     _use_cookie(client, settings, token)
     rejected = client.post("/api/v1/auth/refresh")
     assert rejected.status_code == 401
-    assert rejected.json()["error"]["code"] == "REFRESH_TOKEN_REVOKED"
+    assert rejected.json()["error"]["code"] == "REFRESH_TOKEN_EXPIRED"
 
 
-@pytest.mark.parametrize("account_change", ["disabled", "security_version", "password"])
+@pytest.mark.parametrize("account_change", ["disabled", "security_version"])
 def test_account_security_changes_invalidate_refresh_session(refresh_api, account_change):
     client, app, _settings = refresh_api
     assert _login(client).status_code == 200
@@ -160,8 +234,6 @@ def test_account_security_changes_invalidate_refresh_session(refresh_api, accoun
             account.is_active = False
         elif account_change == "security_version":
             account.security_version += 1
-        else:
-            account.password_hash += "changed"
         session.commit()
 
     response = client.post("/api/v1/auth/refresh")
@@ -242,14 +314,8 @@ def test_refresh_token_migration_creates_session_storage(tmp_path):
         upgrade_schema(engine)
         inspector = inspect(engine)
         assert "refresh_tokens" in inspector.get_table_names()
-        assert {column["name"] for column in inspector.get_columns("refresh_tokens")} >= {
-            "family_id",
-            "token_hash",
-            "account_snapshot_hash",
-            "expires_at",
-            "used_at",
-            "revoked_at",
-            "replaced_by_id",
+        assert {column["name"] for column in inspector.get_columns("refresh_tokens")} == {
+            "id", "admin_account_id", "expires_at",
         }
         assert {column["name"] for column in inspector.get_columns("admin_accounts")} >= {
             "is_active",

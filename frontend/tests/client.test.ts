@@ -74,27 +74,26 @@ describe('Bearer API client with refresh-cookie integration', () => {
     }
   });
 
-  it('refreshes once and retries the original 401 request once', async () => {
-    const oldToken = tokenFor('admin-old');
+  it('refreshes shortly before expiry and sends the protected request only once', async () => {
+    const expiringToken = tokenFor('admin-old', 10_000);
     const newToken = tokenFor('admin-new');
-    startSession(oldToken);
+    startSession(expiringToken);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ error: { code: 'UNAUTHORIZED', message: 'Expired' } }, 401))
       .mockResolvedValueOnce(jsonResponse({ access_token: newToken, token_type: 'bearer' }))
       .mockResolvedValueOnce(jsonResponse({ items: ['ok'] }));
 
     await expect(apiClient.get<{ items: string[] }>('/api/v1/shipments'))
       .resolves.toEqual({ items: ['ok'] });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(new Headers(fetchMock.mock.calls[0][1]!.headers).get('Authorization')).toBe(`Bearer ${oldToken}`);
-    expect(fetchMock.mock.calls[1][0]).toMatch(/\/api\/v1\/auth\/refresh$/);
-    expect(fetchMock.mock.calls[1][1]!.credentials).toBe('include');
-    expect(new Headers(fetchMock.mock.calls[2][1]!.headers).get('Authorization')).toBe(`Bearer ${newToken}`);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/v1\/auth\/refresh$/);
+    expect(fetchMock.mock.calls[0][1]!.credentials).toBe('include');
+    expect(new Headers(fetchMock.mock.calls[1][1]!.headers).get('Authorization')).toBe(`Bearer ${newToken}`);
+    expect(new Headers(fetchMock.mock.calls[1][1]!.headers).get('Authorization')).not.toBe(`Bearer ${expiringToken}`);
     expect(getActiveSession()?.accessToken).toBe(newToken);
   });
 
-  it('deduplicates concurrent 401 responses into one refresh request', async () => {
-    const oldToken = tokenFor('admin-old');
+  it('deduplicates concurrent proactive refresh requests', async () => {
+    const oldToken = tokenFor('admin-old', 10_000);
     const newToken = tokenFor('admin-new');
     startSession(oldToken);
     let resolveRefresh!: (response: Response) => void;
@@ -107,10 +106,8 @@ describe('Bearer API client with refresh-cookie integration', () => {
         return refreshResponse;
       }
       protectedCalls += 1;
-      const bearer = new Headers(options?.headers).get('Authorization');
-      return bearer === `Bearer ${oldToken}`
-        ? jsonResponse({ error: { code: 'UNAUTHORIZED', message: 'Expired' } }, 401)
-        : jsonResponse({ ok: true });
+      expect(new Headers(options?.headers).get('Authorization')).toBe(`Bearer ${newToken}`);
+      return jsonResponse({ ok: true });
     });
 
     const first = apiClient.get('/api/v1/shipments');
@@ -119,37 +116,33 @@ describe('Bearer API client with refresh-cookie integration', () => {
     resolveRefresh(jsonResponse({ access_token: newToken, token_type: 'bearer' }));
     await expect(Promise.all([first, second])).resolves.toEqual([{ ok: true }, { ok: true }]);
     expect(refreshCalls).toBe(1);
-    expect(protectedCalls).toBe(4);
+    expect(protectedCalls).toBe(2);
   });
 
-  it('clears the session when refresh fails and does not retry protected data', async () => {
-    startSession(tokenFor());
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse({ error: { code: 'UNAUTHORIZED', message: 'Expired' } }, 401))
-      .mockResolvedValueOnce(jsonResponse({
-        error: { code: 'REFRESH_TOKEN_REVOKED', message: 'Revoked' },
-      }, 401));
+  it('clears the session when proactive refresh fails without sending protected data', async () => {
+    startSession(tokenFor('admin', 10_000));
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      error: { code: 'REFRESH_TOKEN_EXPIRED', message: 'Expired' },
+    }, 401));
 
     await expect(apiClient.get('/api/v1/devices')).rejects.toMatchObject({
       status: 401,
-      code: 'REFRESH_TOKEN_REVOKED',
+      code: 'REFRESH_TOKEN_EXPIRED',
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/v1\/auth\/refresh$/);
     expect(getActiveSession()).toBeNull();
-    expect(getAuthSnapshot().reason).toBe('unauthorized');
+    expect(getAuthSnapshot().reason).toBe('expired');
     expect(localStorage.getItem('coldchain_admin_session')).toBeNull();
   });
 
-  it('never performs a second refresh or retry when the retried request is also 401', async () => {
+  it('does not refresh or replay a protected request that returns 401', async () => {
     startSession(tokenFor('old'));
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse({ error: { message: 'Expired' } }, 401))
-      .mockResolvedValueOnce(jsonResponse({ access_token: tokenFor('new'), token_type: 'bearer' }))
-      .mockResolvedValueOnce(jsonResponse({ error: { message: 'Still unauthorized' } }, 401));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: { message: 'Unauthorized' } }, 401));
 
     await expect(apiClient.get('/api/v1/devices')).rejects.toMatchObject({ status: 401 });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/auth/refresh'))).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/auth/refresh'))).toHaveLength(0);
     expect(getActiveSession()).toBeNull();
   });
 

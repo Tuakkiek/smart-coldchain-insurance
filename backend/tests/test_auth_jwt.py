@@ -277,11 +277,17 @@ def test_token_wrong_subject_returns_401(auth_api):
     assert response.headers.get("www-authenticate") == "Bearer"
 
 
-@pytest.mark.parametrize("missing_claim", ["sub", "iat", "exp"])
+@pytest.mark.parametrize("missing_claim", ["sub", "jti", "type", "iat", "exp"])
 def test_token_missing_claims_returns_401(auth_api, missing_claim):
     client, _app, settings = auth_api
     now_ts = int(time.time())
-    payload = {"sub": VALID_USERNAME, "iat": now_ts, "exp": now_ts + 1800}
+    payload = {
+        "sub": VALID_USERNAME,
+        "jti": str(uuid4()),
+        "type": "access",
+        "iat": now_ts,
+        "exp": now_ts + 1800,
+    }
     del payload[missing_claim]
     token = jwt.encode(payload, settings.jwt_secret_key, algorithm="HS256")
     response = client.get("/api/v1/shipments", headers={"Authorization": f"Bearer {token}"})
