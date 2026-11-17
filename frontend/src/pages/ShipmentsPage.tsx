@@ -11,9 +11,11 @@ import { getShipments } from '../api/shipments';
 import { ShipmentOut, ShipmentStatus } from '../types/api';
 import { Search, MapPin, Thermometer, Shield, Plus, CheckCircle, ArrowRight } from 'lucide-react';
 import { CreateShipmentModal } from '../components/shipments/CreateShipmentModal';
+import { useToast } from '../components/feedback/Toast';
 
 export const ShipmentsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [shipments, setShipments] = useState<ShipmentOut[]>([]);
   const [filtered, setFiltered] = useState<ShipmentOut[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +43,13 @@ export const ShipmentsPage: React.FC = () => {
   const handleShipmentCreated = (newShipment: ShipmentOut) => {
     setShipments((prev) => [newShipment, ...prev]);
     setSuccessShipment(newShipment);
+    toast.success(`Đã tạo thành công lô hàng mới: ${newShipment.code}`, {
+      title: 'Tạo lô hàng thành công',
+      action: {
+        label: 'Xem chi tiết',
+        onClick: () => navigate(`/shipments/${newShipment.id}`),
+      },
+    });
   };
 
   useEffect(() => {

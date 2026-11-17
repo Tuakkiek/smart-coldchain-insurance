@@ -9,6 +9,7 @@ import { ErrorState } from '../components/feedback/ErrorState';
 import { getShipments } from '../api/shipments';
 import { triggerDemoScenario } from '../api/demo';
 import { ShipmentOut, DemoScenarioOut } from '../types/api';
+import { useToast } from '../components/feedback/Toast';
 import {
   FlaskConical,
   Play,
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react';
 
 export const DemoPage: React.FC = () => {
+  const { toast } = useToast();
   const [shipments, setShipments] = useState<ShipmentOut[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -63,14 +65,20 @@ export const DemoPage: React.FC = () => {
     try {
       const result = await triggerDemoScenario(selectedId, { scenario });
       setScenarioResult(result);
+      const successMsg =
+        scenario === 'temperature_breach'
+          ? `Đã kích hoạt vi phạm nhiệt độ (${result.generated_samples} mẫu dữ liệu)!`
+          : `Đã thiết lập trạng thái vận hành chuẩn (${result.generated_samples} mẫu dữ liệu)!`;
+      toast.success(successMsg, { title: 'Kịch bản Demo' });
       // Refresh shipments list to show updated state
       await fetchShipmentsList();
     } catch (err: unknown) {
-      setActionError(
+      const errorMsg =
         err instanceof Error
           ? err.message
-          : 'Không thể kích hoạt kịch bản demo trên Backend'
-      );
+          : 'Không thể kích hoạt kịch bản demo trên Backend';
+      setActionError(errorMsg);
+      toast.error(errorMsg, { title: 'Lỗi kích hoạt Demo' });
     } finally {
       setRunningScenario(null);
     }
