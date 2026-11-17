@@ -15,7 +15,7 @@ export async function loginAdmin(
   password: string,
   signal?: AbortSignal,
 ): Promise<void> {
-  // Login always uses the real Backend, even when monitoring uses mock fixtures.
+  // Login authenticates against the Backend API.
   apiClient.cancelRefresh();
   let result: LoginResponse;
   try {

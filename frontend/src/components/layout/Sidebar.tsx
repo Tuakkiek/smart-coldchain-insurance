@@ -10,6 +10,7 @@ import {
   Cpu,
   Database,
   LogOut,
+  RefreshCw,
 } from 'lucide-react';
 import { ConnectionStatus } from '../feedback/ConnectionStatus';
 import { Button } from '../ui/Button';
@@ -20,9 +21,10 @@ interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
   onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh, isRefreshing }) => {
   const enableDemo = import.meta.env.VITE_ENABLE_DEMO !== 'false';
   const { session } = useAuth();
 
@@ -161,7 +163,39 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh }) 
             gap: 'var(--space-3)',
           }}
         >
-          <ConnectionStatus onModeChange={onRefresh} />
+          <div
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 'var(--space-2)',
+            }}
+          >
+            <ConnectionStatus onRefresh={onRefresh} />
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                title="Làm mới trang và kết nối"
+                aria-label="Làm mới trang và kết nối"
+                style={{
+                  padding: '4px 6px',
+                  borderRadius: 'var(--radius-sm)',
+                  color: isRefreshing ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  border: '1px solid var(--color-border-subtle)',
+                  backgroundColor: 'var(--color-surface)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : undefined} />
+              </button>
+            )}
+          </div>
           <div
             style={{
               width: '100%',

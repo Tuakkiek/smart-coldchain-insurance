@@ -451,12 +451,12 @@ export const DevicesPage: React.FC = () => {
         <MetricCard
           title="Trạng thái Backend"
           value={
-            backendConnectionState === 'MOCK'
-              ? 'Mock Mode'
-              : backendConnectionState === 'COLD_START' || isColdStart
+            backendConnectionState === 'COLD_START' || isColdStart
               ? 'Cold Start (~30s)'
               : backendConnectionState === 'ONLINE'
               ? 'Online'
+              : backendConnectionState === 'CHECKING'
+              ? 'Đang kiểm tra...'
               : 'Offline'
           }
           icon={<Server size={20} />}
@@ -1292,7 +1292,7 @@ export const DevicesPage: React.FC = () => {
                   Hiển thị banner <strong>Render Cold Start</strong>. Trạng thái thiết bị giữ nguyên hoặc hiển thị <em>Chờ Backend</em>, KHÔNG đánh dấu thiết bị ngoại vi offline.
                 </td>
                 <td style={{ padding: 'var(--space-3)' }}>
-                  Đợi 30 giây máy chủ thức giấc hoặc bấm nút chuyển sang Mock Data Mode.
+                  Đợi 30 giây máy chủ thức giấc hoặc bấm nút thử lại kết nối.
                 </td>
               </tr>
               <tr style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>

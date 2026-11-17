@@ -2,15 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { checkBackendHealth } from '../../api/shipments';
 import { apiClient, ApiError } from '../../api/client';
 import { Badge } from '../ui/Badge';
-import { Activity, Wifi, WifiOff, Database, Clock } from 'lucide-react';
+import { Activity, Wifi, WifiOff, Clock } from 'lucide-react';
 
-export type BackendConnectionState = 'ONLINE' | 'COLD_START' | 'OFFLINE' | 'MOCK' | 'CHECKING';
+export type BackendConnectionState = 'ONLINE' | 'COLD_START' | 'OFFLINE' | 'CHECKING';
 
 // Global listener store for cross-component subscription (e.g. DevicesPage)
 type Listener = (state: BackendConnectionState) => void;
 const listeners = new Set<Listener>();
 
-let globalBackendState: BackendConnectionState = apiClient.isMockEnabled() ? 'MOCK' : 'CHECKING';
+let globalBackendState: BackendConnectionState = 'CHECKING';
 
 export function getGlobalBackendState(): BackendConnectionState {
   return globalBackendState;
@@ -36,22 +36,14 @@ export function useBackendConnectionState(): BackendConnectionState {
 }
 
 interface ConnectionStatusProps {
-  onModeChange?: (isMock: boolean) => void;
+  onRefresh?: () => void;
 }
 
-export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ onModeChange }) => {
-  const [connectionState, setConnectionState] = useState<BackendConnectionState>(
-    apiClient.isMockEnabled() ? 'MOCK' : 'CHECKING'
-  );
+export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ onRefresh }) => {
+  const [connectionState, setConnectionState] = useState<BackendConnectionState>('CHECKING');
   const [checking, setChecking] = useState<boolean>(false);
 
   const checkStatus = useCallback(async () => {
-    if (apiClient.isMockEnabled()) {
-      setConnectionState('MOCK');
-      setGlobalBackendState('MOCK');
-      return;
-    }
-
     setChecking(true);
     const startTime = Date.now();
 
@@ -88,41 +80,20 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ onModeChange
     return () => clearInterval(interval);
   }, [checkStatus]);
 
-  const toggleMock = () => {
-    const nextMock = !apiClient.isMockEnabled();
-    apiClient.setMockEnabled(nextMock);
-    if (nextMock) {
-      setConnectionState('MOCK');
-      setGlobalBackendState('MOCK');
-    } else {
-      setConnectionState('CHECKING');
-      setGlobalBackendState('CHECKING');
-      checkStatus();
-    }
-    if (onModeChange) onModeChange(nextMock);
+  const handleRetry = () => {
+    checkStatus();
+    if (onRefresh) onRefresh();
   };
 
   return (
     <div className="flex-row items-center gap-2">
-      {connectionState === 'MOCK' && (
-        <Badge
-          variant="warning"
-          icon={<Database size={12} />}
-          style={{ cursor: 'pointer' }}
-          onClick={toggleMock}
-          title="Đang dùng dữ liệu giả lập (Mock). Nhấn để chuyển sang API thật."
-        >
-          MOCK DATA MODE
-        </Badge>
-      )}
-
       {connectionState === 'ONLINE' && (
         <Badge
           variant="success"
           icon={<Wifi size={12} />}
           style={{ cursor: 'pointer' }}
-          onClick={toggleMock}
-          title={`Backend kết nối thành công: ${apiClient.getBaseUrl()}. Nhấn để chuyển sang Mock Data.`}
+          onClick={handleRetry}
+          title={`Backend kết nối thành công: ${apiClient.getBaseUrl()}. Nhấn để làm mới trạng thái.`}
         >
           Backend Online
         </Badge>
@@ -133,8 +104,8 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ onModeChange
           variant="warning"
           icon={<Clock size={12} className="animate-spin" />}
           style={{ cursor: 'pointer' }}
-          onClick={toggleMock}
-          title="Render Cold Start: Dịch vụ FastAPI đang thức giấc sau thời gian nghỉ (~30-50s). Nhấn để chuyển sang Mock Data nếu muốn xem ngay."
+          onClick={handleRetry}
+          title="Render Cold Start: Dịch vụ FastAPI đang thức giấc sau thời gian nghỉ (~30-50s). Nhấn để kiểm tra lại."
         >
           Render Cold Start (~30s)
         </Badge>
@@ -145,10 +116,10 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ onModeChange
           variant="danger"
           icon={<WifiOff size={12} />}
           style={{ cursor: 'pointer' }}
-          onClick={toggleMock}
-          title="Không kết nối được Backend. Nhấn để chuyển sang chế độ Mock Data."
+          onClick={handleRetry}
+          title="Không kết nối được Backend. Nhấn để thử kết nối lại."
         >
-          Backend Offline (Chuyển Mock)
+          Backend Offline
         </Badge>
       )}
 
