@@ -32,7 +32,6 @@ import {
   AlertTriangle,
   Wifi,
   WifiOff,
-  Copy,
   Check,
   RefreshCw,
   Search,
@@ -57,8 +56,6 @@ export const DevicesPage: React.FC = () => {
   const [isColdStart, setIsColdStart] = useState(false);
   const [isStale, setIsStale] = useState(false);
   const [staleError, setStaleError] = useState<string | null>(null);
-  const [copiedKey, setCopiedKey] = useState(false);
-  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Admin modals
@@ -145,19 +142,6 @@ export const DevicesPage: React.FC = () => {
       if (timer) clearInterval(timer);
     };
   }, [autoRefresh]);
-
-  const copyPublicKey = (pem?: string) => {
-    if (!pem) return;
-    navigator.clipboard.writeText(pem);
-    setCopiedKey(true);
-    setTimeout(() => setCopiedKey(false), 2000);
-  };
-
-  const copyKeyId = (keyId: string) => {
-    navigator.clipboard.writeText(keyId);
-    setCopiedKeyId(keyId);
-    setTimeout(() => setCopiedKeyId(null), 2000);
-  };
 
   const handleDeleteDevice = async (device: DeviceItemOut) => {
     setAdminSuccessMsg(null);
@@ -623,8 +607,7 @@ export const DevicesPage: React.FC = () => {
                     const isSelected = selectedDeviceId === dev.device_id;
                     const hasKey =
                       dev.has_public_key ||
-                      Boolean(dev.public_key_pem) ||
-                      Boolean(dev.key_id && dev.key_id.length > 0);
+                      Boolean(dev.key_id && dev.key_id !== 'NO_KEY');
 
                     return (
                       <tr
@@ -911,7 +894,7 @@ export const DevicesPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Public Key Display (Explicit disclaimer: NO PRIVATE KEY) */}
+              {/* Key material is deliberately never returned to the browser. */}
               <div
                 style={{
                   backgroundColor: 'var(--color-surface-secondary)',
@@ -938,41 +921,20 @@ export const DevicesPage: React.FC = () => {
                       gap: '4px',
                     }}
                   >
-                    <KeyRound size={12} /> Khóa công khai SPKI (Public Key)
+                    <KeyRound size={12} /> Bảo vệ nội dung khóa thiết bị
                   </span>
-                  {selectedDevice.public_key_pem && (
-                    <button
-                      onClick={() => copyPublicKey(selectedDevice.public_key_pem)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        border: 'none',
-                        background: 'transparent',
-                        color: 'var(--color-accent)',
-                        fontSize: 'var(--text-xs)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {copiedKey ? <Check size={12} /> : <Copy size={12} />}
-                      {copiedKey ? 'Đã sao chép' : 'Sao chép'}
-                    </button>
-                  )}
                 </div>
-                <pre
+                <div
                   style={{
                     margin: 0,
                     fontSize: '11px',
-                    fontFamily: 'monospace',
                     color: 'var(--color-text-secondary)',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-all',
-                    maxHeight: '80px',
-                    overflowY: 'auto',
+                    lineHeight: 1.5,
                   }}
                 >
-                  {selectedDevice.public_key_pem || 'Không có chứng chỉ SPKI công khai'}
-                </pre>
+                  Frontend chỉ nhận Key ID và trạng thái cấp khóa. Public key PEM được lưu trong MySQL
+                  để Backend xác minh chữ ký; private key PEM chỉ nằm trong <code>config.h</code> local.
+                </div>
                 <div
                   style={{
                     fontSize: '11px',
@@ -981,8 +943,7 @@ export const DevicesPage: React.FC = () => {
                     fontWeight: 500,
                   }}
                 >
-                  🔒 An toàn: Khóa riêng tư (Private Key) được lưu độc quyền trong Secure Storage của
-                  ESP32 và không bao giờ xuất hiện trên API hoặc giao diện.
+                  🔒 API không trả nội dung public key hoặc private key về trình duyệt.
                 </div>
               </div>
 
@@ -1347,8 +1308,9 @@ export const DevicesPage: React.FC = () => {
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
         onSuccess={(res) => {
-          setAdminSuccessMsg(
-            `Đã đăng ký thành công thiết bị ${res.device_id} (${res.device_name || 'Cold Chain Sensor'}).`
+          setAdminSuccessMsg(res.provisioning_status === 'ready'
+            ? 'Đăng ký thiết bị thành công. Khóa thiết bị đã được tạo và cấu hình ESP32 đã được cập nhật.'
+            : `Thiết bị ${res.device_id} đã được đăng ký nhưng config.h chưa được cập nhật; hãy cấp khóa bằng quy trình local.`
           );
           fetchDevicesList(false);
         }}

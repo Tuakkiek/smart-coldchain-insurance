@@ -19,7 +19,9 @@ export { ApiError };
 
 /**
  * Admin: Register a new ESP32 device with minimal fields (device_id and device_name).
- * Cryptographic keys are provisioned outside browser via trusted Python script via USB.
+ * In local provisioning mode the Backend creates the P-256 pair, stores only
+ * the public key, and updates the configured ESP32 config.h. No key material
+ * is sent through the browser.
  * Endpoint: POST /api/v1/devices
  * Authentication: current Admin Bearer session (attached by apiClient).
  */
@@ -168,7 +170,6 @@ export function normalizeDeviceItem(item: any): DeviceItemOut {
     device_name: item.device_name || item.device_id,
     key_id: activeKey?.key_id || (item.has_public_key ? 'active-key' : 'NO_KEY'),
     has_public_key: item.has_public_key ?? false,
-    public_key_pem: item.public_key_pem,
     firmware_version: item.firmware_version || 'v1.0.0',
     assigned_shipment_id: activeAssignment?.shipment_id || item.current_shipment_id || null,
     assigned_shipment_code: item.assigned_shipment_code || null,

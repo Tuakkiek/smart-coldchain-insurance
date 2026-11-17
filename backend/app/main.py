@@ -24,6 +24,7 @@ from app.services.insurance_evidence import configured_evidence_coordinator
 from app.services.signed_ingestion import IngestionError
 from app.services.batch_service import BatchServiceError
 from app.services.auth import AuthError, LoginRateLimiter
+from app.services.device_provisioning import DeviceProvisioner, ProvisioningError
 
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.integrity_blockchain,
     )
     app.state.login_rate_limiter = LoginRateLimiter(max_attempts=5, window_seconds=60)
+    app.state.device_provisioner = (
+        DeviceProvisioner(settings.device_config_path)
+        if settings.device_provisioning_mode == "local"
+        else None
+    )
 
     app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(RequestIdMiddleware)
@@ -199,6 +205,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(IngestionError)
     async def ingestion_error(_request: Request, exc: IngestionError):
+        return error_response(exc.status_code, exc.code, exc.message)
+
+    @app.exception_handler(ProvisioningError)
+    async def provisioning_error(_request: Request, exc: ProvisioningError):
         return error_response(exc.status_code, exc.code, exc.message)
 
     @app.exception_handler(BatchServiceError)

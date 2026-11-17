@@ -267,7 +267,7 @@ Backend giữ telemetry và event đầy đủ off-chain. Adapter đọc ABI t�
 
 ## Đăng ký thiết bị, liên kết chuyến và cấp public key
 
-Luồng: **Admin đăng ký ID/tên device → tạo shipment/code → lấy UUID và gán → cấp khóa local/USB → đăng ký public key → ESP32/simulator ký/gửi**. Không có endpoint nhận private key hoặc đăng ký ESP32 trên Blockchain.
+Luồng local: **Admin đăng ký ID/tên device → Backend sinh P-256/lưu public key/cập nhật `config.h` → tạo shipment/code → lấy UUID và gán → nạp firmware USB → ESP32 ký/gửi**. Không có endpoint nhận private key hoặc đăng ký ESP32 trên Blockchain.
 
 ### Đăng ký và danh sách
 
@@ -277,23 +277,33 @@ Luồng: **Admin đăng ký ID/tên device → tạo shipment/code → lấy UUI
 {"device_id":"ESP32-001","device_name":"Cold Chain Sensor 01"}
 ```
 
-Device ID phân biệt hoa/thường ở giao thức, pattern `[A-Za-z0-9_-]{1,100}`; tên được trim, không rỗng, tối đa 100 ký tự. Không yêu cầu shipment/key khi tạo. DTO gộp cũ có `key_id`, `public_key_pem`, `shipment_id` **không còn được nhận** (`422`); chuyển sang các route riêng bên dưới. Trùng device trả `409 DEVICE_EXISTS`, không ghi đè tên/key/sequence cũ.
+Device ID phân biệt hoa/thường ở giao thức, pattern `[A-Za-z0-9_-]{1,100}`; tên được trim, không rỗng, tối đa 100 ký tự. Không yêu cầu shipment/key khi tạo. DTO gộp cũ có `key_id`, `public_key_pem`, `shipment_id` **không còn được nhận** (`422`). Trùng device trả `409 DEVICE_EXISTS`, không sinh khóa mới và không ghi đè `config.h`/tên/key/sequence cũ.
 
-`201` trả DeviceView:
+Với `DEVICE_PROVISIONING_MODE=local`, Backend sinh cặp ECDSA P-256 riêng, dùng `key-v1`,
+lưu public key SPKI PEM vào MySQL `device_keys` và ghi private key EC PEM vào file server cố định
+bởi `DEVICE_CONFIG_PATH`. `201` chỉ trả sau khi file được cập nhật và transaction DB commit thành công:
 
 ```json
 {
   "device_id": "ESP32-001",
   "device_name": "Cold Chain Sensor 01",
   "status": "active",
-  "has_public_key": false,
+  "key_id": "key-v1",
+  "provisioning_status": "ready",
+  "has_public_key": true,
   "current_shipment_id": null,
   "last_sequence_number": 0,
   "last_seen_at": null,
-  "keys": [],
+  "keys": [{"key_id":"key-v1","status":"active"}],
   "assignments": []
 }
 ```
+
+Response không chứa public/private PEM. `CONFIG_TEMPLATE_NOT_FOUND`, `CONFIG_READ_FAILED`,
+`CONFIG_WRITE_FAILED`, `CONFIG_FORMAT_INVALID` hoặc `KEY_GENERATION_FAILED` không trả thành công và
+transaction đăng ký được rollback. Nếu commit DB lỗi sau khi ghi file, Backend cố phục hồi nội dung
+`config.h` trước đó. Chế độ `manual` dành cho Render/cloud giữ hành vi đăng ký metadata cũ và không trả
+`provisioning_status="ready"`, vì Backend cloud không thể cập nhật file trên máy cá nhân.
 
 `GET /api/v1/devices` (admin) → `200 {items: DeviceView[], total}`; gồm cả thiết bị chưa key/chưa gán, sắp theo `device_id`. Danh sách rỗng là `{"items":[],"total":0}`, chưa phân trang. `GET /api/v1/devices/{device_id}` (admin) trả cùng view, không tồn tại trả `404 DEVICE_NOT_FOUND`.
 
@@ -317,7 +327,8 @@ Service khóa dòng device và database có unique generated-column index `uq_de
 
 ### Cấp public key và thu hồi
 
-`POST /api/v1/devices/{device_id}/keys`, auth admin; script trên máy tin cậy gửi **chỉ public key**:
+`POST /api/v1/devices/{device_id}/keys`, auth admin; dùng cho rotation hoặc provisioning `manual`
+trên cloud, client tin cậy gửi **chỉ public key**:
 
 ```json
 {"key_id":"key-v1","public_key_pem":"<public key P-256 SPKI PEM thật>"}

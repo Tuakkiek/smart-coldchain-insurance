@@ -9,6 +9,13 @@ Trạng thái tài liệu: **deployment-ready, chưa xác nhận deploy thực t
 - Repository có `render.yaml`; Blueprint mặc định dùng gói Free cho demo.
 - Data Integrity và Insurance contract có address/role/signer riêng nếu bật Blockchain.
 
+Đặt `DEVICE_PROVISIONING_MODE=manual` trên Render (Blueprint đã khai báo giá trị này).
+Filesystem của Render không phải filesystem trên máy cá nhân và có thể bị thay thế khi deploy,
+vì vậy Backend cloud không được báo `provisioning_status="ready"` cho `config.h` local. Luồng tự
+sinh private key và cập nhật firmware chỉ dùng khi Backend chạy trên chính máy có repository với
+`DEVICE_PROVISIONING_MODE=local`. Chế độ cloud giữ API public-key có xác thực hiện tại để phục vụ
+quy trình provisioning local riêng nếu cần; private key không đi qua Frontend hoặc Render.
+
 Render Free phù hợp demo, không phù hợp production/SLA: service spin down sau 15 phút không có inbound traffic, lần gọi sau có cold start, filesystem là ephemeral và Free service không có one-off job/shell. Xem tài liệu chính thức: [Deploy for Free](https://render.com/docs/free), [Blueprint YAML](https://render.com/docs/blueprint-spec), [FastAPI](https://render.com/docs/deploy-fastapi), [Health Checks](https://render.com/docs/health-checks).
 
 ## 2. Build, migrate và start

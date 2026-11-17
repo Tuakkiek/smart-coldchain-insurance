@@ -62,6 +62,13 @@ Quy trình admin mới, mọi thao tác quản trị và giám sát đều yêu 
 {"device_id":"ESP32-001","device_name":"Cold Chain Sensor 01"}
 ```
 
+   Với `DEVICE_PROVISIONING_MODE=local`, Backend tự sinh cặp ECDSA P-256 `key-v1`,
+   lưu **chỉ public key** vào bảng `device_keys`, rồi cập nhật `DEVICE_ID`, `KEY_ID`
+   và private key trong file cố định bởi `DEVICE_CONFIG_PATH`. Response có
+   `provisioning_status="ready"` chỉ sau khi cả MySQL và `config.h` đều thành công;
+   response không chứa public/private PEM. Nếu `config.h` chưa có, Backend dùng
+   `config.example.h` cùng thư mục. Wi-Fi, API URL, shipment UUID và CA không bị thay đổi.
+
 2. **Tạo chuyến** bằng `POST /api/v1/shipments` với `code=SHIP-001` và DTO hiện có.
    Lấy `id` UUID trong response, không dùng code thay `shipment_id`. Policy trong MySQL
    chưa đồng nghĩa policy đã fund trên chain.
@@ -71,9 +78,11 @@ Quy trình admin mới, mọi thao tác quản trị và giám sát đều yêu 
    body `{"shipment_id":"<UUID trả về>","active":true}`. Mỗi device chỉ có một chuyến
    active, nhiều device có thể cùng chuyến; cùng cặp retry idempotent. Gán sang chuyến khác
    trả `409 DEVICE_ALREADY_ASSIGNED`; bỏ gán cũ với `active=false` trước, không reset counter.
-4. **Cấp key local/USB**, mỗi ESP32 dùng cặp P-256 riêng. Private key chỉ ghi vào
-   `device/cold_chain_device/config.h` (gitignored), nạp bằng USB; chỉ public key SPKI PEM
-   được gửi tới `POST /api/v1/devices/ESP32-001/keys`:
+4. **Nạp firmware qua USB** sau khi response đăng ký có `provisioning_status="ready"`.
+   Mỗi ESP32 dùng cặp P-256 riêng; private key chỉ nằm trong
+   `device/cold_chain_device/config.h` (gitignored), không nằm trong MySQL/response/log.
+   Endpoint dưới đây vẫn được giữ cho rotation hoặc `DEVICE_PROVISIONING_MODE=manual`
+   trên cloud, nơi Backend không thể sửa file trên máy cá nhân:
 
 ```json
 {"key_id":"key-v1","public_key_pem":"<public key P-256 SPKI PEM thật>"}

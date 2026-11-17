@@ -2,7 +2,7 @@
 
 Sketch `cold_chain_device/cold_chain_device.ino` dùng DHT22 ở GPIO 27, ký ECDSA P-256/SHA-256 theo `SIGNED-TELEMETRY-v1`, lưu số sequence trong ESP32 Preferences và gửi HTTPS. Chưa kiểm thử trên board thật; sketch hiện chưa có hàng đợi bền vững cho mẫu khi mất mạng.
 
-## Cấp khóa và chạy simulator
+## Cấp khóa riêng cho simulator (tùy chọn)
 
 Dùng Python của Backend (đã cài `backend/requirements.txt`) để tạo **khóa thử riêng** ở thư mục ngoài Git. Ví dụ PowerShell từ gốc repo:
 
@@ -45,15 +45,19 @@ Chạy từ gốc repo; venv trong ví dụ là `backend/.venv`. `--scenario` c�
 
 ## Cấu hình ESP32
 
-1. Sao chép `cold_chain_device/config.example.h` thành `cold_chain_device/config.h`. File đích đã bị Git bỏ qua.
-2. Đăng ký device ID/tên, tạo chuyến và gán UUID như trên, dùng identity riêng cho board
-   (không dùng chung `SIM-001`/key với simulator). Cấp khóa P-256 mới trên máy tin cậy,
-   điền Wi-Fi, URL, `SHIPMENT_ID` UUID, device/key ID, private key và CA vào `config.h`.
-   `WiFiClientSecure` kiểm tra chứng chỉ; CA thiếu hoặc sai khiến gửi thất bại.
-3. Nạp sketch bằng USB với Arduino IDE/ESP32 core có thư viện `DHTesp`; DHT22 DATA ở GPIO 27.
-   Chỉ đăng ký public key tương ứng qua `/devices/{device_id}/keys` trên API admin, không đưa
-   private key qua React/API/DB. NTP phải thành công trước khi ký; gửi mẫu signed đầu tiên
-   để xác minh private/public key đã cấu hình khớp nhau.
-4. Khi thay device ID hoặc xóa NVS, cấp identity/key mới hoặc đồng bộ số sequence với Backend trước khi gửi. Counter không được quay về số đã dùng. Khi mất mạng, sketch hiện giữ counter nhưng **không giữ mẫu**; Backend có thể phát hiện gap khi có mẫu tiếp theo.
+1. Trong `backend/.env`, đặt `DEVICE_PROVISIONING_MODE=local` và
+   `DEVICE_CONFIG_PATH=device/cold_chain_device/config.h`. Đường dẫn tương đối được tính từ
+   gốc repository, không phụ thuộc thư mục dùng để chạy Uvicorn.
+2. Có thể sao chép `cold_chain_device/config.example.h` thành `cold_chain_device/config.h`
+   trước để điền Wi-Fi, API URL, `SHIPMENT_ID` UUID và CA. File đích đã bị Git bỏ qua.
+   Nếu chưa có, Backend sẽ tự tạo từ file mẫu khi đăng ký; sau đó chỉ cần điền các cấu hình
+   không liên quan đến khóa. `WiFiClientSecure` kiểm tra chứng chỉ; CA thiếu hoặc sai khiến gửi thất bại.
+3. Đăng nhập Admin trên Web và đăng ký device ID/tên riêng cho board. Backend tự tạo cặp P-256,
+   lưu public key vào MySQL và cập nhật `DEVICE_ID`, `KEY_ID`, private key trong `config.h`.
+   Không cần chạy Python hoặc sao chép PEM thủ công; trình duyệt không nhận nội dung khóa.
+4. Chỉ khi giao diện báo cấu hình ESP32 đã được cập nhật, nạp sketch bằng USB với Arduino IDE/
+   ESP32 core có thư viện `DHTesp`; DHT22 DATA ở GPIO 27. NTP phải thành công trước khi ký;
+   gửi mẫu signed đầu tiên để xác minh private/public key đã cấu hình khớp nhau.
+5. Khi thay device ID hoặc xóa NVS, cấp identity/key mới hoặc đồng bộ số sequence với Backend trước khi gửi. Counter không được quay về số đã dùng. Khi mất mạng, sketch hiện giữ counter nhưng **không giữ mẫu**; Backend có thể phát hiện gap khi có mẫu tiếp theo.
 
 Private key và mật khẩu từng có trong lịch sử Git của sketch. Hãy đổi mật khẩu Wi-Fi cũ, revoke public key thiết bị cũ qua API admin và cấp khóa mới trước khi dùng môi trường triển khai. Việc xóa chúng khỏi phiên bản hiện tại không xóa lịch sử Git.

@@ -79,6 +79,8 @@ export interface AdminDeviceViewOut {
   device_id: string;
   device_name?: string;
   status: 'active' | 'revoked';
+  key_id?: string;
+  provisioning_status?: 'ready';
   has_public_key: boolean;
   current_shipment_id: string | null;
   current_shipment_code?: string | null;
@@ -94,7 +96,6 @@ export interface DeviceItemOut {
   device_name?: string;
   key_id: string;
   has_public_key?: boolean;
-  public_key_pem?: string;
   firmware_version: string;
   assigned_shipment_id: string | null;
   assigned_shipment_code: string | null;

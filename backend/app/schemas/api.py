@@ -196,6 +196,11 @@ class DeviceOut(BaseModel):
     assignments: list[DeviceAssignmentOut]
 
 
+class DeviceRegistrationOut(DeviceOut):
+    key_id: str | None = None
+    provisioning_status: Literal["ready"] | None = None
+
+
 class DevicesOut(BaseModel):
     items: list[DeviceOut]
     total: int

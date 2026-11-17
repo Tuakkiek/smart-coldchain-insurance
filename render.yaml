@@ -16,6 +16,10 @@ services:
         value: 3.11.9
       - key: APP_ENV
         value: production
+      # Render cannot update config.h on the developer's personal computer.
+      # Keep key upload/manual provisioning explicit and never report local readiness.
+      - key: DEVICE_PROVISIONING_MODE
+        value: manual
       - key: LOG_LEVEL
         value: INFO
       - key: DATABASE_URL
