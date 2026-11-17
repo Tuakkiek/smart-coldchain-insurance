@@ -20,11 +20,12 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       const current = getAuthSnapshot().session;
       if (!current) return;
       const remaining = current.expiresAt - Date.now();
-      if (remaining <= 0) {
+      const refreshAheadMs = 60_000;
+      if (remaining <= refreshAheadMs) {
         void refreshAdminSession().catch(() => undefined);
         return;
       }
-      timeout = setTimeout(refreshIfExpired, Math.min(remaining, 60_000));
+      timeout = setTimeout(refreshIfExpired, Math.min(remaining - refreshAheadMs, 60_000));
     };
 
     refreshIfExpired();

@@ -26,7 +26,7 @@ Admin duy nhất được lưu trong MySQL/Aiven, dùng `backend/.env` để **k
 - `REFRESH_COOKIE_*`: Tên/path/domain và cờ `Secure`/`SameSite` của cookie refresh. `HttpOnly` luôn bật và không thể tắt.
 - `TRUSTED_PROXIES`: Danh sách IP proxy tin cậy (mặc định `127.0.0.1,::1`) để phân giải client IP chống giả mạo header `X-Forwarded-For`.
 
-Chạy `python -m app.cli upgrade-db`: migration `20261116_04` thêm `admin_accounts` và CLI khởi tạo `id=1` nếu chưa có; migration `20261117_05` thêm trạng thái bảo mật tài khoản và bảng phiên refresh chỉ lưu HMAC/JTI. PRIMARY KEY + CHECK `id=1` bảo đảm duy nhất một Admin, kể cả nhiều process khởi tạo đồng thời. Đổi username/password trong `.env` hoặc chạy lại migration **không ghi đè** tài khoản đã lưu. Sau lần đầu có thể bỏ hai biến này; giữ `JWT_SECRET_KEY`, cấu hình DB/TLS và TTL. Login/kiểm tra subject JWT đọc MySQL, không fallback sang env khi DB lỗi. Chưa seed trả `503 ADMIN_NOT_INITIALIZED`; DB/schema lỗi trả `503 AUTH_STORAGE_UNAVAILABLE`. Không Register/thêm Admin/reset password tự động. `ADMIN_API_KEY`/`X-Admin-Key` đã bị loại bỏ. JWT secret thiếu/yếu vẫn fail closed; bootstrap credential chỉ bắt buộc khi chưa có Admin. Không log password, hash hoặc token.
+Chạy `python -m app.cli upgrade-db`: migration `20261116_04` thêm `admin_accounts`; `20261117_05` thêm trạng thái bảo mật; `20261117_06` rút gọn `refresh_tokens` còn `id`, `admin_account_id`, `expires_at`. CLI khởi tạo Admin `id=1` nếu chưa có. PRIMARY KEY + CHECK `id=1` bảo đảm duy nhất một Admin, kể cả nhiều process khởi tạo đồng thời. Đổi username/password trong `.env` hoặc chạy lại migration **không ghi đè** tài khoản đã lưu. Sau lần đầu có thể bỏ hai biến này; giữ `JWT_SECRET_KEY`, cấu hình DB/TLS và TTL. Login/kiểm tra subject JWT đọc MySQL, không fallback sang env khi DB lỗi. Chưa seed trả `503 ADMIN_NOT_INITIALIZED`; DB/schema lỗi trả `503 AUTH_STORAGE_UNAVAILABLE`. Không Register/thêm Admin/reset password tự động. `ADMIN_API_KEY`/`X-Admin-Key` đã bị loại bỏ. JWT secret thiếu/yếu vẫn fail closed; bootstrap credential chỉ bắt buộc khi chưa có Admin. Không log password, hash hoặc token.
 
 Admin đăng nhập lấy Bearer token:
 ```bash
@@ -38,20 +38,21 @@ Response `200 OK`:
 ```json
 {"access_token":"<jwt_token>","token_type":"bearer"}
 ```
-Response đồng thời đặt refresh token opaque qua `Set-Cookie`; token này không xuất hiện trong JSON,
+Access token và refresh token đều là JWT HS256 đầy đủ `header.payload.signature`. Response đồng thời đặt refresh token qua `Set-Cookie`; token này không xuất hiện trong JSON,
 header tùy chỉnh hoặc log. Local HTTP dùng `REFRESH_COOKIE_SECURE=false`, `SameSite=lax` và host-only
 cookie; production bắt buộc `REFRESH_COOKIE_SECURE=true`. Nếu Frontend và API thực sự khác site,
 cấu hình `SameSite=none` cùng `Secure=true`; không dùng `SameSite=none` cho local HTTP.
 
-`POST /api/v1/auth/refresh` đọc cookie, dùng token đúng một lần, rotate cookie và trả access token mới
-theo cùng JSON contract. Nếu token cũ bị dùng lại, Backend revoke toàn bộ token family. `POST
-/api/v1/auth/logout` revoke phiên phía server và xóa cookie. Các mã lỗi refresh ổn định gồm
-`REFRESH_TOKEN_MISSING`, `REFRESH_TOKEN_INVALID`, `REFRESH_TOKEN_EXPIRED`, `REFRESH_TOKEN_REVOKED`,
-`REFRESH_TOKEN_REUSED` và `SESSION_INVALID`. Frontend phải gửi request auth với
+`POST /api/v1/auth/refresh` đọc cookie, đánh dấu token cũ hết hạn bằng `expires_at`, sinh đồng thời
+access JWT và refresh JWT mới, gia hạn `JWT_REFRESH_TOKEN_EXPIRE_DAYS`, rồi rotate cookie. Vì vậy phiên
+có thể tiếp tục lâu dài nếu refresh trước khi hết hạn. `POST /api/v1/auth/logout` đánh dấu refresh token
+hiện tại hết hạn và xóa cookie. Database chỉ lưu `jti` ở cột `id`, chủ tài khoản và thời hạn; không lưu
+toàn bộ JWT. Các mã lỗi refresh gồm `REFRESH_TOKEN_MISSING`, `REFRESH_TOKEN_INVALID`,
+`REFRESH_TOKEN_EXPIRED` và `SESSION_INVALID`. Frontend phải gửi request auth với
 `credentials: 'include'`.
 Endpoint login được bảo vệ bởi rate limiter 5 lần/phút/IP (trả về `429 Too Many Requests` với mã lỗi `RATE_LIMITED` cùng header `Retry-After` khi vượt quá). CORS bật credentials cho allowlist origin chính xác; auth endpoint từ chối `Origin` lạ với `ORIGIN_NOT_ALLOWED`. CORS expose cả `X-Request-ID` và `Retry-After` cho các origin hợp lệ. Kiểm tra password hash và username với so sánh constant-time, hỗ trợ Unicode đầy đủ và bảo toàn nguyên văn khoảng trắng của mật khẩu.
 
-Trên MySQL hiện có, sao lưu dữ liệu rồi chạy `python -m app.cli upgrade-db` từ `backend/`; với DB mới dùng `python -m app.cli init-db`. Cả hai chạy tới head **`20261117_05`** (bao gồm bảng Admin và refresh session), gồm các revision signed telemetry/Merkle trước đó, thêm `devices.device_name` (backfill bằng ID) và unique generated-column index `uq_device_assignment_active`. Không sửa revision cũ.
+Trên MySQL hiện có, sao lưu dữ liệu rồi chạy `python -m app.cli upgrade-db` từ `backend/`; với DB mới dùng `python -m app.cli init-db`. Cả hai chạy tới head **`20261117_06`**. Migration này xóa các phiên refresh opaque cũ nên người dùng cần đăng nhập lại một lần. Chuỗi migration cũng gồm các revision signed telemetry/Merkle trước đó, thêm `devices.device_name` (backfill bằng ID) và unique generated-column index `uq_device_assignment_active`. Không sửa revision cũ.
 
 Quy trình admin mới, mọi thao tác quản trị và giám sát đều yêu cầu header `Authorization: Bearer <access_token>`:
 
