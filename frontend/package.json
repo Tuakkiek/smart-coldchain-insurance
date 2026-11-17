@@ -7,14 +7,9 @@
     "dev": "vite",
     "start": "vite",
     "build": "tsc && vite build",
-<<<<<<< HEAD
     "preview": "vite preview",
-    "test": "vitest run"
-=======
     "test": "vitest run",
-    "test:watch": "vitest",
-    "preview": "vite preview"
->>>>>>> 1b82e8da89e2f2f98b7d04e0374ac19e210563cb
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@types/leaflet": "^1.9.22",
@@ -27,26 +22,15 @@
     "recharts": "^3.10.1"
   },
   "devDependencies": {
-<<<<<<< HEAD
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
-=======
-    "@testing-library/react": "^16.3.0",
->>>>>>> 1b82e8da89e2f2f98b7d04e0374ac19e210563cb
     "@types/node": "^22.10.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
-<<<<<<< HEAD
     "jsdom": "^29.1.1",
     "typescript": "^5.6.3",
     "vite": "^6.0.1",
     "vitest": "^5.1.0"
-=======
-    "jsdom": "^26.1.0",
-    "typescript": "^5.6.3",
-    "vite": "^6.0.1",
-    "vitest": "5.1.0"
->>>>>>> 1b82e8da89e2f2f98b7d04e0374ac19e210563cb
   }
 }
