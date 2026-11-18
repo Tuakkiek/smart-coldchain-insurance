@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { IntegrityBatch } from '../../types/api';
 import { Button } from '../ui/Button';
+import { CopyButton } from '../ui/CopyButton';
 import { AnchorStatusBadge, VerificationStatusBadge } from '../data-display/StatusBadge';
 import { useToast } from '../feedback/Toast';
 import {
@@ -363,8 +364,27 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
               <div style={{ color: 'var(--color-text-tertiary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <Truck size={13} /> Lô hàng (Shipment):
               </div>
-              <div style={{ fontWeight: 600, marginTop: '2px', color: 'var(--color-text-primary)' }}>
-                {batch.shipment_name || batch.shipment_id}
+              {batch.shipment_name && (
+                <div style={{ fontWeight: 600, marginTop: '2px', color: 'var(--color-text-primary)' }}>
+                  {batch.shipment_name}
+                </div>
+              )}
+              <div
+                className="id-copy-inline font-mono"
+                style={{
+                  fontWeight: batch.shipment_name ? 500 : 600,
+                  fontSize: batch.shipment_name ? '11px' : undefined,
+                  marginTop: '2px',
+                  color: batch.shipment_name ? 'var(--color-text-secondary)' : 'var(--color-text-primary)',
+                }}
+              >
+                <span
+                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  title={batch.shipment_id}
+                >
+                  {batch.shipment_id}
+                </span>
+                <CopyButton value={batch.shipment_id} iconSize={12} />
               </div>
             </div>
 
@@ -372,8 +392,12 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
               <div style={{ color: 'var(--color-text-tertiary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <Cpu size={13} /> Thiết bị ESP32:
               </div>
-              <div style={{ fontWeight: 600, marginTop: '2px', color: 'var(--color-text-primary)' }}>
-                {batch.device_id}
+              <div
+                className="id-copy-inline"
+                style={{ fontWeight: 600, marginTop: '2px', color: 'var(--color-text-primary)' }}
+              >
+                <span className="font-mono">{batch.device_id}</span>
+                <CopyButton value={batch.device_id} iconSize={12} />
               </div>
             </div>
 

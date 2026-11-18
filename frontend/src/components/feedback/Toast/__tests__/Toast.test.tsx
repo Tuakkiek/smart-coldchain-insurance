@@ -184,6 +184,30 @@ describe('Toast Notification System', () => {
     // Clicking action also dismisses the toast
     expect(screen.queryByText('Có cập nhật mới')).not.toBeInTheDocument();
   });
+
+  it('positions toast container at bottom-right and stacks multiple toasts vertically', () => {
+    const { container } = render(
+      <ToastProvider>
+        <TestComponent />
+      </ToastProvider>
+    );
+
+    fireEvent.click(screen.getByText('Trigger Success'));
+    fireEvent.click(screen.getByText('Trigger Error'));
+    fireEvent.click(screen.getByText('Trigger Warning'));
+    fireEvent.click(screen.getByText('Trigger Info'));
+
+    const region = screen.getByRole('region', { name: 'Thông báo hệ thống' });
+    expect(region).toHaveClass('coldchain-toast-container');
+    expect(region.querySelectorAll('.coldchain-toast-item')).toHaveLength(4);
+
+    const styleTag = container.querySelector('style');
+    expect(styleTag?.textContent).toContain('bottom: 24px;');
+    expect(styleTag?.textContent).toContain('right: 24px;');
+    expect(styleTag?.textContent).toContain('bottom: 16px;');
+    expect(styleTag?.textContent).toContain('flex-direction: column;');
+    expect(styleTag?.textContent).not.toMatch(/\btop:\s*(16|24)px;/);
+  });
 });
 
 describe('Toast error message formatting', () => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
+import { CopyButton } from '../ui/CopyButton';
 import { DeviceOnlineBadge } from '../data-display/StatusBadge';
 import { EmptyState } from '../feedback/EmptyState';
 import { DeviceItemOut, SignatureStatus } from '../../types/api';
@@ -155,9 +156,12 @@ export const DeviceListSection: React.FC<DeviceListSectionProps> = ({
                     <Cpu size={16} />
                   </span>
                   <div className="device-identity-text">
-                    <span className="device-id-label" title={dev.device_id}>
-                      {dev.device_id}
-                    </span>
+                    <div className="id-copy-inline">
+                      <span className="device-id-label" title={dev.device_id}>
+                        {dev.device_id}
+                      </span>
+                      <CopyButton value={dev.device_id} iconSize={12} />
+                    </div>
                     <span
                       className="device-name-label"
                       title={dev.device_name || 'Cold Chain Sensor'}
@@ -203,16 +207,38 @@ export const DeviceListSection: React.FC<DeviceListSectionProps> = ({
                 <div className="device-cell">
                   <span className="device-mobile-label">Lô hàng đang gán</span>
                   {dev.assigned_shipment_id ? (
-                    <Link
-                      to={`/shipments/${dev.assigned_shipment_id}`}
-                      className="device-shipment-link"
-                      onClick={(e) => e.stopPropagation()}
-                      title={`Xem chi tiết lô hàng ${dev.assigned_shipment_name || dev.assigned_shipment_id}`}
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                        minWidth: 0,
+                        maxWidth: '100%',
+                      }}
                     >
-                      <Badge variant="info">
-                        {dev.assigned_shipment_name || `${dev.assigned_shipment_id.slice(0, 8)}...`}
-                      </Badge>
-                    </Link>
+                      <Link
+                        to={`/shipments/${dev.assigned_shipment_id}`}
+                        className="device-shipment-link"
+                        onClick={(e) => e.stopPropagation()}
+                        title={`Xem chi tiết lô hàng ${dev.assigned_shipment_name || dev.assigned_shipment_id}`}
+                      >
+                        <Badge variant="info">
+                          {dev.assigned_shipment_name || `${dev.assigned_shipment_id.slice(0, 8)}...`}
+                        </Badge>
+                      </Link>
+                      <span
+                        className="id-copy-inline font-mono"
+                        style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}
+                      >
+                        <span
+                          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          title={dev.assigned_shipment_id}
+                        >
+                          {dev.assigned_shipment_id}
+                        </span>
+                        <CopyButton value={dev.assigned_shipment_id} iconSize={11} />
+                      </span>
+                    </div>
                   ) : (
                     <span className="device-unassigned-text">Chưa gán</span>
                   )}

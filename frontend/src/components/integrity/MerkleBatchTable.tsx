@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { IntegrityBatch, AnchorStatus, VerificationStatus } from '../../types/api';
 import { AnchorStatusBadge, VerificationStatusBadge } from '../data-display/StatusBadge';
 import { Button } from '../ui/Button';
+import { CopyButton } from '../ui/CopyButton';
 import { useToast } from '../feedback/Toast';
 import {
   Layers,
@@ -323,12 +324,43 @@ export const MerkleBatchTable: React.FC<MerkleBatchTableProps> = ({
                             textDecoration: 'none',
                           }}
                           onClick={(e) => e.stopPropagation()}
+                          title={batch.shipment_id}
                         >
                           {batch.shipment_name || batch.shipment_id.slice(0, 8)}
                         </Link>
                       </div>
-                      <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
-                        Thiết bị: <span className="font-mono">{batch.device_id}</span>
+                      <div
+                        className="id-copy-inline"
+                        style={{
+                          fontSize: '11px',
+                          color: 'var(--color-text-tertiary)',
+                          marginTop: '2px',
+                          display: 'flex',
+                        }}
+                      >
+                        <span>
+                          ID:{' '}
+                          <span className="font-mono" title={batch.shipment_id}>
+                            {batch.shipment_id.length > 14
+                              ? `${batch.shipment_id.slice(0, 8)}...`
+                              : batch.shipment_id}
+                          </span>
+                        </span>
+                        <CopyButton value={batch.shipment_id} iconSize={11} />
+                      </div>
+                      <div
+                        className="id-copy-inline"
+                        style={{
+                          fontSize: '11px',
+                          color: 'var(--color-text-tertiary)',
+                          marginTop: '2px',
+                          display: 'flex',
+                        }}
+                      >
+                        <span>
+                          Thiết bị: <span className="font-mono">{batch.device_id}</span>
+                        </span>
+                        <CopyButton value={batch.device_id} iconSize={11} />
                       </div>
                     </td>
 

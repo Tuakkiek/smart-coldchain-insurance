@@ -4,6 +4,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { CopyButton } from '../components/ui/CopyButton';
 import {
   ShipmentStatusBadge,
   InsuranceStatusBadge,
@@ -290,6 +291,7 @@ export const ShipmentDetailPage: React.FC = () => {
     );
   }
 
+  const shipmentId = shipment.shipment_id || shipment.id;
   const temp = shipment.latest_telemetry?.temperature_c;
   const isBreach =
     temp !== undefined &&
@@ -381,7 +383,15 @@ export const ShipmentDetailPage: React.FC = () => {
 
       <PageHeader
         title={`Lô hàng: ${shipment.name}`}
-        description={`${shipment.cargo_type} • ID: ${shipment.id}`}
+        description={
+          <span className="id-copy-inline" style={{ flexWrap: 'wrap' }}>
+            <span>{shipment.cargo_type} • ID:</span>
+            <span className="font-mono" style={{ color: 'var(--color-text-primary)' }}>
+              {shipmentId}
+            </span>
+            <CopyButton value={shipmentId} iconSize={13} />
+          </span>
+        }
         action={
           <div className="flex-row items-center gap-2">
             <ShipmentStatusBadge status={shipment.status} />
@@ -491,10 +501,19 @@ export const ShipmentDetailPage: React.FC = () => {
                   fontSize: '11px',
                   color: 'var(--color-text-tertiary)',
                   marginTop: 'var(--space-1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '4px',
                 }}
               >
-                Độ ẩm: <strong>{shipment.latest_telemetry.humidity_pct.toFixed(1)}%</strong> • Thiết bị:{' '}
-                {shipment.latest_telemetry.device_id}
+                <span>
+                  Độ ẩm: <strong>{shipment.latest_telemetry.humidity_pct.toFixed(1)}%</strong> • Thiết bị:
+                </span>
+                <span className="id-copy-inline">
+                  <span className="font-mono">{shipment.latest_telemetry.device_id}</span>
+                  <CopyButton value={shipment.latest_telemetry.device_id} iconSize={12} />
+                </span>
               </div>
             )}
           </div>
@@ -621,6 +640,30 @@ export const ShipmentDetailPage: React.FC = () => {
               Điều kiện vi phạm: Vượt ngưỡng liên tục <strong>{shipment.violation_duration_minutes} phút</strong>
             </div>
 
+            <div
+              className="id-copy-inline"
+              style={{
+                fontSize: '11px',
+                color: 'var(--color-text-tertiary)',
+                marginTop: 'var(--space-2)',
+              }}
+            >
+              <span style={{ flexShrink: 0 }}>Shipment ID:</span>
+              <span
+                className="font-mono"
+                style={{
+                  color: 'var(--color-text-secondary)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={shipmentId}
+              >
+                {shipmentId}
+              </span>
+              <CopyButton value={shipmentId} iconSize={12} />
+            </div>
+
             <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               <InsuranceStatusBadge
                 status={shipment.insurance.status}
@@ -680,16 +723,17 @@ export const ShipmentDetailPage: React.FC = () => {
                       }}
                     >
                       <div
+                        className="id-copy-inline"
                         style={{
                           fontSize: 'var(--text-sm)',
                           fontWeight: 600,
                           color: 'var(--color-text-primary)',
-                          display: 'flex',
-                          alignItems: 'center',
                           gap: '6px',
                         }}
                       >
-                        <Cpu size={16} /> {dev.device_id}
+                        <Cpu size={16} style={{ flexShrink: 0 }} />
+                        <span className="font-mono">{dev.device_id}</span>
+                        <CopyButton value={dev.device_id} iconSize={13} />
                       </div>
                       <div className="flex-row items-center gap-1">
                         <DeviceOnlineBadge
@@ -757,16 +801,17 @@ export const ShipmentDetailPage: React.FC = () => {
                   }}
                 >
                   <div
+                    className="id-copy-inline"
                     style={{
                       fontSize: 'var(--text-sm)',
                       fontWeight: 600,
                       color: 'var(--color-text-primary)',
-                      display: 'flex',
-                      alignItems: 'center',
                       gap: '6px',
                     }}
                   >
-                    <Cpu size={16} /> {shipment.latest_telemetry.device_id}
+                    <Cpu size={16} style={{ flexShrink: 0 }} />
+                    <span className="font-mono">{shipment.latest_telemetry.device_id}</span>
+                    <CopyButton value={shipment.latest_telemetry.device_id} iconSize={13} />
                   </div>
                   <DeviceOnlineBadge
                     status={deviceHealth?.online_status || 'UNKNOWN'}
