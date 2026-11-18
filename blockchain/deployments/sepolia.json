@@ -26,9 +26,9 @@
       "backendAbiPath": "backend/app/integrations/abi/ColdChainDataIntegrity.json"
     },
     "ColdChainInsurance": {
-      "address": "0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F",
-      "deployTxHash": "0x6a811214cdb38cc1eccd55fcf1f8e6d06942af01e19dc670bccb817126e07ddb",
-      "deployBlockNumber": 12159144,
+      "address": "0xf6F9Ba0A4a32016C203a6493c9b41Ce43F3C72dd",
+      "deployTxHash": "0x85c81155ea824f8bf4fddde0528bb05d6f0a177daf33049964d07451a2a93129",
+      "deployBlockNumber": 12163173,
       "abiPath": "blockchain/deployments/abi/ColdChainInsurance.abi.json",
       "backendAbiPath": "backend/app/integrations/abi/ColdChainInsurance.json"
     }
