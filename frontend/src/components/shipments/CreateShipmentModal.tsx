@@ -1284,7 +1284,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
                 loading={submitting}
                 disabled={submitting || !validation.isValid}
               >
-                {submitting ? 'Đang tạo lô hàng...' : 'Tạo Lô Hàng Mới'}
+                {submitting ? 'Đang tạo lô hàng & Policy...' : 'Tạo Lô Hàng Mới'}
               </Button>
             </div>
           </div>

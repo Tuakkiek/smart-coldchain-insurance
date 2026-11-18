@@ -26,7 +26,7 @@ export async function getShipmentById(id: string): Promise<ShipmentOut> {
 export async function createShipment(
   payload: ShipmentCreatePayload
 ): Promise<ShipmentOut> {
-  return apiClient.post<ShipmentOut>('/api/v1/shipments', payload);
+  return apiClient.post<ShipmentOut>('/api/v1/shipments', payload, 60_000);
 }
 
 export async function deleteShipment(shipmentId: string): Promise<ShipmentDeleteOut> {
@@ -51,7 +51,11 @@ export async function getBlockchainPublicConfig(): Promise<BlockchainPublicConfi
 }
 
 export async function retryShipmentPolicy(shipmentId: string): Promise<ShipmentOut> {
-  return apiClient.post<ShipmentOut>(`/api/v1/shipments/${encodeURIComponent(shipmentId)}/policy/retry`);
+  return apiClient.post<ShipmentOut>(
+    `/api/v1/shipments/${encodeURIComponent(shipmentId)}/policy/retry`,
+    undefined,
+    130_000
+  );
 }
 
 export async function confirmShipmentPolicy(
@@ -60,6 +64,7 @@ export async function confirmShipmentPolicy(
 ): Promise<ShipmentOut> {
   return apiClient.post<ShipmentOut>(
     `/api/v1/shipments/${encodeURIComponent(shipmentId)}/policy/confirm`,
-    { transaction_hash: transactionHash }
+    { transaction_hash: transactionHash },
+    130_000
   );
 }
