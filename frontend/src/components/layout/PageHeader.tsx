@@ -14,45 +14,19 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   action,
 }) => {
   return (
-    <div style={{ marginBottom: 'var(--space-6)' }}>
+    <div className="page-header">
       {breadcrumb && (
-        <div
-          style={{
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-tertiary)',
-            marginBottom: 'var(--space-1)',
-            fontWeight: 500,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
+        <div className="page-header-breadcrumb">
           {breadcrumb}
         </div>
       )}
-      <div
-        className="flex-row items-center justify-between"
-        style={{ gap: 'var(--space-4)', flexWrap: 'wrap' }}
-      >
+      <div className="page-header-row">
         <div>
-          <h1
-            style={{
-              fontSize: 'var(--text-2xl)',
-              fontWeight: 600,
-              lineHeight: 'var(--text-2xl-lh)',
-              color: 'var(--color-text-primary)',
-              letterSpacing: '-0.02em',
-            }}
-          >
+          <h1 className="page-header-title">
             {title}
           </h1>
           {description && (
-            <p
-              style={{
-                fontSize: 'var(--text-sm)',
-                color: 'var(--color-text-secondary)',
-                marginTop: 'var(--space-1)',
-              }}
-            >
+            <p className="page-header-description">
               {description}
             </p>
           )}

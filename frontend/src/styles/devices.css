@@ -815,3 +815,37 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Simplified device overview */
+.devices-page .devices-stats-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 620px;
+  gap: var(--space-4);
+}
+
+.devices-simple-card { margin-top: var(--space-4); overflow: hidden; }
+.devices-simple-header { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border-subtle); }
+.devices-simple-header h2 { font-size: var(--text-lg); font-weight: 600; }
+.devices-simple-row { display: grid; grid-template-columns: minmax(180px, 1.15fr) minmax(125px, .75fr) minmax(160px, 1fr) minmax(150px, .9fr) auto; gap: var(--space-4); align-items: center; min-height: 72px; padding: 12px var(--space-5); border-bottom: 1px solid var(--color-border-subtle); cursor: pointer; transition: background-color .15s ease; }
+.devices-simple-row:last-child { border-bottom: 0; }
+.devices-simple-row:hover, .devices-simple-row.is-selected { background: var(--color-surface-secondary); }
+.devices-simple-row.is-selected { box-shadow: inset 3px 0 var(--color-accent); }
+.device-simple-identity { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.device-assignment-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
+.device-last-seen { color: var(--color-text-secondary); font-size: var(--text-xs); }
+.device-simple-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.devices-simple-row .device-mobile-label { display: none; }
+
+@media (max-width: 900px) {
+  .devices-simple-row { grid-template-columns: minmax(170px, 1fr) minmax(120px, .7fr) minmax(145px, .9fr) auto; }
+  .devices-simple-row > div:nth-child(4) { display: none; }
+}
+
+@media (max-width: 640px) {
+  .devices-page .devices-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .devices-simple-row { display: grid; grid-template-columns: 1fr auto; gap: var(--space-3); padding: var(--space-4); }
+  .devices-simple-row > div:nth-child(2), .devices-simple-row > div:nth-child(3) { display: flex; align-items: center; justify-content: space-between; grid-column: 1 / -1; }
+  .devices-simple-row .device-mobile-label { display: inline; color: var(--color-text-tertiary); font-size: var(--text-xs); }
+  .device-simple-actions { grid-column: 2; grid-row: 1; }
+  .device-simple-actions svg { display: none; }
+}

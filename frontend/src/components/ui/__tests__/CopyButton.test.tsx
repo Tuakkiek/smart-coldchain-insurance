@@ -18,6 +18,7 @@ vi.mock('../../../api/devices', async (importOriginal) => {
   return {
     ...actual,
     getDevices: vi.fn(),
+    getShipmentDevices: vi.fn().mockResolvedValue({ items: [] }),
   };
 });
 
@@ -161,7 +162,7 @@ describe('CopyButton component', () => {
     expect(onParentKeyDown).not.toHaveBeenCalled();
   });
 
-  it('copies Device ID and assigned Shipment ID on DevicesPage without changing row selection and after filtering', async () => {
+  it('keeps technical copy actions out of compact device rows', async () => {
     vi.mocked(devicesApi.getDevices).mockResolvedValue({
       items: mockDevices,
       total: mockDevices.length,
@@ -175,36 +176,20 @@ describe('CopyButton component', () => {
       </MemoryRouter>
     );
 
-    const listbox = await screen.findByRole('listbox', { name: 'Danh sách thiết bị ESP32' });
+    const listbox = await screen.findByRole('listbox', { name: 'Danh sách thiết bị' });
     const rows = within(listbox).getAllByRole('option');
     expect(rows[0]).toHaveAttribute('aria-selected', 'true');
     expect(rows[1]).toHaveAttribute('aria-selected', 'false');
-
-    // Click Copy button on 2nd row (ESP32-02) -> should NOT select row 2
-    const row2CopyButtons = within(rows[1]).getAllByRole('button', { name: 'Sao chép ID' });
-    fireEvent.click(row2CopyButtons[0]);
-
-    await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(mockDevices[1].device_id);
-    });
-    expect(rows[0]).toHaveAttribute('aria-selected', 'true');
-    expect(rows[1]).toHaveAttribute('aria-selected', 'false');
-
-    // Filter devices and copy the filtered device's ID
-    fireEvent.change(screen.getByLabelText('Tìm kiếm thiết bị'), {
+    expect(within(rows[1]).queryByRole('button', { name: 'Sao chép ID' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Tìm thiết bị'), {
       target: { value: 'ESP32-05' },
     });
     const filteredRows = within(listbox).getAllByRole('option');
     expect(filteredRows).toHaveLength(1);
-    const filteredCopyBtn = within(filteredRows[0]).getAllByRole('button', { name: 'Sao chép ID' })[0];
-    fireEvent.click(filteredCopyBtn);
-
-    await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('ESP32-05');
-    });
+    expect(within(filteredRows[0]).queryByRole('button', { name: 'Sao chép ID' })).not.toBeInTheDocument();
   });
 
-  it('copies Shipment UUID on ShipmentsPage without navigating away and after search filtering', async () => {
+  it('hides Shipment UUID from the compact ShipmentsPage row', async () => {
     vi.mocked(shipmentsApi.getShipments).mockResolvedValue({
       items: mockShipments,
       total: mockShipments.length,
@@ -226,23 +211,16 @@ describe('CopyButton component', () => {
 
     const targetShipment = mockShipments[1];
     const searchInput = await screen.findByPlaceholderText(
-      'Tìm theo tên lô hàng, loại hàng, địa điểm...'
+      'Tìm theo tên, hàng hóa hoặc địa điểm'
     );
     fireEvent.change(searchInput, { target: { value: targetShipment.name } });
-
-    const copyBtn = await screen.findByRole('button', { name: 'Sao chép ID' });
-    fireEvent.click(copyBtn);
-
-    await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        targetShipment.shipment_id || targetShipment.id
-      );
-    });
-    expect(await screen.findByText('Đã sao chép ID thành công!')).toBeInTheDocument();
+    expect(await screen.findByText(targetShipment.name)).toBeInTheDocument();
+    expect(screen.queryByText(targetShipment.shipment_id || targetShipment.id)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sao chép ID' })).not.toBeInTheDocument();
     expect(screen.queryByText('Detail Page Navigated')).not.toBeInTheDocument();
   });
 
-  it('copies Shipment UUID on OverviewPage dashboard card without navigating away', async () => {
+  it('hides Shipment UUID from Overview progressive disclosure rows', async () => {
     vi.mocked(shipmentsApi.getShipments).mockResolvedValue({
       items: mockShipments,
       total: mockShipments.length,
@@ -264,15 +242,9 @@ describe('CopyButton component', () => {
       </MemoryRouter>
     );
 
-    const copyButtons = await screen.findAllByRole('button', { name: 'Sao chép ID' });
-    fireEvent.click(copyButtons[0]);
-
-    await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        mockShipments[0].shipment_id || mockShipments[0].id
-      );
-    });
-    expect(await screen.findByText('Đã sao chép ID thành công!')).toBeInTheDocument();
+    expect(await screen.findByText(mockShipments[0].name)).toBeInTheDocument();
+    expect(screen.queryByText(mockShipments[0].shipment_id || mockShipments[0].id)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sao chép ID' })).not.toBeInTheDocument();
     expect(screen.queryByText('Detail Page Navigated')).not.toBeInTheDocument();
   });
 });

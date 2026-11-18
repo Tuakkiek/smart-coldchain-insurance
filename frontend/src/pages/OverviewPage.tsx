@@ -1,287 +1,118 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageHeader } from '../components/layout/PageHeader';
-import { MetricCard } from '../components/data-display/MetricCard';
-import { ShipmentStatusBadge, InsuranceStatusBadge } from '../components/data-display/StatusBadge';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { CopyButton } from '../components/ui/CopyButton';
-import { LoadingState } from '../components/feedback/LoadingState';
-import { EmptyState } from '../components/feedback/EmptyState';
-import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
-import { getShipments } from '../api/shipments';
-import { getAllEvents } from '../api/events';
+import { AlertTriangle, ArrowRight, Package, RefreshCw, ShieldAlert, Thermometer, Truck } from 'lucide-react';
 import { getDevices } from '../api/devices';
-import { ShipmentOut, EventOut, DeviceItemOut } from '../types/api';
-import {
-  Package,
-  Truck,
-  AlertTriangle,
-  ShieldAlert,
-  ArrowRight,
-  Info,
-  Thermometer,
-  Cpu,
-  Wifi,
-  WifiOff,
-  ShieldCheck,
-  RefreshCw,
-} from 'lucide-react';
+import { getAllEvents } from '../api/events';
+import { getShipments } from '../api/shipments';
+import { MetricCard } from '../components/data-display/MetricCard';
+import { InsuranceStatusBadge, ShipmentStatusBadge } from '../components/data-display/StatusBadge';
+import { EmptyState } from '../components/feedback/EmptyState';
+import { LoadingState } from '../components/feedback/LoadingState';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { DeviceItemOut, EventOut, ShipmentOut } from '../types/api';
+
+const eventTitle: Record<string, string> = {
+  INSURANCE_TRIGGERED: 'Bảo hiểm đã được kích hoạt',
+  TEMPERATURE_BREACH_STARTED: 'Nhiệt độ vượt ngưỡng',
+  SENSOR_DATA_GAP: 'Mất tín hiệu cảm biến',
+};
 
 export const OverviewPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [shipments, setShipments] = useState<ShipmentOut[]>([]);
-  const [recentEvents, setRecentEvents] = useState<EventOut[]>([]);
+  const [events, setEvents] = useState<EventOut[]>([]);
   const [devices, setDevices] = useState<DeviceItemOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
 
-  const fetchData = async (isBackground = false, notifyManual = false) => {
-    if (!isBackground && !hasLoadedOnce) {
-      setLoading(true);
-    } else {
-      setRefreshing(true);
-    }
+  const fetchData = async (background = false, notify = false) => {
+    background || hasLoadedOnce ? setRefreshing(true) : setLoading(true);
     setLoadFailed(false);
     try {
-      const [shipmentsRes, eventsRes, devicesRes] = await Promise.all([
+      const [shipmentData, eventData, deviceData] = await Promise.all([
         getShipments(),
         getAllEvents().catch(() => ({ items: [] })),
         getDevices().catch(() => ({ items: [], total: 0 })),
       ]);
-      setShipments(shipmentsRes.items);
-      setRecentEvents(eventsRes.items.slice(0, 5));
-      setDevices(devicesRes.items);
+      setShipments(shipmentData.items);
+      setEvents(eventData.items);
+      setDevices(deviceData.items);
       setHasLoadedOnce(true);
-      if (notifyManual) {
-        toast.success('Đã cập nhật dữ liệu bảng điều khiển.', { title: 'Làm mới thành công' });
-      }
-    } catch (err: unknown) {
-      if (isRequestCancelled(err)) return;
-      const msg = formatApiErrorMessage(err, 'Không thể tải dữ liệu bảng điều khiển. Vui lòng thử lại.');
-      if (!hasLoadedOnce) {
-        setLoadFailed(true);
-      }
-      if (msg && (!isBackground || notifyManual)) {
-        toast.error(msg, {
-          title: 'Không thể tải tổng quan',
-          dedupKey: 'overview-fetch-error',
-          action: {
-            label: 'Thử lại',
-            onClick: () => fetchData(false),
-          },
-        });
-      }
+      if (notify) toast.success('Dữ liệu tổng quan đã được cập nhật.');
+    } catch (error: unknown) {
+      if (isRequestCancelled(error)) return;
+      if (!hasLoadedOnce) setLoadFailed(true);
+      if (!background || notify) toast.error(formatApiErrorMessage(error, 'Không thể tải dữ liệu tổng quan.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { void fetchData(); }, []);
 
-  if (loading && !hasLoadedOnce) {
-    return <LoadingState fullPage message="Đang nạp dữ liệu bảng điều khiển..." />;
-  }
+  const deviceStatus = useMemo(
+    () => new Map(devices.map((device) => [device.device_id, device.health?.online_status])),
+    [devices],
+  );
+  const triggeredShipments = useMemo(
+    () => new Set(events.filter((event) => event.type === 'INSURANCE_TRIGGERED').map((event) => event.shipment_id)).size,
+    [events],
+  );
 
+  if (loading && !hasLoadedOnce) return <LoadingState fullPage message="Đang tải tổng quan..." />;
   if (loadFailed && !hasLoadedOnce) {
-    return (
-      <div>
-        <PageHeader title="Bảng điều khiển Giám sát" />
-        <EmptyState
-          title="Chưa thể nạp dữ liệu tổng quan"
-          description="Vui lòng kiểm tra kết nối máy chủ Backend và thử tải lại."
-          actionText="Thử lại"
-          onAction={() => fetchData(false)}
-        />
-      </div>
-    );
+    return <><PageHeader title="Tổng quan" /><EmptyState title="Chưa thể tải dữ liệu" description="Kiểm tra kết nối Backend rồi thử lại." actionText="Thử lại" onAction={() => fetchData()} /></>;
   }
 
-  const totalShipments = shipments.length;
-  const inTransitCount = shipments.filter((s) => s.status === 'in_transit').length;
-  const breachCount = shipments.filter((s) => {
-    if (!s.latest_telemetry) return false;
-    return (
-      s.latest_telemetry.temperature_c < s.temp_min_c ||
-      s.latest_telemetry.temperature_c > s.temp_max_c
-    );
+  const inTransit = shipments.filter((shipment) => shipment.status === 'in_transit').length;
+  const breached = shipments.filter((shipment) => {
+    const value = shipment.latest_telemetry?.temperature_c;
+    return value !== undefined && (value < shipment.temp_min_c || value > shipment.temp_max_c);
   }).length;
-  const triggeredCount = shipments.filter((s) => s.status === 'insurance_triggered').length;
 
   return (
     <div>
       <PageHeader
-        title="Bảng điều khiển Giám sát"
-        action={
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => fetchData(true, true)}
-            loading={refreshing}
-            disabled={loading || refreshing}
-            icon={<RefreshCw size={14} />}
-          >
-            Làm mới dữ liệu
-          </Button>
-        }
+        title="Tổng quan"
+        description="Tình trạng vận hành cần chú ý ngay lúc này."
+        action={<Button size="sm" onClick={() => fetchData(true, true)} loading={refreshing} icon={<RefreshCw size={14} />}>Làm mới</Button>}
       />
 
-      {/* 4 Metric cards */}
       <div className="metrics-grid">
-        <MetricCard
-          title="Tổng số lô hàng"
-          value={totalShipments}
-          icon={<Package size={20} />}
-        />
-        <MetricCard
-          title="Đang vận chuyển"
-          value={inTransitCount}
-          icon={<Truck size={20} />}
-          accentColor="var(--color-accent)"
-        />
-        <MetricCard
-          title="Nhiệt độ ngoài ngưỡng"
-          value={breachCount}
-          icon={<AlertTriangle size={20} />}
-          accentColor={breachCount > 0 ? 'var(--color-warning)' : undefined}
-        />
-        <MetricCard
-          title="Kích hoạt bảo hiểm"
-          value={triggeredCount}
-          subtitle="Vi phạm liên tục > 15 phút"
-          icon={<ShieldAlert size={20} />}
-          accentColor={triggeredCount > 0 ? 'var(--color-danger)' : undefined}
-        />
+        <MetricCard title="Tổng lô hàng" value={shipments.length} icon={<Package size={20} />} />
+        <MetricCard title="Đang vận chuyển" value={inTransit} icon={<Truck size={20} />} accentColor="var(--color-accent)" />
+        <MetricCard title="Ngoài ngưỡng" value={breached} icon={<AlertTriangle size={20} />} accentColor={breached ? 'var(--color-warning)' : undefined} />
+        <MetricCard title="Đã kích hoạt bảo hiểm" value={triggeredShipments} icon={<ShieldAlert size={20} />} accentColor={triggeredShipments ? 'var(--color-danger)' : undefined} />
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '2fr 1fr',
-          gap: 'var(--space-6)',
-        }}
-      >
-        {/* Recent Shipments */}
-        <Card
-          title="Lô hàng đang theo dõi"
-          description="Các lô hàng có cập nhật mới nhất"
-          action={
-            <Button
-              variant="tertiary"
-              size="sm"
-              onClick={() => navigate('/shipments')}
-              icon={<ArrowRight size={14} />}
-            >
-              Xem tất cả
-            </Button>
-          }
-        >
-          {shipments.length === 0 ? (
-            <EmptyState description="Chưa có lô hàng nào được tạo trong hệ thống." />
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div className="dashboard-grid">
+        <Card title="Lô hàng gần đây" action={<Button variant="tertiary" size="sm" onClick={() => navigate('/shipments')} icon={<ArrowRight size={14} />}>Xem tất cả</Button>}>
+          {shipments.length === 0 ? <EmptyState description="Chưa có lô hàng." /> : (
+            <div className="stack-list">
               {shipments.slice(0, 5).map((shipment) => {
-                const shipmentId = shipment.shipment_id || shipment.id;
-                const temp = shipment.latest_telemetry?.temperature_c;
-                const isTempBreached =
-                  temp !== undefined &&
-                  (temp < shipment.temp_min_c || temp > shipment.temp_max_c);
-
+                const telemetry = shipment.latest_telemetry;
+                const temperature = telemetry?.temperature_c;
+                const isBreach = temperature !== undefined && (temperature < shipment.temp_min_c || temperature > shipment.temp_max_c);
+                const onlineStatus = telemetry?.device_id ? deviceStatus.get(telemetry.device_id) : undefined;
+                const isStale = onlineStatus === 'OFFLINE';
                 return (
-                  <div
-                    key={shipment.id}
-                    onClick={() => navigate(`/shipments/${shipment.id}`)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 'var(--space-3)',
-                      padding: 'var(--space-3) var(--space-4)',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--color-border-subtle)',
-                      backgroundColor: 'var(--color-surface)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--color-border)';
-                      e.currentTarget.style.backgroundColor = 'var(--color-surface-hover)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--color-border-subtle)';
-                      e.currentTarget.style.backgroundColor = 'var(--color-surface)';
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div className="flex-row items-center gap-2">
-                        <span className="font-mono" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                          {shipment.name}
-                        </span>
-                        <ShipmentStatusBadge status={shipment.status} />
-                      </div>
-                      <div
-                        className="id-copy-inline"
-                        style={{
-                          fontSize: '11px',
-                          color: 'var(--color-text-tertiary)',
-                          marginTop: '2px',
-                        }}
-                      >
-                        <span style={{ flexShrink: 0 }}>ID:</span>
-                        <span
-                          className="font-mono"
-                          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                          title={shipmentId}
-                        >
-                          {shipmentId}
-                        </span>
-                        <CopyButton value={shipmentId} iconSize={12} />
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 'var(--text-xs)',
-                          color: 'var(--color-text-secondary)',
-                          marginTop: '2px',
-                        }}
-                      >
-                        {shipment.cargo_type} • {shipment.origin.name} → {shipment.destination.name}
-                      </div>
+                  <div key={shipment.id} className="compact-row compact-row-clickable" role="link" tabIndex={0} onClick={() => navigate(`/shipments/${shipment.id}`)} onKeyDown={(event) => event.key === 'Enter' && navigate(`/shipments/${shipment.id}`)}>
+                    <div className="compact-main">
+                      <div className="flex-row items-center gap-2"><span className="compact-title">{shipment.name}</span><ShipmentStatusBadge status={shipment.status} /></div>
+                      <div className="compact-meta">{shipment.origin.name} → {shipment.destination.name}</div>
                     </div>
-
-                    <div className="flex-row items-center gap-4" style={{ flexShrink: 0 }}>
-                      <div style={{ textAlign: 'right' }}>
-                        <div
-                          className="tabular-nums"
-                          style={{
-                            fontSize: 'var(--text-sm)',
-                            fontWeight: 600,
-                            color: isTempBreached
-                              ? 'var(--color-danger)'
-                              : 'var(--color-text-primary)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'flex-end',
-                            gap: '4px',
-                          }}
-                        >
-                          <Thermometer size={14} />
-                          {temp !== undefined ? `${temp.toFixed(1)}°C` : 'Chưa có mẫu'}
-                        </div>
-                        <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
-                          Chuẩn: {shipment.temp_min_c} - {shipment.temp_max_c}°C
-                        </div>
-                      </div>
-                      <InsuranceStatusBadge
-                        status={shipment.insurance.status}
-                        payoutStatus={shipment.insurance.payout_status}
-                      />
+                    <div className="compact-value" style={{ color: isBreach ? 'var(--color-danger)' : undefined }}>
+                      <div className="flex-row items-center gap-1"><Thermometer size={14} />{temperature !== undefined ? `${temperature.toFixed(1)}°C` : 'Chưa có dữ liệu'}</div>
+                      {isStale && <div style={{ color: 'var(--color-warning)', fontSize: 11, fontWeight: 500 }}>Dữ liệu cũ · thiết bị offline</div>}
                     </div>
+                    <InsuranceStatusBadge status={shipment.insurance.status} payoutStatus={shipment.insurance.payout_status} />
                   </div>
                 );
               })}
@@ -289,175 +120,25 @@ export const OverviewPage: React.FC = () => {
           )}
         </Card>
 
-        {/* Recent Alerts */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-          <Card
-            title="Cảnh báo gần nhất"
-            action={
-              <Button
-                variant="tertiary"
-                size="sm"
-                onClick={() => navigate('/events')}
-                icon={<ArrowRight size={14} />}
-              >
-                Xem chi tiết
-              </Button>
-            }
-          >
-            {recentEvents.length === 0 ? (
-              <div
-                style={{
-                  padding: 'var(--space-6) var(--space-4)',
-                  textAlign: 'center',
-                  color: 'var(--color-text-tertiary)',
-                  fontSize: 'var(--text-sm)',
-                }}
-              >
-                Không có sự kiện vi phạm nào được ghi nhận.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                {recentEvents.map((evt) => (
-                  <div
-                    key={evt.id}
-                    style={{
-                      padding: 'var(--space-3)',
-                      borderRadius: 'var(--radius-md)',
-                      borderLeft: `3px solid ${evt.type === 'INSURANCE_TRIGGERED'
-                        ? 'var(--color-danger)'
-                        : 'var(--color-warning)'
-                        }`,
-                      backgroundColor: 'var(--color-surface-secondary)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 'var(--text-xs)',
-                        fontWeight: 600,
-                        color:
-                          evt.type === 'INSURANCE_TRIGGERED'
-                            ? 'var(--color-danger)'
-                            : 'var(--color-warning)',
-                      }}
-                    >
-                      {evt.type === 'INSURANCE_TRIGGERED'
-                        ? 'KÍCH HOẠT BẢO HIỂM'
-                        : evt.type === 'TEMPERATURE_BREACH_STARTED'
-                          ? 'PHÁT HIỆN VI PHẠM NHIỆT ĐỘ'
-                          : 'MẤT TÍN HIỆU CẢM BIẾN'}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '11px',
-                        color: 'var(--color-text-tertiary)',
-                        marginTop: '2px',
-                      }}
-                    >
-                      {new Date(evt.occurred_at).toLocaleString('vi-VN')}
+        <Card title="Cảnh báo gần đây" action={<Button variant="tertiary" size="sm" onClick={() => navigate('/events')} icon={<ArrowRight size={14} />}>Xem tất cả</Button>}>
+          {events.length === 0 ? <EmptyState description="Không có cảnh báo mới." /> : (
+            <div className="stack-list">
+              {events.slice(0, 3).map((event) => {
+                const shipment = shipments.find((item) => item.id === event.shipment_id || item.shipment_id === event.shipment_id);
+                return (
+                  <div key={event.id} className="compact-row">
+                    <div className="compact-icon" style={{ color: event.type === 'INSURANCE_TRIGGERED' ? 'var(--color-danger)' : 'var(--color-warning)' }}><AlertTriangle size={17} /></div>
+                    <div className="compact-main">
+                      <div className="compact-title">{eventTitle[event.type] ?? 'Sự kiện hệ thống'}</div>
+                      <div className="compact-meta">{shipment?.name ?? 'Lô hàng'} · {new Date(event.occurred_at).toLocaleString('vi-VN')}</div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {/* Device Integrity Quick Status Card */}
-          <Card
-            title="Tính toàn vẹn Thiết bị ESP32"
-            action={
-              <Button
-                variant="tertiary"
-                size="sm"
-                onClick={() => navigate('/devices')}
-                icon={<ArrowRight size={14} />}
-              >
-                Quản lý
-              </Button>
-            }
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: 'var(--text-xs)',
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Wifi size={14} style={{ color: 'var(--color-success)' }} /> Thiết bị trực tuyến:
-                </span>
-                <strong style={{ color: 'var(--color-success)' }}>
-                  {devices.filter((d) => d.health?.online_status === 'ONLINE').length} / {devices.length}
-                </strong>
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: 'var(--text-xs)',
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <ShieldCheck size={14} style={{ color: 'var(--color-success)' }} /> Chữ ký hợp lệ (VALID):
-                </span>
-                <strong>
-                  {devices.filter((d) => d.signature_status === 'VALID').length} / {devices.length}
-                </strong>
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: 'var(--text-xs)',
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <AlertTriangle size={14} style={{ color: 'var(--color-warning)' }} /> Cảnh báo mất sequence:
-                </span>
-                <strong
-                  style={{
-                    color:
-                      devices.filter(
-                        (d) =>
-                          d.completeness_status === 'DATA_INCOMPLETE' ||
-                          (d.health?.missing_sequence_count ?? 0) > 0
-                      ).length > 0
-                        ? 'var(--color-warning)'
-                        : 'var(--color-text-secondary)',
-                  }}
-                >
-                  {
-                    devices.filter(
-                      (d) =>
-                        d.completeness_status === 'DATA_INCOMPLETE' ||
-                        (d.health?.missing_sequence_count ?? 0) > 0
-                    ).length
-                  }{' '}
-                  thiết bị
-                </strong>
-              </div>
-
-              <div style={{ marginTop: 'var(--space-2)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => navigate('/integrity')}
-                  style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-xs)' }}
-                  icon={<ArrowRight size={14} />}
-                >
-                  Xem Merkle Batches & Neo Blockchain →
-                </Button>
-              </div>
+                );
+              })}
             </div>
-          </Card>
-        </div>
+          )}
+        </Card>
       </div>
     </div>
   );
 };
-

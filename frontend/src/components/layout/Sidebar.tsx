@@ -6,7 +6,7 @@ import {
   BellRing,
   Shield,
   Cpu,
-  Database,
+  Blocks,
   X,
 } from 'lucide-react';
 import { AccountMenu } from './AccountMenu';
@@ -20,9 +20,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
   const navItems = [
     { label: 'Tổng quan', path: '/', icon: <LayoutDashboard size={18} /> },
     { label: 'Lô hàng', path: '/shipments', icon: <Truck size={18} /> },
-    { label: 'Thiết bị ESP32', path: '/devices', icon: <Cpu size={18} /> },
-    { label: 'Toàn vẹn Dữ liệu (Merkle)', path: '/integrity', icon: <Database size={18} /> },
-    { label: 'Sự kiện & Vi phạm', path: '/events', icon: <BellRing size={18} /> },
+    { label: 'Thiết bị', path: '/devices', icon: <Cpu size={18} /> },
+    { label: 'Blockchain', path: '/integrity', icon: <Blocks size={18} /> },
+    { label: 'Sự kiện', path: '/events', icon: <BellRing size={18} /> },
   ];
 
   return (
@@ -38,45 +38,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
 
       <aside className={`app-sidebar${isOpen ? ' is-open' : ''}`}>
         {/* Brand header */}
-        <div
-          style={{
-            height: 'var(--topbar-height)',
-            padding: '0 var(--space-5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-            borderBottom: '1px solid var(--color-border-subtle)',
-            flexShrink: 0,
-          }}
-        >
+        <div className="sidebar-brand">
           <div className="flex-row items-center gap-3" style={{ minWidth: 0 }}>
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: 'var(--color-accent-soft)',
-                color: 'var(--color-accent)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
+            <div className="sidebar-brand-icon">
               <Shield size={18} />
             </div>
-            <div
-              style={{
-                fontSize: 'var(--text-sm)',
-                fontWeight: 600,
-                color: 'var(--color-text-primary)',
-                letterSpacing: '-0.01em',
-                lineHeight: 1.3,
-              }}
-            >
-              Smart Cold Chain Insurance
-            </div>
+            <div className="sidebar-brand-name">Cold Chain</div>
           </div>
 
           {onClose && (
@@ -92,35 +59,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
         </div>
 
         {/* Navigation items */}
-        <nav
-          style={{
-            flex: 1,
-            minHeight: 0,
-            padding: 'var(--space-4) var(--space-3)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--space-1)',
-            overflowY: 'auto',
-          }}
-        >
+        <nav className="sidebar-nav" aria-label="Điều hướng chính">
           {navItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               end={item.path === '/'}
               onClick={onClose}
-              style={({ isActive }) => ({
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-3)',
-                padding: '9px 12px',
-                borderRadius: 'var(--radius-md)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: isActive ? 600 : 500,
-                color: isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-                backgroundColor: isActive ? 'var(--color-accent-soft)' : 'transparent',
-                transition: 'all 0.15s ease',
-              })}
+              className={({ isActive }) => `sidebar-nav-link${isActive ? ' is-active' : ''}`}
             >
               {item.icon}
               <span>{item.label}</span>

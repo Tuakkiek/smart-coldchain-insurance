@@ -1,7 +1,6 @@
 import React from 'react';
-import { Card } from '../ui/Card';
+import { RotateCcw, Search, X } from 'lucide-react';
 import { Button } from '../ui/Button';
-import { Search, X, RotateCcw } from 'lucide-react';
 
 export interface DeviceFilterToolbarProps {
   searchTerm: string;
@@ -19,93 +18,22 @@ export const DeviceFilterToolbar: React.FC<DeviceFilterToolbarProps> = ({
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
-  signatureFilter,
-  onSignatureFilterChange,
   onResetFilters,
   hasActiveFilters,
-}) => {
-  return (
-    <Card className="devices-toolbar-card">
-      <div className="devices-toolbar" role="search" aria-label="Tìm kiếm và lọc thiết bị ESP32">
-        <div className="devices-filter-field devices-filter-field--search">
-          <label htmlFor="device-search-input" className="devices-filter-label">
-            Tìm kiếm thiết bị
-          </label>
-          <div className="devices-search-box">
-            <Search size={15} style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }} aria-hidden="true" />
-            <input
-              id="device-search-input"
-              type="text"
-              className="devices-search-input"
-              placeholder="Tìm theo Device ID, Firmware, Public Key ID hoặc lô hàng..."
-              value={searchTerm}
-              onChange={(e) => onSearchChange(e.target.value)}
-            />
-            {searchTerm && (
-              <button
-                type="button"
-                className="devices-search-clear"
-                onClick={() => onSearchChange('')}
-                aria-label="Xóa từ khóa tìm kiếm"
-                title="Xóa từ khóa"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="devices-filter-field">
-          <label htmlFor="device-status-filter" className="devices-filter-label">
-            Trạng thái ESP32
-          </label>
-          <select
-            id="device-status-filter"
-            className="devices-select"
-            value={statusFilter}
-            onChange={(e) => onStatusFilterChange(e.target.value)}
-          >
-            <option value="all">Tất cả trạng thái</option>
-            <option value="ONLINE">ONLINE (Trực tuyến)</option>
-            <option value="OFFLINE">OFFLINE (Ngoại tuyến)</option>
-            <option value="DEGRADED">DEGRADED (Chập chờn)</option>
-            <option value="UNKNOWN">UNKNOWN (Chưa ghi nhận)</option>
-          </select>
-        </div>
-
-        <div className="devices-filter-field">
-          <label htmlFor="device-signature-filter" className="devices-filter-label">
-            Trạng thái chữ ký
-          </label>
-          <select
-            id="device-signature-filter"
-            className="devices-select"
-            value={signatureFilter}
-            onChange={(e) => onSignatureFilterChange(e.target.value)}
-          >
-            <option value="all">Tất cả chữ ký</option>
-            <option value="VALID">Hợp lệ (VALID)</option>
-            <option value="INVALID">Chữ ký sai (INVALID)</option>
-            <option value="UNKNOWN_KEY">Khóa chưa đăng ký (UNKNOWN_KEY)</option>
-            <option value="UNKNOWN">Chưa xác định (UNKNOWN)</option>
-          </select>
-        </div>
-
-        <div className="devices-toolbar-reset">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={onResetFilters}
-            disabled={!hasActiveFilters}
-            icon={<RotateCcw size={13} />}
-            className="devices-reset-btn"
-            title="Đặt lại tìm kiếm và bộ lọc"
-          >
-            Xóa bộ lọc
-          </Button>
-        </div>
-      </div>
-    </Card>
-  );
-};
+}) => (
+  <div className="filter-bar" role="search" aria-label="Tìm và lọc thiết bị">
+    <label className="search-field">
+      <Search size={15} color="var(--color-text-tertiary)" />
+      <input aria-label="Tìm thiết bị" placeholder="Tìm Device ID hoặc lô hàng" value={searchTerm} onChange={(event) => onSearchChange(event.target.value)} />
+      {searchTerm && <button type="button" onClick={() => onSearchChange('')} aria-label="Xóa từ khóa"><X size={14} /></button>}
+    </label>
+    <select className="minimal-select" aria-label="Lọc trạng thái thiết bị" value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}>
+      <option value="all">Tất cả trạng thái</option>
+      <option value="ONLINE">Trực tuyến</option>
+      <option value="OFFLINE">Ngoại tuyến</option>
+      <option value="DEGRADED">Chập chờn</option>
+      <option value="UNKNOWN">Chưa ghi nhận</option>
+    </select>
+    {hasActiveFilters && <Button type="button" size="sm" onClick={onResetFilters} icon={<RotateCcw size={13} />}>Đặt lại</Button>}
+  </div>
+);

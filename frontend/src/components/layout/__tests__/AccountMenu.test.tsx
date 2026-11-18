@@ -243,7 +243,7 @@ describe('AccountMenu', () => {
     expect(screen.getByText('Lô hàng page')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mở menu tài khoản' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('link', { name: 'Thiết bị ESP32' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Thiết bị' }));
     expect(screen.getByText('Thiết bị page')).toBeInTheDocument();
     const trigger = screen.getByRole('button', { name: 'Mở menu tài khoản' });
     expect(trigger).toBeInTheDocument();

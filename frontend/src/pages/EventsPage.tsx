@@ -1,255 +1,91 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageHeader } from '../components/layout/PageHeader';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
-import { CopyButton } from '../components/ui/CopyButton';
-import { LoadingState } from '../components/feedback/LoadingState';
-import { EmptyState } from '../components/feedback/EmptyState';
-import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
+import { AlertTriangle, ArrowRight, BellRing, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
 import { getAllEvents } from '../api/events';
-import { EventOut, EventType } from '../types/api';
-import { BellRing, AlertTriangle, ShieldAlert, WifiOff, ArrowRight, RefreshCw } from 'lucide-react';
+import { getShipments } from '../api/shipments';
+import { EmptyState } from '../components/feedback/EmptyState';
+import { LoadingState } from '../components/feedback/LoadingState';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { EventOut, EventType, ShipmentOut } from '../types/api';
+
+const config: Record<EventType, { title: string; variant: 'danger' | 'warning' | 'neutral'; icon: React.ReactNode }> = {
+  INSURANCE_TRIGGERED: { title: 'Bảo hiểm được kích hoạt', variant: 'danger', icon: <ShieldAlert size={17} /> },
+  TEMPERATURE_BREACH_STARTED: { title: 'Nhiệt độ vượt ngưỡng', variant: 'warning', icon: <AlertTriangle size={17} /> },
+  SENSOR_DATA_GAP: { title: 'Mất tín hiệu cảm biến', variant: 'neutral', icon: <WifiOff size={17} /> },
+};
+
+const eventMessage = (event: EventOut) => {
+  const details = event.details as Record<string, unknown>;
+  if (event.type === 'TEMPERATURE_BREACH_STARTED') return `Ghi nhận ${details.temperature_c ?? '—'}°C, ngoài khoảng ${details.temp_min_c ?? '—'}–${details.temp_max_c ?? '—'}°C.`;
+  if (event.type === 'INSURANCE_TRIGGERED') return `Điều kiện bảo hiểm được xác nhận sau ${details.duration_minutes ?? '—'} phút vi phạm liên tục.`;
+  return `Không nhận được dữ liệu trong ${details.gap_minutes ?? '—'} phút.`;
+};
 
 export const EventsPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [events, setEvents] = useState<EventOut[]>([]);
-  const [filtered, setFiltered] = useState<EventOut[]>([]);
+  const [shipments, setShipments] = useState<ShipmentOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [filterType, setFilterType] = useState<string>('all');
+  const [filterType, setFilterType] = useState('all');
 
-  const fetchEvents = async (isBackground = false, notifyManual = false) => {
-    if (!isBackground && !hasLoadedOnce) {
-      setLoading(true);
-    } else {
-      setRefreshing(true);
-    }
+  const fetchEvents = async (background = false, notify = false) => {
+    background || loaded ? setRefreshing(true) : setLoading(true);
     setLoadFailed(false);
     try {
-      const data = await getAllEvents();
-      setEvents(data.items);
-      setFiltered(data.items);
-      setHasLoadedOnce(true);
-      if (notifyManual) {
-        toast.success('Đã làm mới dòng sự kiện.', { title: 'Làm mới thành công' });
-      }
-    } catch (err: unknown) {
-      if (isRequestCancelled(err)) return;
-      const msg = formatApiErrorMessage(err, 'Không thể tải danh sách sự kiện. Vui lòng thử lại.');
-      if (!hasLoadedOnce) {
-        setLoadFailed(true);
-      }
-      if (msg && (!isBackground || notifyManual)) {
-        toast.error(msg, {
-          title: 'Lỗi tải sự kiện',
-          dedupKey: 'events-fetch-error',
-          action: {
-            label: 'Thử lại',
-            onClick: () => fetchEvents(false),
-          },
-        });
-      }
+      const [eventData, shipmentData] = await Promise.all([getAllEvents(), getShipments().catch(() => ({ items: [], total: 0 }))]);
+      setEvents(eventData.items);
+      setShipments(shipmentData.items);
+      setLoaded(true);
+      if (notify) toast.success('Dòng sự kiện đã được cập nhật.');
+    } catch (error: unknown) {
+      if (isRequestCancelled(error)) return;
+      if (!loaded) setLoadFailed(true);
+      if (!background || notify) toast.error(formatApiErrorMessage(error, 'Không thể tải sự kiện.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    fetchEvents();
-  }, []);
+  useEffect(() => { void fetchEvents(); }, []);
+  const filtered = filterType === 'all' ? events : events.filter((event) => event.type === filterType);
+  const shipmentFor = (id: string) => shipments.find((shipment) => shipment.id === id || shipment.shipment_id === id);
 
-  useEffect(() => {
-    if (filterType === 'all') {
-      setFiltered(events);
-    } else {
-      setFiltered(events.filter((e) => e.type === (filterType as EventType)));
-    }
-  }, [filterType, events]);
-
-  if (loading && !hasLoadedOnce) {
-    return <LoadingState fullPage message="Đang tải dòng sự kiện..." />;
-  }
-
-  if (loadFailed && !hasLoadedOnce) {
-    return (
-      <div>
-        <PageHeader title="Dòng Sự kiện & Vi phạm" />
-        <EmptyState
-          title="Chưa thể tải dòng sự kiện"
-          description="Vui lòng kiểm tra kết nối máy chủ Backend và thử tải lại."
-          actionText="Thử lại"
-          onAction={() => fetchEvents(false)}
-          icon={<BellRing size={24} />}
-        />
-      </div>
-    );
-  }
-
-  const renderEventIcon = (type: EventType) => {
-    switch (type) {
-      case 'INSURANCE_TRIGGERED':
-        return <ShieldAlert size={16} style={{ color: 'var(--color-danger)' }} />;
-      case 'TEMPERATURE_BREACH_STARTED':
-        return <AlertTriangle size={16} style={{ color: 'var(--color-warning)' }} />;
-      case 'SENSOR_DATA_GAP':
-        return <WifiOff size={16} style={{ color: 'var(--color-neutral)' }} />;
-    }
-  };
-
-  const renderBadge = (type: EventType) => {
-    switch (type) {
-      case 'INSURANCE_TRIGGERED':
-        return <Badge variant="danger">Kích hoạt bảo hiểm</Badge>;
-      case 'TEMPERATURE_BREACH_STARTED':
-        return <Badge variant="warning">Vi phạm nhiệt độ</Badge>;
-      case 'SENSOR_DATA_GAP':
-        return <Badge variant="neutral">Mất tín hiệu cảm biến</Badge>;
-    }
-  };
+  if (loading && !loaded) return <LoadingState fullPage message="Đang tải sự kiện..." />;
+  if (loadFailed && !loaded) return <><PageHeader title="Sự kiện" /><EmptyState title="Chưa thể tải sự kiện" actionText="Thử lại" onAction={() => fetchEvents()} icon={<BellRing size={24} />} /></>;
 
   return (
     <div>
-      <PageHeader
-        title="Dòng Sự kiện & Vi phạm"
-        action={
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => fetchEvents(true, true)}
-            loading={refreshing}
-            disabled={loading || refreshing}
-            icon={<RefreshCw size={14} />}
-          >
-            Làm mới
-          </Button>
-        }
-      />
-
-      {/* Filter tab */}
-      <Card style={{ marginBottom: 'var(--space-6)', padding: 'var(--space-4)' }}>
-        <div className="flex-row items-center justify-between" style={{ gap: 'var(--space-4)' }}>
-          <div className="flex-row items-center gap-2">
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
-              Loại sự kiện:
-            </span>
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              style={{
-                padding: '6px 12px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border)',
-                backgroundColor: 'var(--color-surface)',
-                fontSize: 'var(--text-sm)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              <option value="all">Tất cả sự kiện ({events.length})</option>
-              <option value="TEMPERATURE_BREACH_STARTED">Vi phạm nhiệt độ bắt đầu</option>
-              <option value="INSURANCE_TRIGGERED">Kích hoạt bồi thường bảo hiểm</option>
-              <option value="SENSOR_DATA_GAP">Mất dữ liệu cảm biến</option>
-            </select>
+      <PageHeader title="Sự kiện" description="Dòng thời gian các cảnh báo và thay đổi quan trọng." action={<Button size="sm" onClick={() => fetchEvents(true, true)} loading={refreshing} icon={<RefreshCw size={14} />}>Làm mới</Button>} />
+      <div className="filter-bar"><select className="minimal-select" value={filterType} onChange={(event) => setFilterType(event.target.value)} aria-label="Lọc loại sự kiện"><option value="all">Tất cả sự kiện ({events.length})</option><option value="TEMPERATURE_BREACH_STARTED">Nhiệt độ vượt ngưỡng</option><option value="INSURANCE_TRIGGERED">Kích hoạt bảo hiểm</option><option value="SENSOR_DATA_GAP">Mất tín hiệu</option></select></div>
+      {filtered.length === 0 ? <EmptyState title="Không có sự kiện" description="Không có cảnh báo phù hợp với bộ lọc hiện tại." icon={<BellRing size={24} />} /> : (
+        <Card style={{ padding: '4px 20px' }}>
+          <div className="stack-list">
+            {filtered.map((event) => {
+              const itemConfig = config[event.type];
+              const shipment = shipmentFor(event.shipment_id);
+              return <div key={event.id} className="compact-row event-row">
+                <div className="compact-icon" style={{ color: itemConfig.variant === 'danger' ? 'var(--color-danger)' : itemConfig.variant === 'warning' ? 'var(--color-warning)' : undefined }}>{itemConfig.icon}</div>
+                <div className="compact-main">
+                  <div className="flex-row items-center gap-2"><span className="compact-title">{itemConfig.title}</span><Badge variant={itemConfig.variant}>{shipment?.name ?? 'Lô hàng'}</Badge></div>
+                  <div className="compact-meta" style={{ whiteSpace: 'normal' }}>{eventMessage(event)}</div>
+                  <details className="event-metadata"><summary>Chi tiết kỹ thuật</summary><code>Event: {event.id}</code><code>Shipment: {event.shipment_id}</code></details>
+                </div>
+                <div className="event-time">{new Date(event.occurred_at).toLocaleString('vi-VN')}</div>
+                <Button variant="tertiary" size="sm" onClick={() => navigate(`/shipments/${shipment?.id ?? event.shipment_id}`)} icon={<ArrowRight size={14} />}>Xem lô hàng</Button>
+              </div>;
+            })}
           </div>
-        </div>
-      </Card>
-
-      {/* Events timeline list */}
-      {filtered.length === 0 ? (
-        <EmptyState
-          title="Không có sự kiện vi phạm"
-          description="Chuỗi cung ứng đang hoạt động trong điều kiện an toàn, không có sự kiện bất thường."
-          icon={<BellRing size={24} />}
-        />
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-          {filtered.map((evt) => (
-            <Card key={evt.id} style={{ padding: 'var(--space-4)' }}>
-              <div
-                className="flex-row items-center justify-between"
-                style={{ marginBottom: 'var(--space-2)' }}
-              >
-                <div className="flex-row items-center gap-2">
-                  {renderEventIcon(evt.type)}
-                  {renderBadge(evt.type)}
-                  <span
-                    className="id-copy-inline font-mono"
-                    style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}
-                  >
-                    <span>ID Lô: {evt.shipment_id}</span>
-                    <CopyButton value={evt.shipment_id} iconSize={12} />
-                  </span>
-                </div>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-                  {new Date(evt.occurred_at).toLocaleString('vi-VN')}
-                </span>
-              </div>
-
-              <div
-                style={{
-                  padding: 'var(--space-3)',
-                  backgroundColor: 'var(--color-surface-secondary)',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: 'var(--text-sm)',
-                  color: 'var(--color-text-primary)',
-                  marginTop: 'var(--space-2)',
-                }}
-              >
-                {evt.type === 'TEMPERATURE_BREACH_STARTED' && (
-                  <div>
-                    Nhiệt độ đo được:{' '}
-                    <strong style={{ color: 'var(--color-danger)' }}>
-                      {(evt.details as any).temperature_c ?? (evt.details as any).temperature}°C
-                    </strong>{' '}
-                    (vượt ngưỡng cam kết {(evt.details as any).temp_min_c}°C – {(evt.details as any).temp_max_c}°C).
-                  </div>
-                )}
-                {evt.type === 'INSURANCE_TRIGGERED' && (
-                  <div>
-                    Đã đủ điều kiện kích hoạt bảo hiểm! Vi phạm liên tục{' '}
-                    <strong style={{ color: 'var(--color-danger)' }}>
-                      {(evt.details as any).duration_minutes} phút
-                    </strong>.
-                  </div>
-                )}
-                {evt.type === 'SENSOR_DATA_GAP' && (
-                  <div>
-                    Mất tín hiệu cảm biến trong {(evt.details as any).gap_minutes} phút.
-                  </div>
-                )}
-                {evt.type !== 'TEMPERATURE_BREACH_STARTED' &&
-                  evt.type !== 'INSURANCE_TRIGGERED' &&
-                  evt.type !== 'SENSOR_DATA_GAP' && (
-                    <span className="font-mono">{JSON.stringify(evt.details)}</span>
-                  )}
-              </div>
-
-              <div
-                className="flex-row items-center justify-between"
-                style={{ marginTop: 'var(--space-3)' }}
-              >
-                <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
-                  Event UUID: {evt.id}
-                </div>
-                <Button
-                  variant="tertiary"
-                  size="sm"
-                  onClick={() => navigate(`/shipments/${evt.shipment_id}`)}
-                  icon={<ArrowRight size={14} />}
-                >
-                  Xem lô hàng
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
+        </Card>
       )}
     </div>
   );
 };
-
