@@ -61,8 +61,42 @@ def test_health_and_openapi(api):
     paths = client.get("/openapi.json").json()["paths"]
     assert "/api/v1/shipments/{shipment_id}/telemetry" in paths
     assert "/api/v1/devices/{device_id}/telemetry" in paths
+    assert "/api/v1/shipments/{shipment_id}/complete" in paths
     assert "/api/v1/ready" in paths
     assert client.get("/docs").status_code == 200
+
+
+def test_complete_shipment_is_idempotent_and_closes_telemetry(api):
+    client, _app = api
+    shipment_id = create_shipment(client)["id"]
+    telemetry = {
+        "device_id": "ESP32-01", "temperature_c": 5.0, "humidity_pct": 60.0,
+    }
+    assert client.post(f"/api/v1/shipments/{shipment_id}/telemetry", json=telemetry).status_code == 201
+
+    first = client.post(f"/api/v1/shipments/{shipment_id}/complete")
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["status"] == "delivered"
+    assert body["telemetry_closed"] is True
+    assert body["location"] == {
+        "latitude": SHIPMENT["destination"]["latitude"],
+        "longitude": SHIPMENT["destination"]["longitude"],
+        "location_source": "admin_simulated", "progress_pct": 100.0,
+    }
+    assert body["delivery_result"] == "INCOMPLETE"
+    assert body["delivery_result_reason"] == "UNSIGNED_TELEMETRY_PRESENT"
+
+    second = client.post(f"/api/v1/shipments/{shipment_id}/complete")
+    assert second.status_code == 200
+    assert second.json()["delivered_at"] == body["delivered_at"]
+    events = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
+    assert sum(event["type"] == "SHIPMENT_DELIVERED" for event in events) == 1
+
+    rejected = client.post(f"/api/v1/shipments/{shipment_id}/telemetry", json=telemetry)
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "SHIPMENT_COMPLETED"
+    assert len(client.get(f"/api/v1/shipments/{shipment_id}/telemetry").json()["items"]) == 1
 
 
 def test_health_is_live_but_readiness_fails_when_database_is_unavailable(api):

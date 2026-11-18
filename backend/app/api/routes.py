@@ -44,6 +44,7 @@ from app.schemas.api import (
 from app.services import shipments
 from app.services import signed_ingestion
 from app.services import batch_service
+from app.services import delivery_service
 from app.services.auth import (
     AuthError,
     authenticate_admin,
@@ -333,7 +334,27 @@ def get_shipment(shipment_id: UUID4, request: Request, session: AdminSession):
     coordinator = getattr(request.app.state, "policy_blockchain", None)
     if coordinator is not None and shipment.policy_status == "SUBMITTED" and shipment.policy_transaction_hash:
         shipment = coordinator.sync_submitted_policy(session, shipment.id) or shipment
+    if shipment.status == "delivered":
+        shipment = delivery_service.reconcile_completed(
+            session, shipment.id, settlement=getattr(request.app.state, "delivery_settlement", None),
+        )
     return shipments.shipment_dict(session, shipment, request.app.state.clock, request.app.state.settings.sensor_gap_minutes)
+
+
+@router.post(
+    "/shipments/{shipment_id}/complete",
+    response_model=ShipmentOut,
+    response_model_exclude_unset=True,
+)
+def complete_shipment(shipment_id: UUID4, request: Request, session: AdminSession):
+    settings = request.app.state.settings
+    shipment = delivery_service.complete_shipment(
+        session, str(shipment_id), clock=request.app.state.clock,
+        batch_max_records=settings.integrity_batch_max_records,
+        batch_max_age_minutes=settings.integrity_batch_max_age_minutes,
+        settlement=getattr(request.app.state, "delivery_settlement", None),
+    )
+    return shipments.shipment_dict(session, shipment, request.app.state.clock, settings.sensor_gap_minutes)
 
 
 @router.delete("/shipments/{shipment_id}", response_model=ShipmentDeleteOut)

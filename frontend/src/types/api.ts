@@ -294,7 +294,7 @@ export interface BlockchainOut {
   confirmation_status: BlockchainConfirmationStatus;
 }
 
-export type ShipmentStatus = 'created' | 'in_transit' | 'sensor_data_gap' | 'insurance_triggered';
+export type ShipmentStatus = 'created' | 'in_transit' | 'sensor_data_gap' | 'insurance_triggered' | 'delivered';
 
 export interface ShipmentOut {
   id: string;
@@ -313,6 +313,15 @@ export interface ShipmentOut {
   location: LocationOut | null;
   insurance: InsuranceOut;
   blockchain: BlockchainOut | null;
+  delivered_at?: string | null;
+  delivery_source?: 'admin_simulated' | null;
+  telemetry_closed?: boolean;
+  delivery_result?: 'SAFE' | 'VIOLATED' | 'INCOMPLETE' | null;
+  delivery_result_reason?: string | null;
+  refund_status?: 'NOT_APPLICABLE' | 'PENDING' | 'WAITING_EXPIRY' | 'CONFIRMED' | 'FAILED' | null;
+  refund_transaction_hash?: string | null;
+  refunded_amount_wei?: string | null;
+  refund_recipient_address?: string | null;
   created_at: string;
 }
 
@@ -342,7 +351,7 @@ export interface ShipmentCreatePayload {
   insured_amount_vnd?: number;
 }
 
-export type EventType = 'TEMPERATURE_BREACH_STARTED' | 'INSURANCE_TRIGGERED' | 'SENSOR_DATA_GAP';
+export type EventType = 'TEMPERATURE_BREACH_STARTED' | 'INSURANCE_TRIGGERED' | 'SENSOR_DATA_GAP' | 'SHIPMENT_DELIVERED';
 
 export interface TemperatureBreachDetails {
   temperature_c: number;

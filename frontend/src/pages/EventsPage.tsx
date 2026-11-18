@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, BellRing, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BellRing, CheckCircle2, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
 import { getAllEvents } from '../api/events';
 import { getShipments } from '../api/shipments';
 import { EmptyState } from '../components/feedback/EmptyState';
@@ -16,6 +16,7 @@ const config: Record<EventType, { title: string; variant: 'danger' | 'warning' |
   INSURANCE_TRIGGERED: { title: 'Bảo hiểm được kích hoạt', variant: 'danger', icon: <ShieldAlert size={17} /> },
   TEMPERATURE_BREACH_STARTED: { title: 'Nhiệt độ vượt ngưỡng', variant: 'warning', icon: <AlertTriangle size={17} /> },
   SENSOR_DATA_GAP: { title: 'Mất tín hiệu cảm biến', variant: 'neutral', icon: <WifiOff size={17} /> },
+  SHIPMENT_DELIVERED: { title: 'Đã giao hàng', variant: 'neutral', icon: <CheckCircle2 size={17} /> },
 };
 
 const eventMessage = (event: EventOut) => {

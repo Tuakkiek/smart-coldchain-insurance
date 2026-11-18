@@ -95,6 +95,15 @@ contract ColdChainInsurance is ReentrancyGuard {
         uint256 amount
     );
 
+    /// @notice Phát khi oracle xác nhận giao hàng an toàn và hoàn ký quỹ sớm.
+    event SafeDeliveryCompleted(
+        bytes32 indexed shipmentKey,
+        address indexed insurer,
+        uint256 amount,
+        bytes32 evidenceHash,
+        uint256 deliveredAt
+    );
+
     /// @notice Phát khi oracle address được cập nhật
     event OracleUpdated(
         address indexed previousOracle,
@@ -268,6 +277,39 @@ contract ColdChainInsurance is ReentrancyGuard {
         (bool success, ) = payable(policy.insurer).call{value: amount}("");
         if (!success) revert ColdChain__ETHTransferFailed();
 
+        emit PolicyRefunded(_shipmentKey, policy.insurer, amount);
+    }
+
+    /**
+     * @notice Xác nhận giao hàng an toàn và hoàn ký quỹ cho insurer trước ngày hết hạn.
+     *         Chỉ oracle Backend được gọi sau khi đã đánh giá toàn bộ bằng chứng.
+     */
+    function completeSafeDelivery(
+        bytes32 _shipmentKey,
+        bytes32 _evidenceHash,
+        uint256 _deliveredAt
+    ) external onlyOracle nonReentrant {
+        Policy storage policy = policies[_shipmentKey];
+        if (policy.status != PolicyStatus.Active) {
+            revert ColdChain__PolicyNotActive(_shipmentKey, policy.status);
+        }
+        uint256 amount = policy.payoutAmount;
+        uint256 balance = address(this).balance;
+        if (balance < amount) {
+            revert ColdChain__ContractInsufficientBalance(balance, amount);
+        }
+
+        // Effects before interaction: this also makes concurrent/repeated calls harmless.
+        policy.status = PolicyStatus.Refunded;
+        policy.evidenceHash = _evidenceHash;
+        policy.detectedAt = _deliveredAt;
+
+        (bool success, ) = payable(policy.insurer).call{value: amount}("");
+        if (!success) revert ColdChain__ETHTransferFailed();
+
+        emit SafeDeliveryCompleted(
+            _shipmentKey, policy.insurer, amount, _evidenceHash, _deliveredAt
+        );
         emit PolicyRefunded(_shipmentKey, policy.insurer, amount);
     }
 

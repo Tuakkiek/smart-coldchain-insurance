@@ -33,6 +33,12 @@ export async function deleteShipment(shipmentId: string): Promise<ShipmentDelete
   );
 }
 
+export async function completeShipment(shipmentId: string): Promise<ShipmentOut> {
+  return apiClient.post<ShipmentOut>(
+    `/api/v1/shipments/${encodeURIComponent(shipmentId)}/complete`, undefined, 30_000
+  );
+}
+
 export async function getShipmentTelemetry(shipmentId: string): Promise<TelemetryListOut> {
   return apiClient.get<TelemetryListOut>(`/api/v1/shipments/${shipmentId}/telemetry`);
 }
