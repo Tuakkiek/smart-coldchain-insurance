@@ -10,8 +10,9 @@ import { ConfirmModal } from '../components/feedback/ConfirmModal';
 import { deleteShipment, getShipments } from '../api/shipments';
 import { ApiError } from '../api/client';
 import { ShipmentOut, ShipmentStatus } from '../types/api';
-import { Search, MapPin, Thermometer, Shield, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { Search, MapPin, Thermometer, Shield, Plus, Trash2, RefreshCw, Link2 } from 'lucide-react';
 import { CreateShipmentModal } from '../components/shipments/CreateShipmentModal';
+import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 import { formatInsuranceCoverage, shortenAddress } from '../utils/ethereum';
 
@@ -25,6 +26,7 @@ export const ShipmentsPage: React.FC = () => {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [assignmentShipmentId, setAssignmentShipmentId] = useState<string | null>(null);
   const [shipmentToDelete, setShipmentToDelete] = useState<ShipmentOut | null>(null);
   const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
 
@@ -73,8 +75,8 @@ export const ShipmentsPage: React.FC = () => {
     toast.success(`Đã tạo ${newShipment.name}. Shipment ID: ${newShipment.shipment_id}`, {
       title: 'Tạo lô hàng thành công',
       action: {
-        label: 'Xem chi tiết',
-        onClick: () => navigate(`/shipments/${newShipment.id}`),
+        label: 'Gán thiết bị',
+        onClick: () => setAssignmentShipmentId(newShipment.id),
       },
     });
   };
@@ -107,7 +109,12 @@ export const ShipmentsPage: React.FC = () => {
         msg = formatApiErrorMessage(err, 'Không thể xóa lô hàng. Vui lòng thử lại.');
       }
       if (msg) {
-        toast.error(msg, { title: 'Lỗi xóa lô hàng' });
+        toast.error(msg, {
+          title: 'Lỗi xóa lô hàng',
+          ...(err instanceof ApiError && err.code === 'SHIPMENT_HAS_ASSIGNED_DEVICES'
+            ? { action: { label: 'Tháo thiết bị', onClick: () => setAssignmentShipmentId(shipment.id) } }
+            : {}),
+        });
       }
     } finally {
       setDeletingShipmentId(null);
@@ -298,6 +305,17 @@ export const ShipmentsPage: React.FC = () => {
                       Tạo lúc: {new Date(shipment.created_at).toLocaleDateString('vi-VN')}
                     </div>
                     <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<Link2 size={13} />}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setAssignmentShipmentId(shipment.id);
+                      }}
+                    >
+                      Gán / tháo thiết bị
+                    </Button>
+                    <Button
                       variant="danger"
                       size="sm"
                       loading={deletingShipmentId === shipment.id}
@@ -408,6 +426,12 @@ export const ShipmentsPage: React.FC = () => {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={handleShipmentCreated}
+      />
+      <AssignDeviceModal
+        isOpen={assignmentShipmentId !== null}
+        initialShipmentId={assignmentShipmentId}
+        onClose={() => setAssignmentShipmentId(null)}
+        onSuccess={(_device, message) => toast.success(message, { title: 'Thiết bị lô hàng' })}
       />
 
       {/* Modal Xác Nhận Xóa Lô Hàng */}

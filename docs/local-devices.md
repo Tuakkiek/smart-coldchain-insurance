@@ -45,6 +45,13 @@ Trên frontend, nhập **Tên lô hàng**, tạo lô hàng rồi lấy `shipment
 
 Tên tối đa 255 ký tự và có thể trùng; UUID luôn riêng cho mỗi lô hàng. Trong trang Thiết bị, chọn một ESP32 có sẵn và **Liên kết chuyến hàng**. Không còn đăng ký, xóa thiết bị hoặc thêm key qua API.
 
+Các thao tác quản lý đều thực hiện thủ công trên giao diện:
+
+- **Tạo lô hàng:** trang Lô hàng → Tạo lô hàng mới → nhập thông tin → Tạo. Thông báo thành công có nút Gán thiết bị.
+- **Gán thiết bị:** bấm Gán / tháo thiết bị ngay trên lô hàng hoặc trang chi tiết → chọn ESP32 có sẵn → Gán thiết bị. Lô hàng được chọn sẵn, không cần nhập UUID.
+- **Tháo thiết bị:** mở cùng hộp thoại, chọn thiết bị đang gán → Tháo thiết bị. Có thể tiếp tục chọn và gán thiết bị khác.
+- **Xóa lô hàng:** bấm Xóa trên lô hàng → xác nhận. Nếu vẫn còn thiết bị, tháo các thiết bị trước. Lô có dữ liệu vận hành hoặc giao dịch blockchain được giữ lại để đối soát; giao diện sẽ giải thích khi không thể xóa.
+
 ## 3. Test bằng simulator
 
 Từ gốc repository, sau khi gán ESP32-01 vào lô hàng:
