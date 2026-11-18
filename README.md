@@ -153,12 +153,11 @@ Không cần ép repository thực tế đổi tên thư mục nếu cấu trúc
 
 ### 5.1. ESP32 gửi signed telemetry
 
-ESP32 dùng một `device_id`, cặp khóa riêng/công khai đã được provision và sequence tăng dần. Backend có public key tương ứng để kiểm tra. Payload minh họa của giao thức đề xuất **`SIGNED-TELEMETRY-v1`**:
+ESP32 dùng một `device_id`, cặp khóa riêng/công khai đã được provision và sequence tăng dần. Backend có public key tương ứng để kiểm tra. Payload hiện tại dùng **`SIGNED-TELEMETRY-v2`** và không chứa `shipment_id`:
 
 ```json
 {
-  "payload_version": 1,
-  "shipment_id": "SHIP-001",
+  "payload_version": 2,
   "device_id": "ESP32-001",
   "key_id": "key-v1",
   "sequence_number": 1524,
@@ -172,14 +171,14 @@ ESP32 dùng một `device_id`, cặp khóa riêng/công khai đã được provi
 }
 ```
 
-API đề xuất: `POST /api/v1/shipments/{shipment_id}/telemetry`.
+API thiết bị: `POST /api/v1/devices/{device_id}/telemetry`.
 
 Quy tắc chính:
 
 - ESP32 ký **canonical projection** có thứ tự key ASCII tăng dần; trường đo dùng **số nguyên scale ×1000** trong projection, không ký trực tiếp biểu diễn float tùy ý.
 - Chữ ký dùng **ECDSA P-256 với SHA-256**, encode **ASN.1 DER rồi Base64**; firmware phải có golden test vector tương thích Python Backend.
-- `sequence_number` tăng theo **thiết bị**, được duy trì sau reboot; `shipment_id` trong body phải trùng route và phép gán thiết bị–lô hàng.
-- Backend kiểm tra định danh, key, chữ ký, duplicate/replay/gap, validation và lưu **`received_at` do server tạo** (UTC). `recorded_at` của ESP32 không phải đồng hồ authoritative.
+- `sequence_number` tăng theo **thiết bị** và được duy trì sau reboot. ESP32 không biết, không lưu và không gửi `shipment_id`.
+- Backend kiểm tra định danh, key, chữ ký, tra assignment active trong MySQL, rồi gắn `shipment_id`; sau đó mới kiểm tra duplicate/replay/gap và lưu **`received_at` do server tạo** (UTC). `recorded_at` của ESP32 không phải đồng hồ authoritative.
 - Wi-Fi/RPC mất kết nối được xử lý qua retry có giới hạn, offline buffering và kiểm soát gửi trùng; không tự đăng ký khóa mới từ request telemetry.
 
 Các trường, quy tắc canonical và HTTP status cuối cùng phải chốt ở `docs/contracts/api-v1.md`. Giá trị `signature` trong ví dụ là **placeholder**, không phải chữ ký dùng được.
@@ -225,7 +224,7 @@ Không có yêu cầu cảm biến GPS thật cho MVP. Backend nội suy vị tr
 | `GET` | `/shipments` | Liệt kê lô hàng |
 | `GET` | `/shipments/{shipment_id}` | Chi tiết lô hàng, vị trí, insurance |
 | `GET` | `/shipments/{shipment_id}/telemetry` | Lịch sử telemetry |
-| `POST` | `/shipments/{shipment_id}/telemetry` | ESP32 gửi telemetry có chữ ký |
+| `POST` | `/devices/{device_id}/telemetry` | ESP32 gửi telemetry v2; Backend tự resolve shipment assignment |
 | `GET` | `/shipments/{shipment_id}/events` | Lịch sử cảnh báo, vi phạm và bảo hiểm |
 | `GET` | `/shipments/{shipment_id}/insurance` | Policy và payout status |
 | `GET` | `/shipments/{shipment_id}/integrity` | Thống kê và trạng thái integrity |
@@ -476,7 +475,7 @@ Các Phase là **đầu việc kế hoạch**, không phải trạng thái hoàn
 Các nội dung **phải xác nhận trước khi coi MVP đã chốt**:
 
 - Loại ESP32/cảm biến cụ thể, thư viện ký số và cách lưu khóa không xuất plaintext trong firmware/repository.
-- Bản golden vector cuối cho `SIGNED-TELEMETRY-v1`, `MERKLE-v1`, ID `bytes32` và `EVIDENCE-v1`.
+- Bản golden vector cuối cho `SIGNED-TELEMETRY-v2` (và compatibility v1), `MERKLE-v1`, ID `bytes32` và `EVIDENCE-v1`.
 - Định nghĩa device offline/heartbeat, cửa sổ sequence gap/late arrivals, độ lệch đồng hồ và chính sách thời gian 15 phút.
 - Chính sách **evidence bắt buộc phải anchored** trước payout; số confirmations, mạng local/testnet và giới hạn RPC.
 - ABI cuối, quyền `ANCHORER_ROLE` và `ORACLE`, chiến lược funding token demo, idempotency.

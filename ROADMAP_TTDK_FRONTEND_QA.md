@@ -217,7 +217,7 @@ Các tên trên là nhóm ý nghĩa/nhãn UI. Giữ wire enum hiện có: teleme
 | `GET` | `/api/v1/shipments` | Có; danh sách `{items, total}` để hiển thị và chọn chuyến, chưa có pagination v1 |
 | `POST` | `/api/v1/devices/{device_id}/assignments` | **Admin UI:** `{shipment_id: UUID, active: true/false}` → `200 DeviceView`; có, cần chặn nhiều active/device |
 | `POST` | `/api/v1/devices/{device_id}/keys` | **Script NTK, ngoài browser:** `{key_id, public_key_pem}` → `201 DeviceView`; có, không thêm form khóa |
-| `POST` | `/api/v1/shipments/{shipment_id}/telemetry` | **ESP32/simulator, ngoài browser:** signed v1 với UUID/key ID → `201`, duplicate hợp lệ `200`; giữ protocol |
+| `POST` | `/api/v1/devices/{device_id}/telemetry` | **ESP32/simulator, ngoài browser:** signed v2 không có shipment ID → Backend resolve assignment, `201`; duplicate hợp lệ `200` |
 | `GET` | `/api/v1/shipments/{shipment_id}` | Có; chi tiết, location và **insurance/blockchain payout metadata**, dùng thay `/insurance` riêng |
 | `GET` | `/api/v1/shipments/{shipment_id}/devices` | Có; online/offline, last seen/sequence theo chuyến, dùng thay device `/health` chưa có |
 | `GET` | `/api/v1/shipments/{shipment_id}/telemetry` | Có; nhiệt độ/độ ẩm/`received_at`, signed status/missing range khi có |
@@ -387,7 +387,7 @@ MySQL do NTK quản lý: `devices.id` (API gọi `device_id`, thêm `device_name
 - [x] Kiểm tra cây `frontend/` hiện có, package/lockfile, thư viện đang dùng trước khi tạo thêm file; không tự tuyên bố repo đã có module nào.
 - [x] Tạo/tiếp tục nhánh `feat/frontend-dashboard`; thống nhất cách PR và ownership với NTK/NTD.
 - [x] Nhận `docs/contracts/api-v1.md` draft và OpenAPI từ NTK; ghi bảng endpoint → màn hình → field → error → quyền truy cập.
-- [x] Đọc mô tả `SIGNED-TELEMETRY-v1`, `MERKLE-v1`, status schema của NTK và ABI/event semantics của NTD **qua Backend contract**, không tự tạo một chuỗi trạng thái mới.
+- [x] Đọc mô tả `SIGNED-TELEMETRY-v2`/compatibility v1, `MERKLE-v1`, status schema của NTK và ABI/event semantics của NTD **qua Backend contract**, không tự tạo một chuỗi trạng thái mới.
 - [ ] Chốt các màn hình: **Login**, Dashboard, Shipments, Shipment Detail, Devices, Integrity Batches/Details, Blockchain/Insurance, Demo Panel (dev-only); Logout trên navigation. Không Register/Forgot Password/quản lý tài khoản.
 - [ ] Khóa auth NTK §3.2.1/TTDK §3.8: một Admin, login JSON/JWT Access Token có TTL, Bearer cho monitoring/Admin, state/sessionStorage, 401 hết hạn đăng nhập lại và 429 login. Không refresh/OAuth/MFA/session DB; bỏ Admin API key/UI nhập key/localStorage cũ khi đổi client.
 - [ ] Chốt network hiển thị **Ethereum Sepolia `11155111`**, Etherscan links, ABI/events/receipt semantics từ deployment Remix qua NTK; QA dùng Backend Web3.py/Alchemy, không yêu cầu Hardhat Node hoặc browser RPC.

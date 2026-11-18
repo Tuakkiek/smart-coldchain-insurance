@@ -26,7 +26,7 @@ class ProvisioningError(Exception):
 
 
 class FirmwareConfigWriter:
-    """Update only device identity and key declarations in a fixed config.h."""
+    """Update only the fixed device identity and key declarations in config.h."""
 
     _PRIVATE_KEY_PATTERN = re.compile(
         r'(static\s+const\s+char\s+DEVICE_PRIVATE_KEY_PEM\s*\[\s*\]\s*=\s*'
@@ -82,9 +82,7 @@ class FirmwareConfigWriter:
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
 
-    def update(
-        self, device_id: str, key_id: str, private_key_pem: str, *, shipment_id: str | None = None,
-    ) -> None:
+    def update(self, device_id: str, key_id: str, private_key_pem: str) -> None:
         try:
             if self.config_path.exists():
                 original = self.config_path.read_bytes()
@@ -110,8 +108,13 @@ class FirmwareConfigWriter:
 
         content = self._replace_define(content, "DEVICE_ID", device_id)
         content = self._replace_define(content, "KEY_ID", key_id)
-        if shipment_id is not None:
-            content = self._replace_define(content, "SHIPMENT_ID", shipment_id)
+        # Migrate an older local config without exposing or rewriting its other
+        # credentials. Shipment assignment now lives exclusively in MySQL.
+        content = re.sub(
+            r"(?m)^\s*#\s*define\s+SHIPMENT_ID\b[^\r\n]*(?:\r?\n)?",
+            "",
+            content,
+        )
 
         newline = "\r\n" if "\r\n" in content else "\n"
         normalized_pem = private_key_pem.replace("\r\n", "\n").rstrip("\n")

@@ -20,7 +20,7 @@
 
 namespace {
 constexpr int kDhtPin = 27;
-constexpr uint32_t kSampleIntervalMs = 60000;
+constexpr uint32_t kSampleIntervalMs = 30000;
 constexpr int kHttpTimeoutMs = 30000;
 constexpr char kFirmwareVersion[] = "esp32-1.0";
 
@@ -93,10 +93,9 @@ String canonicalMessage(uint32_t sequence, int temperatureMilli,
          "\",\"firmware_version\":\"" + kFirmwareVersion +
          "\",\"humidity_milli_pct\":" + String(humidityMilli) +
          ",\"key_id\":\"" + KEY_ID +
-         "\",\"payload_version\":1,\"recorded_at\":\"" + recordedAt +
+         "\",\"payload_version\":2,\"recorded_at\":\"" + recordedAt +
          "\",\"sequence_number\":" + String(sequence) +
-         ",\"shipment_id\":\"" + SHIPMENT_ID +
-         "\",\"temperature_milli_c\":" + String(temperatureMilli) + "}";
+         ",\"temperature_milli_c\":" + String(temperatureMilli) + "}";
 }
 
 bool signMessage(const String &message, String &encoded) {
@@ -174,8 +173,8 @@ bool loadSigningKey() {
 int postTelemetry(const String &body) {
   if (!connectWifi()) return -1;
 
-  const String endpoint = String(API_BASE_URL) + "/api/v1/shipments/" +
-                          SHIPMENT_ID + "/telemetry";
+  const String endpoint = String(API_BASE_URL) + "/api/v1/devices/" +
+                          DEVICE_ID + "/telemetry";
   int lastStatus = -1;
 
   for (int attempt = 1; attempt <= 3; ++attempt) {

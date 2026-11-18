@@ -59,6 +59,25 @@ def signed(key, shipment_id: str, sequence: int, temperature: float = 5.0) -> di
     return payload
 
 
+def signed_v2(key, sequence: int, temperature: float = 5.0) -> dict:
+    payload = {
+        "payload_version": 2,
+        "device_id": "ESP32-01",
+        "key_id": "key-v1",
+        "sequence_number": sequence,
+        "temperature_c": temperature,
+        "humidity_pct": 80.0,
+        "temperature_milli_c": round(temperature * 1000),
+        "humidity_milli_pct": 80000,
+        "recorded_at": f"2026-11-09T12:00:{sequence:02d}Z",
+        "firmware_version": "2.0.0",
+    }
+    payload["signature"] = base64.b64encode(
+        key.sign(canonical_signed_bytes(payload), ec.ECDSA(hashes.SHA256()))
+    ).decode("ascii")
+    return payload
+
+
 @pytest.fixture
 def integrity_api(tmp_path):
     app = create_app(Settings(
@@ -124,6 +143,22 @@ def test_auto_seal_persists_membership_root_and_outbox(integrity_api):
     assert verified.status_code == 200
     assert verified.json()["verification_status"] == "MATCHED"
     assert verified.json()["calculated_root"] == batch["merkle_root"]
+
+
+def test_v2_backend_assigned_shipment_is_bound_into_merkle_batch(integrity_api):
+    client, _app, key, shipment_id = integrity_api
+    route = "/api/v1/devices/ESP32-01/telemetry"
+    for sequence in (1, 2, 3):
+        response = client.post(route, json=signed_v2(key, sequence))
+        assert response.status_code == 201, response.text
+        assert response.json()["shipment_id"] == shipment_id
+
+    batches = client.get(f"/api/v1/shipments/{shipment_id}/batches").json()["items"]
+    assert len(batches) == 1
+    assert batches[0]["verification_status"] == "MATCHED"
+    verified = client.post(f"/api/v1/batches/{batches[0]['batch_id']}/verify")
+    assert verified.status_code == 200
+    assert verified.json()["calculated_root"] == batches[0]["merkle_root"]
 
 
 def test_membership_is_immutable_and_tamper_creates_one_alert(integrity_api):

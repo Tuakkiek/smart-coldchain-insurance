@@ -79,6 +79,94 @@ def signed(key, shipment_id, sequence, *, temperature=5.0, device_id="ESP32-01",
     return payload
 
 
+def signed_v2(key, sequence, *, temperature=5.0, device_id="ESP32-01", key_id="key-v1"):
+    payload = {
+        "payload_version": 2, "device_id": device_id,
+        "key_id": key_id, "sequence_number": sequence,
+        "temperature_c": temperature, "humidity_pct": 80.0,
+        "temperature_milli_c": round(temperature * 1000), "humidity_milli_pct": 80000,
+        "recorded_at": "2026-11-05T12:00:00Z", "firmware_version": "2.0.0",
+    }
+    payload["signature"] = base64.b64encode(
+        key.sign(canonical_signed_bytes(payload), ec.ECDSA(hashes.SHA256()))
+    ).decode("ascii")
+    return payload
+
+
+def test_v2_backend_resolves_current_assignment_without_shipment_in_device_payload(setup_api):
+    client, app, key, pem, first_shipment_id = setup_api
+    assert register(client, pem, first_shipment_id).status_code == 201
+    route = "/api/v1/devices/ESP32-01/telemetry"
+
+    first_payload = signed_v2(key, 1)
+    assert "shipment_id" not in first_payload
+    first = client.post(route, headers={"Authorization": ""}, json=first_payload)
+    assert first.status_code == 201, first.text
+    assert first.json()["shipment_id"] == first_shipment_id
+
+    second_shipment_id = client.post("/api/v1/shipments", json={
+        **SHIPMENT, "name": "SIGNED-TEST-SECOND",
+    }).json()["id"]
+    assert client.post("/api/v1/devices/ESP32-01/assignments", json={
+        "shipment_id": first_shipment_id, "active": False,
+    }).status_code == 200
+    assert client.post("/api/v1/devices/ESP32-01/assignments", json={
+        "shipment_id": second_shipment_id, "active": True,
+    }).status_code == 200
+
+    second = client.post(route, headers={"Authorization": ""}, json=signed_v2(key, 2))
+    assert second.status_code == 201, second.text
+    assert second.json()["shipment_id"] == second_shipment_id
+    assert len(client.get(f"/api/v1/shipments/{first_shipment_id}/telemetry").json()["items"]) == 1
+    assert len(client.get(f"/api/v1/shipments/{second_shipment_id}/telemetry").json()["items"]) == 1
+
+    assert client.post("/api/v1/devices/ESP32-01/assignments", json={
+        "shipment_id": second_shipment_id, "active": False,
+    }).status_code == 200
+    unassigned = client.post(route, headers={"Authorization": ""}, json=signed_v2(key, 3))
+    assert unassigned.status_code == 403
+    assert unassigned.json()["error"]["code"] == "DEVICE_NOT_ASSIGNED"
+
+    with app.state.session_factory() as session:
+        receipts = list(session.scalars(
+            select(SignedTelemetryReceipt).order_by(SignedTelemetryReceipt.sequence_number)
+        ))
+        assert [(item.payload_version, item.shipment_id) for item in receipts] == [
+            (2, first_shipment_id), (2, second_shipment_id),
+        ]
+
+
+def test_v2_device_endpoint_rejects_wrong_identity_and_invalid_signature(setup_api):
+    client, _app, key, pem, shipment_id = setup_api
+    assert register(client, pem, shipment_id).status_code == 201
+    wrong_path = client.post(
+        "/api/v1/devices/ESP32-02/telemetry",
+        headers={"Authorization": ""},
+        json=signed_v2(key, 1),
+    )
+    assert wrong_path.status_code == 422
+    assert wrong_path.json()["error"]["code"] == "DEVICE_MISMATCH"
+
+    tampered = signed_v2(key, 1)
+    tampered["temperature_c"] = 6.0
+    tampered["temperature_milli_c"] = 6000
+    invalid = client.post(
+        "/api/v1/devices/ESP32-01/telemetry",
+        headers={"Authorization": ""},
+        json=tampered,
+    )
+    assert invalid.status_code == 401
+    assert invalid.json()["error"]["code"] == "INVALID_SIGNATURE"
+
+    old_route = client.post(
+        f"/api/v1/shipments/{shipment_id}/telemetry",
+        headers={"Authorization": ""},
+        json=signed_v2(key, 1),
+    )
+    assert old_route.status_code == 422
+    assert old_route.json()["error"]["code"] == "DEVICE_ENDPOINT_REQUIRED"
+
+
 def test_registration_auth_and_signed_retry_conflict_gap(setup_api):
     client, app, key, pem, shipment_id = setup_api
     route = f"/api/v1/shipments/{shipment_id}/telemetry"

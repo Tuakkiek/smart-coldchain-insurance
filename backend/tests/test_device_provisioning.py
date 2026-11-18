@@ -142,7 +142,7 @@ def test_database_failure_keeps_file_for_retry(local_api, tmp_path, monkeypatch)
         assert session.scalar(select(func.count(Device.id))) == 10
 
 
-def test_firmware_configuration_uses_existing_key_and_shipment(local_api, tmp_path):
+def test_firmware_configuration_uses_existing_key_without_shipment(local_api, tmp_path):
     _, _, key_path = local_api
     path = tmp_path / "config.h"
     template = Path(__file__).resolve().parents[2] / "device/cold_chain_device/config.example.h"
@@ -150,15 +150,36 @@ def test_firmware_configuration_uses_existing_key_and_shipment(local_api, tmp_pa
     key = load_device_keys(key_path)["ESP32-03"]
     pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
                             serialization.NoEncryption()).decode("ascii")
-    shipment_id = "11111111-1111-4111-8111-111111111111"
-    FirmwareConfigWriter(path).update("ESP32-03", DEFAULT_KEY_ID, pem, shipment_id=shipment_id)
+    FirmwareConfigWriter(path).update("ESP32-03", DEFAULT_KEY_ID, pem)
     content = path.read_text()
     assert '#define DEVICE_ID "ESP32-03"' in content
-    assert f'#define SHIPMENT_ID "{shipment_id}"' in content
+    assert "SHIPMENT_ID" not in content
     assert pem.strip() in content
     assert content.count("DEVICE_PRIVATE_KEY_PEM[]") == 1
     assert "#define WIFI_SSID" in content
     assert '#define API_BASE_URL "https://YOUR-SERVICE.onrender.com"' in content
+
+
+def test_firmware_configuration_removes_legacy_shipment_define(local_api, tmp_path):
+    _, _, key_path = local_api
+    path = tmp_path / "config.h"
+    template = Path(__file__).resolve().parents[2] / "device/cold_chain_device/config.example.h"
+    path.write_text(
+        template.read_text().replace(
+            '#define DEVICE_ID "ESP32-01"',
+            '#define SHIPMENT_ID "11111111-1111-4111-8111-111111111111"\n#define DEVICE_ID "ESP32-01"',
+        )
+    )
+    key = load_device_keys(key_path)["ESP32-03"]
+    pem = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.TraditionalOpenSSL,
+        serialization.NoEncryption(),
+    ).decode("ascii")
+
+    FirmwareConfigWriter(path).update("ESP32-03", DEFAULT_KEY_ID, pem)
+
+    assert "SHIPMENT_ID" not in path.read_text()
 
 
 def test_production_cannot_generate_private_keys(local_api):

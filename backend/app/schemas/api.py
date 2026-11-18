@@ -238,8 +238,8 @@ class TelemetryCreate(StrictBody):
 
 
 class SignedTelemetryCreate(StrictBody):
-    payload_version: Literal[1]
-    shipment_id: str
+    payload_version: Literal[1, 2]
+    shipment_id: str | None = None
     device_id: str
     key_id: str
     sequence_number: int = Field(ge=1, le=2**63 - 1, strict=True)
@@ -271,6 +271,10 @@ class SignedTelemetryCreate(StrictBody):
     def valid_signed_payload(self) -> SignedTelemetryCreate:
         from app.services.telemetry_protocol import canonical_signed_bytes
 
+        if self.payload_version == 1 and self.shipment_id is None:
+            raise ValueError("shipment_id is required for payload_version 1")
+        if self.payload_version == 2 and self.shipment_id is not None:
+            raise ValueError("shipment_id must not be sent for payload_version 2")
         if self.temperature_c * 1000 != self.temperature_milli_c:
             raise ValueError("temperature_c does not match temperature_milli_c")
         if self.humidity_pct * 1000 != self.humidity_milli_pct:
