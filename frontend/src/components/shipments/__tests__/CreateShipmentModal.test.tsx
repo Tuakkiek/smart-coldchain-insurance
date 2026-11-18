@@ -138,7 +138,7 @@ describe('CreateShipmentModal upgraded workflow', () => {
   });
 
   it('auto-resolves Origin & Destination on submit, validates SepoliaETH and Buyer Wallet, and submits exact payload', async () => {
-    const fakeCreated = { id: 'ship-1', code: 'SHIP-NEW-1' } as ShipmentOut;
+    const fakeCreated = { id: 'ship-1', shipment_id: 'ship-1', name: 'Vaccine Cần Thơ' } as ShipmentOut;
     vi.mocked(shipmentsApi.createShipment).mockResolvedValue(fakeCreated);
     vi.mocked(locationsApi.resolveLocationInput).mockImplementation(async (input: string) => {
       if (input.includes('Hà Nội')) {
@@ -170,6 +170,7 @@ describe('CreateShipmentModal upgraded workflow', () => {
     const onClose = vi.fn();
 
     renderModal(onSuccess, onClose);
+    fireEvent.change(screen.getByLabelText(/Tên lô hàng/i), { target: { value: 'Vaccine Cần Thơ' } });
 
     const submitBtn = screen.getByRole('button', { name: /Tạo Lô Hàng Mới/i }) as HTMLButtonElement;
     // Initially disabled because Origin, Destination, and Buyer Wallet are empty

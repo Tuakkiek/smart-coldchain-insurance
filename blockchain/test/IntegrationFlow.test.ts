@@ -20,7 +20,7 @@ describe("IntegrationFlow: DataIntegrity -> Insurance Payout (Phase 4)", functio
 
     // 3. Deploy ColdChainInsurance (Module B)
     const Insurance = await ethers.getContractFactory("ColdChainInsurance");
-    const insurance = await Insurance.deploy(await token.getAddress(), oracle.address);
+    const insurance = await Insurance.deploy(oracle.address);
     await insurance.waitForDeployment();
 
     // 4. Load Golden Vectors for Merkle root
@@ -38,12 +38,12 @@ describe("IntegrationFlow: DataIntegrity -> Insurance Payout (Phase 4)", functio
 
     const shipmentId = "8b4fb8a2-2996-4da2-90b9-35019517f56f";
     const shipmentKey = ethers.keccak256(ethers.toUtf8Bytes(shipmentId));
-    const deviceId = "ESP32-001";
+    const deviceId = "ESP32-01";
     const deviceKey = ethers.keccak256(ethers.toUtf8Bytes(deviceId));
     const batchId = "batch-sealed-20261105-001";
     const batchKey = ethers.keccak256(ethers.toUtf8Bytes(batchId));
 
-    const payoutAmount = ethers.parseEther("5000"); // 5000 MINS
+    const payoutAmount = ethers.parseEther("0.05"); // 5000 MINS
     const latestBlock = await ethers.provider.getBlock("latest");
     const expiry = latestBlock!.timestamp + 86400 * 7; // 7 days
 
@@ -92,16 +92,16 @@ describe("IntegrationFlow: DataIntegrity -> Insurance Payout (Phase 4)", functio
 
     // ─── Bước 1: Khởi tạo Policy & Ký quỹ token ───────────────────
     const insuranceAddr = await insurance.getAddress();
-    await token.connect(deployer).approve(insuranceAddr, payoutAmount);
+
 
     await expect(
-      insurance.connect(deployer).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry)
+      insurance.connect(deployer).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry, { value: payoutAmount })
     )
       .to.emit(insurance, "PolicyCreated")
       .withArgs(shipmentKey, deployer.address, beneficiary.address, payoutAmount, expiry);
 
     expect(await insurance.isPolicyActive(shipmentKey)).to.be.true;
-    expect(await token.balanceOf(insuranceAddr)).to.equal(payoutAmount);
+    expect(await ethers.provider.getBalance(insuranceAddr)).to.equal(payoutAmount);
 
     // ─── Bước 2: Neo Merkle Root của Batch Telemetry lên Chain ────
     await expect(
@@ -127,7 +127,7 @@ describe("IntegrationFlow: DataIntegrity -> Insurance Payout (Phase 4)", functio
     expect(isIntegrityValid).to.be.true;
 
     // ─── Bước 4: Vi phạm nhiệt độ xảy ra -> Oracle kích hoạt chi trả
-    const beneficiaryBalanceBefore = await token.balanceOf(beneficiary.address);
+    const beneficiaryBalanceBefore = await ethers.provider.getBalance(beneficiary.address);
 
     await expect(
       insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt)
@@ -136,7 +136,7 @@ describe("IntegrationFlow: DataIntegrity -> Insurance Payout (Phase 4)", functio
       .withArgs(shipmentKey, beneficiary.address, payoutAmount, evidenceHash, detectedAt);
 
     // ─── Bước 5: Xác nhận quyền lợi bảo hiểm đã được chuyển giao ──
-    const beneficiaryBalanceAfter = await token.balanceOf(beneficiary.address);
+    const beneficiaryBalanceAfter = await ethers.provider.getBalance(beneficiary.address);
     expect(beneficiaryBalanceAfter - beneficiaryBalanceBefore).to.equal(payoutAmount);
 
     const policy = await insurance.getPolicy(shipmentKey);

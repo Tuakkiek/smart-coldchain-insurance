@@ -33,7 +33,7 @@ describe("Phase 6: Backend Oracle & Integrity Integration Readiness", function (
 
   // Dữ liệu khớp định dạng Backend (batch_service.py & shipments.py)
   const shipmentId = "8b4fb8a2-2996-4da2-90b9-35019517f56f";
-  const deviceId = "ESP32-001";
+  const deviceId = "ESP32-01";
   const batchId = "9f1c2d3e-4a5b-6c7d-8e9f-001122334455";
   const eventId = "c3afece0-1668-4f96-aad6-58349f8f0a64";
 
@@ -54,7 +54,7 @@ describe("Phase 6: Backend Oracle & Integrity Integration Readiness", function (
     hash_version: "MERKLE-v1",
   };
 
-  const payoutAmount = ethers.parseEther("500");
+  const payoutAmount = ethers.parseEther("0.05");
 
   beforeEach(async function () {
     [owner, insurer, oracle, anchorer, beneficiary, attacker] = await ethers.getSigners();
@@ -64,24 +64,24 @@ describe("Phase 6: Backend Oracle & Integrity Integration Readiness", function (
     await token.waitForDeployment();
 
     // Cấp token cho insurer để ký quỹ policy
-    await token.transfer(insurer.address, ethers.parseEther("10000"));
+
 
     const DataIntegrityFactory = await ethers.getContractFactory("ColdChainDataIntegrity");
     dataIntegrity = await DataIntegrityFactory.deploy(anchorer.address);
     await dataIntegrity.waitForDeployment();
 
     const InsuranceFactory = await ethers.getContractFactory("ColdChainInsurance");
-    insurance = await InsuranceFactory.deploy(await token.getAddress(), oracle.address);
+    insurance = await InsuranceFactory.deploy(oracle.address);
     await insurance.waitForDeployment();
   });
 
   async function createActivePolicy(durationSeconds = 3600): Promise<number> {
     const now = await time.latest();
     const expiry = now + durationSeconds;
-    await token.connect(insurer).approve(await insurance.getAddress(), payoutAmount);
+
     await insurance
       .connect(insurer)
-      .createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry);
+      .createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry, { value: payoutAmount });
     return expiry;
   }
 
@@ -224,7 +224,7 @@ describe("Phase 6: Backend Oracle & Integrity Integration Readiness", function (
 
       // 2. Oracle gọi reportViolation
       const detectedAt = await time.latest();
-      const beneficiaryBalanceBefore = await token.balanceOf(beneficiary.address);
+      const beneficiaryBalanceBefore = await ethers.provider.getBalance(beneficiary.address);
 
       const tx = await insurance
         .connect(oracle)
@@ -233,7 +233,7 @@ describe("Phase 6: Backend Oracle & Integrity Integration Readiness", function (
       expect(receipt?.status).to.equal(1);
 
       // 3. Kiểm tra balance delta của beneficiary
-      const beneficiaryBalanceAfter = await token.balanceOf(beneficiary.address);
+      const beneficiaryBalanceAfter = await ethers.provider.getBalance(beneficiary.address);
       expect(beneficiaryBalanceAfter - beneficiaryBalanceBefore).to.equal(payoutAmount);
       expect(await insurance.getContractBalance()).to.equal(0n);
 
@@ -272,7 +272,7 @@ describe("Phase 6: Backend Oracle & Integrity Integration Readiness", function (
       const detectedAt = await time.latest();
 
       await insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt);
-      const balanceAfterFirst = await token.balanceOf(beneficiary.address);
+      const balanceAfterFirst = await ethers.provider.getBalance(beneficiary.address);
 
       await expect(
         insurance.connect(oracle).reportViolation(shipmentKey, evidenceHash, detectedAt)
@@ -280,7 +280,7 @@ describe("Phase 6: Backend Oracle & Integrity Integration Readiness", function (
         .to.be.revertedWithCustomError(insurance, "ColdChain__PolicyNotActive")
         .withArgs(shipmentKey, 2);
 
-      expect(await token.balanceOf(beneficiary.address)).to.equal(balanceAfterFirst);
+      expect(await ethers.provider.getBalance(beneficiary.address)).to.equal(balanceAfterFirst);
     });
 
     it("E17: Should reject reportViolation on expired policy and allow safe refund afterwards", async function () {
@@ -293,27 +293,21 @@ describe("Phase 6: Backend Oracle & Integrity Integration Readiness", function (
       ).to.be.revertedWithCustomError(insurance, "ColdChain__PolicyExpired");
 
       // Sau expiry, insurer được hoàn lại toàn bộ tiền ký quỹ
-      const insurerBefore = await token.balanceOf(insurer.address);
-      await expect(insurance.connect(insurer).refundExpiredPolicy(shipmentKey))
+      const transaction = insurance.connect(insurer).refundExpiredPolicy(shipmentKey);
+      await expect(transaction)
         .to.emit(insurance, "PolicyRefunded")
         .withArgs(shipmentKey, insurer.address, payoutAmount);
-      expect(await token.balanceOf(insurer.address) - insurerBefore).to.equal(payoutAmount);
+      await expect(transaction).to.changeEtherBalance(insurer, payoutAmount);
     });
 
-    it("E17b: Should reject createPolicy when insurer has insufficient MINS balance or allowance", async function () {
+    it("E17b: Should reject missing or incorrect native ETH escrow", async function () {
       const expiry = (await time.latest()) + 3600;
-      const hugeAmount = ethers.parseEther("99999999");
-
-      // Insufficient allowance
-      await expect(
-        insurance.connect(insurer).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry)
-      ).to.be.revertedWithCustomError(token, "ERC20InsufficientAllowance");
-
-      // Insufficient balance (even after approving)
-      await token.connect(insurer).approve(await insurance.getAddress(), hugeAmount);
-      await expect(
-        insurance.connect(insurer).createPolicy(shipmentKey, beneficiary.address, hugeAmount, expiry)
-      ).to.be.revertedWithCustomError(token, "ERC20InsufficientBalance");
+      await expect(insurance.connect(insurer).createPolicy(
+        shipmentKey, beneficiary.address, payoutAmount, expiry, { value: 0 },
+      )).to.be.revertedWithCustomError(insurance, "ColdChain__InvalidPayoutAmount");
+      await expect(insurance.connect(insurer).createPolicy(
+        shipmentKey, beneficiary.address, payoutAmount, expiry, { value: payoutAmount - 1n },
+      )).to.be.revertedWithCustomError(insurance, "ColdChain__IncorrectETHDeposit");
     });
 
     it("Should reject reportViolation when policy has not been seeded yet (PolicyNotActive = 0)", async function () {
@@ -345,4 +339,3 @@ describe("Phase 6: Backend Oracle & Integrity Integration Readiness", function (
     });
   });
 });
-

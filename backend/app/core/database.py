@@ -47,6 +47,13 @@ def make_engine(database_url: str | URL) -> Engine:
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
+
+        @event.listens_for(engine, "checkin")
+        def restore_foreign_keys(dbapi_connection, _connection_record):
+            # SQLite batch migrations temporarily disable FK enforcement.
+            # Pool rollback has finished here, so the pragma takes effect.
+            if dbapi_connection is not None:
+                dbapi_connection.execute("PRAGMA foreign_keys=ON")
     return engine
 
 

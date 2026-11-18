@@ -70,7 +70,7 @@ export const ShipmentsPage: React.FC = () => {
 
   const handleShipmentCreated = (newShipment: ShipmentOut) => {
     setShipments((prev) => [newShipment, ...prev]);
-    toast.success(`Đã tạo thành công lô hàng mới: ${newShipment.code}`, {
+    toast.success(`Đã tạo ${newShipment.name}. Shipment ID: ${newShipment.shipment_id}`, {
       title: 'Tạo lô hàng thành công',
       action: {
         label: 'Xem chi tiết',
@@ -92,7 +92,7 @@ export const ShipmentsPage: React.FC = () => {
       await deleteShipment(shipment.id);
       setShipments((current) => current.filter((item) => item.id !== shipment.id));
       setShipmentToDelete(null);
-      toast.success(`Đã xóa lô hàng ${shipment.code} thành công.`, {
+      toast.success(`Đã xóa lô hàng ${shipment.name} thành công.`, {
         title: 'Xóa lô hàng thành công',
       });
     } catch (err: unknown) {
@@ -100,9 +100,9 @@ export const ShipmentsPage: React.FC = () => {
       if (isRequestCancelled(err)) return;
       let msg = '';
       if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_ASSIGNED_DEVICES') {
-        msg = `Không thể xóa ${shipment.code}: vẫn còn thiết bị đang liên kết. Hãy bỏ liên kết trong trang Thiết bị trước.`;
+        msg = `Không thể xóa ${shipment.name}: vẫn còn thiết bị đang liên kết. Hãy bỏ liên kết trong trang Thiết bị trước.`;
       } else if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_DATA') {
-        msg = `Không thể xóa ${shipment.code} vì đã có dữ liệu vận hành hoặc lịch sử đối soát.`;
+        msg = `Không thể xóa ${shipment.name} vì đã có dữ liệu vận hành hoặc lịch sử đối soát.`;
       } else {
         msg = formatApiErrorMessage(err, 'Không thể xóa lô hàng. Vui lòng thử lại.');
       }
@@ -125,7 +125,7 @@ export const ShipmentsPage: React.FC = () => {
       const term = searchTerm.toLowerCase();
       result = result.filter(
         (s) =>
-          s.code.toLowerCase().includes(term) ||
+          s.name.toLowerCase().includes(term) ||
           s.cargo_type.toLowerCase().includes(term) ||
           s.origin.name.toLowerCase().includes(term) ||
           s.destination.name.toLowerCase().includes(term)
@@ -206,7 +206,7 @@ export const ShipmentsPage: React.FC = () => {
             <Search size={16} style={{ color: 'var(--color-text-tertiary)' }} />
             <input
               type="text"
-              placeholder="Tìm theo mã lô hàng, loại hàng, địa điểm..."
+              placeholder="Tìm theo tên lô hàng, loại hàng, địa điểm..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
@@ -284,7 +284,7 @@ export const ShipmentsPage: React.FC = () => {
                         color: 'var(--color-text-primary)',
                       }}
                     >
-                      {shipment.code}
+                      {shipment.name}
                     </span>
                     <ShipmentStatusBadge status={shipment.status} />
                     <InsuranceStatusBadge
@@ -418,7 +418,7 @@ export const ShipmentsPage: React.FC = () => {
           shipmentToDelete ? (
             <>
               Bạn có chắc chắn muốn xóa lô hàng{' '}
-              <strong className="font-mono">{shipmentToDelete.code}</strong> không?
+              <strong className="font-mono">{shipmentToDelete.name}</strong> không?
             </>
           ) : null
         }

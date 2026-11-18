@@ -20,6 +20,7 @@ from app.integrations.blockchain_adapter import (
     BlockchainError,
     OnChainPolicy,
     PolicySubmission,
+    Web3PolicyAdapter,
 )
 from app.main import create_app
 from app.models import Shipment
@@ -40,7 +41,7 @@ CONTRACT_ADDR = Web3.to_checksum_address("0xeD8266444aF3506C5FceB556cA00Bf4305De
 
 def _sepolia_shipment_payload(**overrides):
     base = {
-        "code": "SHIP-SEP-001",
+        "name": "SHIP-SEP-001",
         "cargo_type": "Vaccine",
         "origin": {
             "address": "Kho Trung Ương 1, Hà Nội",
@@ -102,7 +103,7 @@ class FakePolicyGateway:
             "expiry_timestamp": expiry_timestamp,
         })
         if self.fail_submit:
-            raise BlockchainError("INSURER_INSUFFICIENT_TOKEN_BALANCE")
+            raise BlockchainError("INSURER_INSUFFICIENT_ETH_BALANCE")
         tx_hash = "0x" + ("ab" * 32)
         self.policies[shipment_id] = OnChainPolicy(
             insurer=ADMIN_WALLET,
@@ -408,30 +409,30 @@ def test_create_sepolia_shipment_rejects_invalid_inputs(api):
     client, _app = api
 
     # Missing buyer wallet
-    bad_no_wallet = _sepolia_shipment_payload(code="BAD-1", buyer_wallet_address=None)
+    bad_no_wallet = _sepolia_shipment_payload(name="BAD-1", buyer_wallet_address=None)
     assert client.post("/api/v1/shipments", json=bad_no_wallet).status_code == 422
 
     # Invalid wallet
-    bad_wallet = _sepolia_shipment_payload(code="BAD-2", buyer_wallet_address="0x12345")
+    bad_wallet = _sepolia_shipment_payload(name="BAD-2", buyer_wallet_address="0x12345")
     assert client.post("/api/v1/shipments", json=bad_wallet).status_code == 422
 
     # Zero ETH
-    bad_zero = _sepolia_shipment_payload(code="BAD-3", insurance={"coverage_amount": "0", "currency": "SepoliaETH"})
+    bad_zero = _sepolia_shipment_payload(name="BAD-3", insurance={"coverage_amount": "0", "currency": "SepoliaETH"})
     assert client.post("/api/v1/shipments", json=bad_zero).status_code == 422
 
     # Negative ETH
-    bad_neg = _sepolia_shipment_payload(code="BAD-4", insurance={"coverage_amount": "-0.05", "currency": "SepoliaETH"})
+    bad_neg = _sepolia_shipment_payload(name="BAD-4", insurance={"coverage_amount": "-0.05", "currency": "SepoliaETH"})
     assert client.post("/api/v1/shipments", json=bad_neg).status_code == 422
 
     # 19 decimal places
     bad_prec = _sepolia_shipment_payload(
-        code="BAD-5",
+        name="BAD-5",
         insurance={"coverage_amount": "0.0000000000000000001", "currency": "SepoliaETH"},
     )
     assert client.post("/api/v1/shipments", json=bad_prec).status_code == 422
 
     # Out-of-range coordinates
-    bad_lat = _sepolia_shipment_payload(code="BAD-6")
+    bad_lat = _sepolia_shipment_payload(name="BAD-6")
     bad_lat["origin"]["latitude"] = 91.5
     assert client.post("/api/v1/shipments", json=bad_lat).status_code == 422
 
@@ -443,7 +444,7 @@ def test_policy_lifecycle_confirmed_failed_and_retry_without_duplicate(api):
         gateway, network="sepolia", confirmations=2, receipt_timeout_seconds=1,
     )
 
-    resp = client.post("/api/v1/shipments", json=_sepolia_shipment_payload(code="SHIP-CHAIN-OK"))
+    resp = client.post("/api/v1/shipments", json=_sepolia_shipment_payload(name="SHIP-CHAIN-OK"))
     assert resp.status_code == 201, resp.text
     created = resp.json()
     assert created["insurance"]["policy_status"] == "CONFIRMED"
@@ -463,11 +464,11 @@ def test_policy_lifecycle_confirmed_failed_and_retry_without_duplicate(api):
 
     # Now simulate Smart Contract failure on creation -> marks FAILED, no duplicate on retry
     gateway.fail_submit = True
-    failed_resp = client.post("/api/v1/shipments", json=_sepolia_shipment_payload(code="SHIP-CHAIN-RETRY"))
+    failed_resp = client.post("/api/v1/shipments", json=_sepolia_shipment_payload(name="SHIP-CHAIN-RETRY"))
     assert failed_resp.status_code == 201
     failed_data = failed_resp.json()
     assert failed_data["insurance"]["policy_status"] == "FAILED"
-    assert failed_data["insurance"]["policy_last_error"] == "INSURER_INSUFFICIENT_TOKEN_BALANCE"
+    assert failed_data["insurance"]["policy_last_error"] == "INSURER_INSUFFICIENT_ETH_BALANCE"
 
     # Retry succeeds and updates same shipment row (no duplicate)
     gateway.fail_submit = False
@@ -485,7 +486,7 @@ def test_policy_lifecycle_confirmed_failed_and_retry_without_duplicate(api):
 def test_external_metamask_policy_confirm_endpoint(api):
     client, app = api
     # Create shipment while server policy creation is not enabled
-    resp = client.post("/api/v1/shipments", json=_sepolia_shipment_payload(code="SHIP-MM-01"))
+    resp = client.post("/api/v1/shipments", json=_sepolia_shipment_payload(name="SHIP-MM-01"))
     assert resp.status_code == 201
     shipment_id = resp.json()["id"]
     assert resp.json()["insurance"]["policy_status"] == "PENDING"
@@ -580,3 +581,48 @@ def test_migration_07_preserves_legacy_vnd_records_without_converting_to_eth(tmp
         assert "insured_amount_vnd" in cols
     finally:
         engine.dispose()
+
+
+def test_same_name_shipments_create_independent_policies_by_uuid(api):
+    client, app = api
+    gateway = FakePolicyGateway()
+    app.state.policy_blockchain = PolicyCoordinator(gateway, network="sepolia", receipt_timeout_seconds=1)
+    payload = _sepolia_shipment_payload(name="Vaccine Cần Thơ")
+    first = client.post("/api/v1/shipments", json=payload).json()
+    second = client.post("/api/v1/shipments", json=payload).json()
+    assert first["name"] == second["name"]
+    assert first["shipment_id"] != second["shipment_id"]
+    assert {call["shipment_id"] for call in gateway.submitted_calls} == {first["shipment_id"], second["shipment_id"]}
+    assert first["insurance"]["policy_status"] == second["insurance"]["policy_status"] == "CONFIRMED"
+
+
+@pytest.mark.parametrize("enough_balance", [True, False])
+def test_policy_adapter_escrows_native_eth_without_erc20_approval(api, enough_balance, monkeypatch):
+    _, app = api
+    from dataclasses import replace
+    from types import SimpleNamespace
+    settings = replace(app.state.settings, blockchain_insurer_private_key="test-only-signer")
+    adapter = Web3PolicyAdapter(settings)
+    web3, contract = MagicMock(), MagicMock()
+    monkeypatch.setattr(adapter, "_contract", lambda: (web3, contract, CONTRACT_ADDR))
+    contract.functions.getPolicy.return_value.call.return_value = (ADMIN_WALLET, BUYER_CHECKSUM, 0, 0, 0, bytes(32), 0)
+    amount = 50000000000000000
+    web3.eth.gas_price = 10
+    web3.eth.get_balance.return_value = amount + 3000000 if enough_balance else amount - 1
+    web3.eth.get_transaction_count.return_value = 7
+    account = web3.eth.account.from_key.return_value
+    contract.functions.createPolicy.return_value.build_transaction.side_effect = lambda params: params
+    account.sign_transaction.return_value = SimpleNamespace(raw_transaction=b"signed-test", hash=bytes.fromhex("ab" * 32))
+    if not enough_balance:
+        with pytest.raises(BlockchainError) as error:
+            adapter.submit_policy("8b4fb8a2-2996-4da2-90b9-35019517f56f", BUYER_CHECKSUM, amount, 2000000000)
+        assert error.value.code == "INSURER_INSUFFICIENT_ETH_BALANCE"
+        account.sign_transaction.assert_not_called()
+    else:
+        submission = adapter.submit_policy("8b4fb8a2-2996-4da2-90b9-35019517f56f", BUYER_CHECKSUM, amount, 2000000000)
+        transaction = account.sign_transaction.call_args.args[0]
+        assert transaction["value"] == amount
+        assert transaction["nonce"] == 7
+        assert submission.transaction_hash == "0x" + "ab" * 32
+        web3.eth.send_raw_transaction.assert_called_once_with(b"signed-test")
+    contract.functions.payoutToken.assert_not_called()

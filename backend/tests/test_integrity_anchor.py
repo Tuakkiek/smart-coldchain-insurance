@@ -67,7 +67,7 @@ def setup_app(tmp_path):
     with app.state.session_factory() as session:
         session.add(Shipment(
             id=shipment_id,
-            code="ANCHOR-TEST",
+            name="ANCHOR-TEST",
             cargo_type="vaccine",
             origin_name="A",
             origin_latitude=10.0,

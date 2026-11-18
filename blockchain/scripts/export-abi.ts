@@ -55,6 +55,13 @@ async function main() {
 
     const artifact = JSON.parse(fs.readFileSync(contract.artifactPath, "utf-8"));
     const abi = artifact.abi;
+    if (contract.name !== "MockInsuranceToken") {
+      const backendPath = path.join(__dirname, "..", "..", "backend", "app", "integrations", "abi", `${contract.name}.json`);
+      const previous = fs.existsSync(backendPath) ? JSON.parse(fs.readFileSync(backendPath, "utf-8")) : {};
+      if (JSON.stringify(previous.abi) !== JSON.stringify(abi)) {
+        fs.writeFileSync(backendPath, JSON.stringify({ ...previous, contractName: contract.name, abi }, null, 2) + "\n");
+      }
+    }
 
     // 1. Ghi file ABI thuần
     const abiOutputPath = path.join(targetDir, `${contract.name}.abi.json`);

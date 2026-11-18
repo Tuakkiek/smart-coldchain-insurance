@@ -27,7 +27,7 @@ let device: AdminDeviceViewOut;
 beforeEach(() => {
   vi.clearAllMocks();
   device = {
-    device_id: 'ESP32-001', device_name: 'Cold Chain Sensor', status: 'active',
+    device_id: 'ESP32-01', device_name: 'Cold Chain Sensor', status: 'active',
     has_public_key: false, current_shipment_id: firstShipment,
     last_sequence_number: 0, last_seen_at: null, keys: [],
     assignments: [{ shipment_id: firstShipment, active: true }],
@@ -52,12 +52,12 @@ describe('device linking lifecycle', () => {
     const onSuccess = vi.fn();
     const onClose = vi.fn();
     const { rerender } = renderWithToast(
-      <AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} initialDeviceId="ESP32-001" />
+      <AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} initialDeviceId="ESP32-01" />
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Bỏ liên kết chuyến hàng' }));
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
-    expect(apiClient.post).toHaveBeenCalledWith('/api/v1/devices/ESP32-001/assignments', {
+    expect(apiClient.post).toHaveBeenCalledWith('/api/v1/devices/ESP32-01/assignments', {
       shipment_id: firstShipment, active: false,
     });
     expect(device.assignments).toEqual([{ shipment_id: firstShipment, active: false }]);
@@ -70,7 +70,7 @@ describe('device linking lifecycle', () => {
     );
     rerender(
       <ToastProvider>
-        <AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} initialDeviceId="ESP32-001" />
+        <AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} initialDeviceId="ESP32-01" />
       </ToastProvider>
     );
     await screen.findByText('Chưa liên kết với chuyến hàng nào (Sẵn sàng gán).');
@@ -87,7 +87,7 @@ describe('device linking lifecycle', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Liên Kết Chuyến Hàng' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-    expect(apiClient.post).toHaveBeenNthCalledWith(2, '/api/v1/devices/ESP32-001/assignments', {
+    expect(apiClient.post).toHaveBeenNthCalledWith(2, '/api/v1/devices/ESP32-01/assignments', {
       shipment_id: secondShipment, active: true,
     });
     expect((await getDevices()).items[0].assigned_shipment_id).toBe(secondShipment);

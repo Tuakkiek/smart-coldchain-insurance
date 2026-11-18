@@ -18,10 +18,6 @@ async function main() {
   const network = await ethers.provider.getNetwork();
   const blockNumber = await ethers.provider.getBlockNumber();
 
-  const token = await ethers.getContractAt(
-    "MockInsuranceToken",
-    deployment.contracts.MockInsuranceToken.address
-  );
   const dataIntegrity = await ethers.getContractAt(
     "ColdChainDataIntegrity",
     deployment.contracts.ColdChainDataIntegrity.address
@@ -36,7 +32,7 @@ async function main() {
   console.log("=================================================");
   console.log(`Network Chain ID:   ${network.chainId}`);
   console.log(`Latest Block:       ${blockNumber}`);
-  console.log(`Contract Escrow:    ${ethers.formatEther(await insurance.getContractBalance())} MINS`);
+  console.log(`Contract Escrow:    ${ethers.formatEther(await insurance.getContractBalance())} ETH`);
 
   // 1. Module A Events
   const batchEvents = await dataIntegrity.queryFilter(dataIntegrity.filters.BatchAnchored(), 0, "latest");
@@ -57,22 +53,22 @@ async function main() {
   for (const ev of createdEvents) {
     console.log(`  • Block #${ev.blockNumber} | Tx: ${ev.transactionHash}`);
     console.log(`    shipmentKey: ${ev.args.shipmentKey}`);
-    console.log(`    beneficiary: ${ev.args.beneficiary} | payout: ${ethers.formatEther(ev.args.payoutAmount)} MINS`);
+    console.log(`    beneficiary: ${ev.args.beneficiary} | payout: ${ethers.formatEther(ev.args.payoutAmount)} ETH`);
   }
 
   console.log(`\n--- [Module B] InsurancePaid Events (${paidEvents.length}) ---`);
   for (const ev of paidEvents) {
-    const benBalance = await token.balanceOf(ev.args.beneficiary);
+    const benBalance = await ethers.provider.getBalance(ev.args.beneficiary);
     console.log(`  • Block #${ev.blockNumber} | Tx: ${ev.transactionHash}`);
     console.log(`    shipmentKey:  ${ev.args.shipmentKey}`);
     console.log(`    evidenceHash: ${ev.args.evidenceHash} | detectedAt: ${ev.args.detectedAt}`);
-    console.log(`    payout:       ${ethers.formatEther(ev.args.payoutAmount)} MINS -> Beneficiary Balance: ${ethers.formatEther(benBalance)} MINS`);
+    console.log(`    payout:       ${ethers.formatEther(ev.args.payoutAmount)} ETH -> Beneficiary Balance: ${ethers.formatEther(benBalance)} ETH`);
   }
 
   console.log(`\n--- [Module B] PolicyRefunded Events (${refundedEvents.length}) ---`);
   for (const ev of refundedEvents) {
     console.log(`  • Block #${ev.blockNumber} | Tx: ${ev.transactionHash}`);
-    console.log(`    shipmentKey: ${ev.args.shipmentKey} | amount: ${ethers.formatEther(ev.args.amount)} MINS`);
+    console.log(`    shipmentKey: ${ev.args.shipmentKey} | amount: ${ethers.formatEther(ev.args.amount)} ETH`);
   }
 
   // 3. Tra cứu cụ thể nếu có SHIPMENT_ID hoặc BATCH_ID
@@ -98,7 +94,7 @@ async function main() {
     const statusLabels = ["NotExist", "Active", "PaidOut", "Refunded"];
     console.log(`  status:       ${statusLabels[Number(p.status)] || p.status}`);
     console.log(`  beneficiary:  ${p.beneficiary}`);
-    console.log(`  payoutAmount: ${ethers.formatEther(p.payoutAmount)} MINS`);
+    console.log(`  payoutAmount: ${ethers.formatEther(p.payoutAmount)} ETH`);
     console.log(`  evidenceHash: ${p.evidenceHash}`);
   }
 }

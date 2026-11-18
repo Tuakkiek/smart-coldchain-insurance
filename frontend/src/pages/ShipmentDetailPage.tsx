@@ -374,7 +374,7 @@ export const ShipmentDetailPage: React.FC = () => {
       </div>
 
       <PageHeader
-        title={`Lô hàng: ${shipment.code}`}
+        title={`Lô hàng: ${shipment.name}`}
         description={`${shipment.cargo_type} • ID: ${shipment.id}`}
         action={
           <div className="flex-row items-center gap-2">
@@ -1263,7 +1263,7 @@ export const ShipmentDetailPage: React.FC = () => {
         isOpen={isSendTelemetryOpen}
         onClose={() => setIsSendTelemetryOpen(false)}
         shipmentId={shipment.id}
-        shipmentCode={shipment.code}
+        shipmentName={shipment.name}
         tempMin={shipment.temp_min_c}
         tempMax={shipment.temp_max_c}
         assignedDevices={

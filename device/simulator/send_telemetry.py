@@ -18,6 +18,8 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from app.services.telemetry_protocol import canonical_signed_bytes  # noqa: E402
+from app.services.device_registry import DEFAULT_KEY_ID, DEVICE_IDS  # noqa: E402
+from app.services.device_provisioning import load_device_keys, ProvisioningError  # noqa: E402
 
 
 def payload_for(*, shipment_id: str, device_id: str, key_id: str,
@@ -56,7 +58,10 @@ def post(base_url: str, payload: dict, *, timeout: float = 10) -> tuple[int, dic
 
 
 def run(args: argparse.Namespace) -> None:
-    private_key = serialization.load_pem_private_key(args.private_key.read_bytes(), password=None)
+    if args.private_key:
+        private_key = serialization.load_pem_private_key(args.private_key.read_bytes(), password=None)
+    else:
+        private_key = load_device_keys(args.registry_file)[args.device_id]
     if not isinstance(private_key, ec.EllipticCurvePrivateKey) or not isinstance(private_key.curve, ec.SECP256R1):
         raise ValueError("Private key must be P-256 PEM")
     recorded_at = args.recorded_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -100,9 +105,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--shipment-id", required=True)
-    parser.add_argument("--device-id", required=True)
-    parser.add_argument("--key-id", required=True)
-    parser.add_argument("--private-key", required=True, type=Path)
+    parser.add_argument("--device-id", required=True, choices=DEVICE_IDS)
+    parser.add_argument("--key-id", default=DEFAULT_KEY_ID)
+    key_source = parser.add_mutually_exclusive_group()
+    key_source.add_argument("--private-key", type=Path, help="optional separate test PEM")
+    key_source.add_argument("--registry-file", type=Path,
+                            default=Path(__file__).resolve().parents[2] / "backend/.local/esp32-private-keys.txt")
     parser.add_argument("--sequence", type=int, required=True,
                         help="First unused device sequence; the simulator does not persist a counter")
     parser.add_argument("--temperature", default="5.0")
@@ -115,7 +123,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         run(args)
-    except (OSError, ValueError, URLError) as exc:
+    except (OSError, ValueError, URLError, ProvisioningError) as exc:
         parser.exit(1, f"simulator error: {exc}\n")
 
 

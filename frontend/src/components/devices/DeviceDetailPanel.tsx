@@ -17,7 +17,6 @@ import {
   AlertTriangle,
   HelpCircle,
   Link2,
-  Trash2,
   X,
   MousePointerClick,
 } from 'lucide-react';
@@ -25,10 +24,8 @@ import {
 export interface DeviceDetailPanelProps {
   device: DeviceItemOut | null;
   isEffectiveColdStart: boolean;
-  deletingDeviceId: string | null;
   onOpenAdminDetail: (deviceId: string) => void;
   onAssignDevice: (deviceId: string) => void;
-  onDeleteDevice: (device: DeviceItemOut) => void;
   onClearSelection: () => void;
 }
 
@@ -45,10 +42,8 @@ function formatTime(ts: string | null | undefined): string {
 export const DeviceDetailPanel: React.FC<DeviceDetailPanelProps> = ({
   device,
   isEffectiveColdStart,
-  deletingDeviceId,
   onOpenAdminDetail,
   onAssignDevice,
-  onDeleteDevice,
   onClearSelection,
 }) => {
   if (!device) {
@@ -75,7 +70,6 @@ export const DeviceDetailPanel: React.FC<DeviceDetailPanelProps> = ({
   const hasMissingGap =
     device.completeness_status === 'DATA_INCOMPLETE' ||
     (missingSeqCount !== null && missingSeqCount > 0);
-  const isDeleting = deletingDeviceId === device.device_id;
 
   return (
     <section aria-label={`Thông tin chi tiết thiết bị ${device.device_id}`}>
@@ -115,18 +109,6 @@ export const DeviceDetailPanel: React.FC<DeviceDetailPanelProps> = ({
               icon={<Link2 size={14} />}
             >
               {device.assigned_shipment_id ? 'Đổi chuyến hàng' : 'Gán chuyến hàng'}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => onDeleteDevice(device)}
-              disabled={isDeleting}
-              loading={isDeleting}
-              icon={<Trash2 size={14} />}
-              className="device-detail-delete-btn"
-            >
-              Xóa
             </Button>
             <Button
               type="button"
@@ -285,7 +267,7 @@ export const DeviceDetailPanel: React.FC<DeviceDetailPanelProps> = ({
                     {device.assigned_shipment_id ? (
                       <Link to={`/shipments/${device.assigned_shipment_id}`}>
                         <Badge variant="info">
-                          {device.assigned_shipment_code || device.assigned_shipment_id}
+                          {device.assigned_shipment_name || device.assigned_shipment_id}
                         </Badge>
                       </Link>
                     ) : (

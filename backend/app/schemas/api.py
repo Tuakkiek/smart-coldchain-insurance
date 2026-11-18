@@ -86,7 +86,7 @@ class InsuranceCreateIn(StrictBody):
 
 
 class ShipmentCreate(StrictBody):
-    code: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=255, strict=True)
     cargo_type: str = Field(min_length=1, max_length=100)
     origin: Place
     destination: Place
@@ -121,7 +121,7 @@ class ShipmentCreate(StrictBody):
     def resolved_buyer_wallet(self) -> str | None:
         return self._resolved_buyer_wallet
 
-    @field_validator("code", "cargo_type")
+    @field_validator("name", "cargo_type")
     @classmethod
     def nonblank_text(cls, value: str) -> str:
         value = value.strip()
@@ -279,21 +279,6 @@ class SignedTelemetryCreate(StrictBody):
         return self
 
 
-class DeviceRegister(StrictBody):
-    device_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,100}$", strict=True)
-    device_name: str = Field(min_length=1, max_length=100, strict=True)
-
-    @field_validator("device_name", mode="before")
-    @classmethod
-    def trim_device_name(cls, value: object) -> object:
-        return value.strip() if isinstance(value, str) else value
-
-
-class DeviceKeyRegister(StrictBody):
-    key_id: str
-    public_key_pem: str = Field(min_length=1, max_length=512)
-
-
 class DeviceStateUpdate(StrictBody):
     status: Literal["active", "revoked"]
 
@@ -319,25 +304,16 @@ class DeviceOut(BaseModel):
     status: Literal["active", "revoked"]
     has_public_key: bool
     current_shipment_id: str | None
+    current_shipment_name: str | None
     last_sequence_number: int
     last_seen_at: datetime | None
     keys: list[DeviceKeyOut]
     assignments: list[DeviceAssignmentOut]
 
 
-class DeviceRegistrationOut(DeviceOut):
-    key_id: str | None = None
-    provisioning_status: Literal["ready"] | None = None
-
-
 class DevicesOut(BaseModel):
     items: list[DeviceOut]
     total: int
-
-
-class DeviceDeleteOut(BaseModel):
-    device_id: str
-    deleted: Literal[True]
 
 
 class LocationOut(BaseModel):
@@ -387,7 +363,8 @@ class BlockchainOut(BaseModel):
 
 class ShipmentOut(BaseModel):
     id: str
-    code: str
+    shipment_id: str
+    name: str
     cargo_type: str
     status: Literal["created", "in_transit", "sensor_data_gap", "insurance_triggered"]
     origin: Place

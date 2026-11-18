@@ -289,7 +289,7 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
                           to={`/shipments/${deviceDetail.current_shipment_id}`}
                           style={{ color: 'var(--color-accent)' }}
                         >
-                          {deviceDetail.current_shipment_code || `${deviceDetail.current_shipment_id.slice(0, 8)}...`}
+                          {deviceDetail.current_shipment_name || `${deviceDetail.current_shipment_id.slice(0, 8)}...`}
                         </Link>
                       ) : (
                         <span style={{ color: 'var(--color-text-tertiary)' }}>Chưa gán</span>

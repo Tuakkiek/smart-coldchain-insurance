@@ -15,7 +15,8 @@ import {
  */
 export const mockShipmentNormal: ShipmentOut = {
   id: '8b4fb8a2-2996-4da2-90b9-35019517f561',
-  code: 'SHIP-001',
+  shipment_id: '8b4fb8a2-2996-4da2-90b9-35019517f561',
+  name: 'SHIP-001',
   cargo_type: 'Vaccine Tiêu Chuẩn (2°C - 8°C)',
   status: 'in_transit',
   origin: {
@@ -33,7 +34,7 @@ export const mockShipmentNormal: ShipmentOut = {
   violation_duration_minutes: 15,
   latest_telemetry: {
     id: 'tel-norm-03',
-    device_id: 'ESP32-COLD-01',
+    device_id: 'ESP32-01',
     temperature_c: 4.5,
     humidity_pct: 68.2,
     recorded_at: '2026-11-03T06:45:00Z',
@@ -60,7 +61,8 @@ export const mockShipmentNormal: ShipmentOut = {
  */
 export const mockShipmentBreached: ShipmentOut = {
   id: '9c5ac9b3-3aa7-4eb3-81ca-46128628f672',
-  code: 'SHIP-BIOLOGIC-02',
+  shipment_id: '9c5ac9b3-3aa7-4eb3-81ca-46128628f672',
+  name: 'SHIP-BIOLOGIC-02',
   cargo_type: 'Kháng thể đơn dòng (Monoclonal Antibodies)',
   status: 'in_transit',
   origin: {
@@ -78,7 +80,7 @@ export const mockShipmentBreached: ShipmentOut = {
   violation_duration_minutes: 15,
   latest_telemetry: {
     id: 'tel-breach-04',
-    device_id: 'ESP32-COLD-02',
+    device_id: 'ESP32-02',
     temperature_c: 9.4,
     humidity_pct: 75.0,
     recorded_at: '2026-11-03T06:50:00Z',
@@ -111,7 +113,8 @@ export const mockShipmentBreached: ShipmentOut = {
  */
 export const mockShipmentTriggered: ShipmentOut = {
   id: 'd17bf2e4-4bb8-5fc4-92db-57239739a783',
-  code: 'SHIP-INSULIN-03',
+  shipment_id: 'd17bf2e4-4bb8-5fc4-92db-57239739a783',
+  name: 'SHIP-INSULIN-03',
   cargo_type: 'Insulin sinh học bảo quản lạnh sâu',
   status: 'insurance_triggered',
   origin: {
@@ -129,7 +132,7 @@ export const mockShipmentTriggered: ShipmentOut = {
   violation_duration_minutes: 15,
   latest_telemetry: {
     id: 'tel-trig-06',
-    device_id: 'ESP32-COLD-03',
+    device_id: 'ESP32-03',
     temperature_c: 12.1,
     humidity_pct: 82.4,
     recorded_at: '2026-11-03T06:55:00Z',
@@ -167,7 +170,7 @@ export const mockTelemetryHistory: Record<string, TelemetryOut[]> = {
     {
       id: 'tel-norm-01',
       shipment_id: mockShipmentNormal.id,
-      device_id: 'ESP32-COLD-01',
+      device_id: 'ESP32-01',
       temperature_c: 4.1,
       humidity_pct: 67.0,
       recorded_at: '2026-11-03T06:15:00Z',
@@ -182,7 +185,7 @@ export const mockTelemetryHistory: Record<string, TelemetryOut[]> = {
     {
       id: 'tel-norm-02',
       shipment_id: mockShipmentNormal.id,
-      device_id: 'ESP32-COLD-01',
+      device_id: 'ESP32-01',
       temperature_c: 4.3,
       humidity_pct: 67.8,
       recorded_at: '2026-11-03T06:30:00Z',
@@ -197,7 +200,7 @@ export const mockTelemetryHistory: Record<string, TelemetryOut[]> = {
     {
       id: 'tel-norm-03',
       shipment_id: mockShipmentNormal.id,
-      device_id: 'ESP32-COLD-01',
+      device_id: 'ESP32-01',
       temperature_c: 4.5,
       humidity_pct: 68.2,
       recorded_at: '2026-11-03T06:45:00Z',
@@ -214,7 +217,7 @@ export const mockTelemetryHistory: Record<string, TelemetryOut[]> = {
     {
       id: 'tel-breach-01',
       shipment_id: mockShipmentBreached.id,
-      device_id: 'ESP32-COLD-02',
+      device_id: 'ESP32-02',
       temperature_c: 5.2,
       humidity_pct: 70.1,
       recorded_at: '2026-11-03T06:20:00Z',
@@ -229,7 +232,7 @@ export const mockTelemetryHistory: Record<string, TelemetryOut[]> = {
     {
       id: 'tel-breach-02',
       shipment_id: mockShipmentBreached.id,
-      device_id: 'ESP32-COLD-02',
+      device_id: 'ESP32-02',
       temperature_c: 7.8,
       humidity_pct: 72.3,
       recorded_at: '2026-11-03T06:35:00Z',
@@ -244,7 +247,7 @@ export const mockTelemetryHistory: Record<string, TelemetryOut[]> = {
     {
       id: 'tel-breach-03',
       shipment_id: mockShipmentBreached.id,
-      device_id: 'ESP32-COLD-02',
+      device_id: 'ESP32-02',
       temperature_c: 9.1,
       humidity_pct: 74.8,
       recorded_at: '2026-11-03T06:45:00Z',
@@ -259,7 +262,7 @@ export const mockTelemetryHistory: Record<string, TelemetryOut[]> = {
     {
       id: 'tel-breach-04',
       shipment_id: mockShipmentBreached.id,
-      device_id: 'ESP32-COLD-02',
+      device_id: 'ESP32-02',
       temperature_c: 9.4,
       humidity_pct: 75.0,
       recorded_at: '2026-11-03T06:50:00Z',
@@ -276,7 +279,7 @@ export const mockTelemetryHistory: Record<string, TelemetryOut[]> = {
     {
       id: 'tel-trig-01',
       shipment_id: mockShipmentTriggered.id,
-      device_id: 'ESP32-COLD-03',
+      device_id: 'ESP32-03',
       temperature_c: 4.8,
       humidity_pct: 65.0,
       recorded_at: '2026-11-03T05:40:00Z',
@@ -291,7 +294,7 @@ export const mockTelemetryHistory: Record<string, TelemetryOut[]> = {
     {
       id: 'tel-trig-02',
       shipment_id: mockShipmentTriggered.id,
-      device_id: 'ESP32-COLD-03',
+      device_id: 'ESP32-03',
       temperature_c: 9.8,
       humidity_pct: 78.0,
       recorded_at: '2026-11-03T06:00:00Z',
@@ -306,7 +309,7 @@ export const mockTelemetryHistory: Record<string, TelemetryOut[]> = {
     {
       id: 'tel-trig-03',
       shipment_id: mockShipmentTriggered.id,
-      device_id: 'ESP32-COLD-03',
+      device_id: 'ESP32-03',
       temperature_c: 10.5,
       humidity_pct: 80.0,
       recorded_at: '2026-11-03T06:16:00Z',
@@ -321,7 +324,7 @@ export const mockTelemetryHistory: Record<string, TelemetryOut[]> = {
     {
       id: 'tel-trig-06',
       shipment_id: mockShipmentTriggered.id,
-      device_id: 'ESP32-COLD-03',
+      device_id: 'ESP32-03',
       temperature_c: 12.1,
       humidity_pct: 82.4,
       recorded_at: '2026-11-03T06:55:00Z',
@@ -382,17 +385,17 @@ export const mockEvents: Record<string, EventOut[]> = {
 export const mockDevices: DeviceItemOut[] = [
   {
     id: 'dev-001',
-    device_id: 'ESP32-001',
+    device_id: 'ESP32-01',
     device_name: 'Cold Chain Sensor 01',
-    key_id: 'KEY-ECDSA-P256-01',
+    key_id: 'key-v1',
     has_public_key: true,
     firmware_version: 'v1.2.0',
     assigned_shipment_id: mockShipmentNormal.id,
-    assigned_shipment_code: 'SHIP-001',
+    assigned_shipment_name: 'SHIP-001',
     signature_status: 'VALID',
     completeness_status: 'COMPLETE',
     health: {
-      device_id: 'ESP32-001',
+      device_id: 'ESP32-01',
       last_sequence_number: 1524,
       missing_sequence_count: 0,
       last_heartbeat_at: '2026-11-07T12:45:00Z',
@@ -404,17 +407,17 @@ export const mockDevices: DeviceItemOut[] = [
   },
   {
     id: 'dev-002',
-    device_id: 'ESP32-002',
+    device_id: 'ESP32-02',
     device_name: 'Cold Chain Sensor 02',
-    key_id: '',
-    has_public_key: false,
+    key_id: 'key-v1',
+    has_public_key: true,
     firmware_version: 'v1.2.0',
     assigned_shipment_id: null,
-    assigned_shipment_code: null,
+    assigned_shipment_name: null,
     signature_status: 'UNKNOWN_KEY',
     completeness_status: 'UNKNOWN',
     health: {
-      device_id: 'ESP32-002',
+      device_id: 'ESP32-02',
       last_sequence_number: null,
       missing_sequence_count: null,
       last_heartbeat_at: null,
@@ -426,17 +429,17 @@ export const mockDevices: DeviceItemOut[] = [
   },
   {
     id: 'dev-003',
-    device_id: 'ESP32-003',
+    device_id: 'ESP32-03',
     device_name: 'Cold Chain Sensor 03',
-    key_id: 'KEY-ECDSA-P256-03',
+    key_id: 'key-v1',
     has_public_key: true,
     firmware_version: 'v1.1.9',
     assigned_shipment_id: null,
-    assigned_shipment_code: null,
+    assigned_shipment_name: null,
     signature_status: 'VALID',
     completeness_status: 'COMPLETE',
     health: {
-      device_id: 'ESP32-003',
+      device_id: 'ESP32-03',
       last_sequence_number: 412,
       missing_sequence_count: 0,
       last_heartbeat_at: '2026-11-07T11:55:00Z',
@@ -448,17 +451,17 @@ export const mockDevices: DeviceItemOut[] = [
   },
   {
     id: 'dev-004',
-    device_id: 'ESP32-ROGUE-04',
-    device_name: 'Untrusted Rogue Sensor',
-    key_id: 'KEY-UNKNOWN-PUBKEY-04',
-    has_public_key: false,
+    device_id: 'ESP32-04',
+    device_name: 'Cold Chain Sensor 04',
+    key_id: 'key-v1',
+    has_public_key: true,
     firmware_version: 'v0.9.1-unverified',
     assigned_shipment_id: null,
-    assigned_shipment_code: null,
+    assigned_shipment_name: null,
     signature_status: 'UNKNOWN_KEY',
     completeness_status: 'UNKNOWN',
     health: {
-      device_id: 'ESP32-ROGUE-04',
+      device_id: 'ESP32-04',
       last_sequence_number: 15,
       missing_sequence_count: 0,
       last_heartbeat_at: '2026-11-07T12:10:00Z',
@@ -470,15 +473,15 @@ export const mockDevices: DeviceItemOut[] = [
   },
   {
     id: 'dev-005',
-    device_id: 'ESP32-TAMPER-05',
-    key_id: 'KEY-ECDSA-P256-05',
+    device_id: 'ESP32-05',
+    key_id: 'key-v1',
     firmware_version: 'v1.2.0-custom',
     assigned_shipment_id: mockShipmentBreached.id,
-    assigned_shipment_code: mockShipmentBreached.code,
+    assigned_shipment_name: mockShipmentBreached.name,
     signature_status: 'INVALID',
     completeness_status: 'DATA_INCOMPLETE',
     health: {
-      device_id: 'ESP32-TAMPER-05',
+      device_id: 'ESP32-05',
       last_sequence_number: 304,
       missing_sequence_count: 5,
       last_heartbeat_at: '2026-11-07T12:49:00Z',
@@ -490,14 +493,30 @@ export const mockDevices: DeviceItemOut[] = [
   },
 ];
 
+// The catalog always contains ten fixed devices, just like the Backend.
+mockDevices.push(...Array.from({ length: 5 }, (_, index): DeviceItemOut => {
+  const deviceId = `ESP32-${String(index + 6).padStart(2, '0')}`;
+  return {
+    id: deviceId, device_id: deviceId, device_name: deviceId,
+    key_id: 'key-v1', has_public_key: true, firmware_version: 'v1.0.0',
+    assigned_shipment_id: null, assigned_shipment_name: null,
+    signature_status: 'UNKNOWN', completeness_status: 'UNKNOWN',
+    registered_at: '2026-11-18T00:00:00Z',
+    health: {
+      device_id: deviceId, last_sequence_number: null, missing_sequence_count: null,
+      last_heartbeat_at: null, last_seen_at: null, online_status: 'UNKNOWN', firmware_version: null,
+    },
+  };
+}));
+
 export const mockMissingSequences: Record<string, DeviceMissingSequencesOut> = {
-  'ESP32-COLD-01': {
-    device_id: 'ESP32-COLD-01',
+  'ESP32-01': {
+    device_id: 'ESP32-01',
     total_missing: 0,
     ranges: [],
   },
-  'ESP32-COLD-02': {
-    device_id: 'ESP32-COLD-02',
+  'ESP32-02': {
+    device_id: 'ESP32-02',
     total_missing: 12,
     ranges: [
       {
@@ -514,18 +533,18 @@ export const mockMissingSequences: Record<string, DeviceMissingSequencesOut> = {
       },
     ],
   },
-  'ESP32-COLD-03': {
-    device_id: 'ESP32-COLD-03',
+  'ESP32-03': {
+    device_id: 'ESP32-03',
     total_missing: 0,
     ranges: [],
   },
-  'ESP32-ROGUE-04': {
-    device_id: 'ESP32-ROGUE-04',
+  'ESP32-04': {
+    device_id: 'ESP32-04',
     total_missing: 0,
     ranges: [],
   },
-  'ESP32-TAMPER-05': {
-    device_id: 'ESP32-TAMPER-05',
+  'ESP32-05': {
+    device_id: 'ESP32-05',
     total_missing: 5,
     ranges: [
       {
@@ -545,8 +564,8 @@ export const mockBatches: IntegrityBatch[] = [
   {
     batch_id: 'BATCH-20261107-001',
     shipment_id: mockShipmentNormal.id,
-    shipment_code: mockShipmentNormal.code,
-    device_id: 'ESP32-COLD-01',
+    shipment_name: mockShipmentNormal.name,
+    device_id: 'ESP32-01',
     batch_start_time: '2026-11-07T10:00:00Z',
     batch_end_time: '2026-11-07T11:45:00Z',
     record_count: 20,
@@ -574,8 +593,8 @@ export const mockBatches: IntegrityBatch[] = [
   {
     batch_id: 'BATCH-20261107-002',
     shipment_id: mockShipmentBreached.id,
-    shipment_code: mockShipmentBreached.code,
-    device_id: 'ESP32-COLD-02',
+    shipment_name: mockShipmentBreached.name,
+    device_id: 'ESP32-02',
     batch_start_time: '2026-11-07T11:00:00Z',
     batch_end_time: '2026-11-07T12:15:00Z',
     record_count: 15,
@@ -598,8 +617,8 @@ export const mockBatches: IntegrityBatch[] = [
   {
     batch_id: 'BATCH-20261107-003',
     shipment_id: mockShipmentTriggered.id,
-    shipment_code: mockShipmentTriggered.code,
-    device_id: 'ESP32-COLD-03',
+    shipment_name: mockShipmentTriggered.name,
+    device_id: 'ESP32-03',
     batch_start_time: '2026-11-07T09:30:00Z',
     batch_end_time: '2026-11-07T10:45:00Z',
     record_count: 10,
@@ -628,8 +647,8 @@ export const mockBatches: IntegrityBatch[] = [
   {
     batch_id: 'BATCH-20261107-004',
     shipment_id: mockShipmentNormal.id,
-    shipment_code: mockShipmentNormal.code,
-    device_id: 'ESP32-COLD-01',
+    shipment_name: mockShipmentNormal.name,
+    device_id: 'ESP32-01',
     batch_start_time: '2026-11-07T12:00:00Z',
     batch_end_time: '2026-11-07T12:45:00Z',
     record_count: 5,

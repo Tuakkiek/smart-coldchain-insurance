@@ -15,6 +15,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainInsurance.json"
 DEFAULT_INTEGRITY_ABI_PATH = BACKEND_DIR / "app/integrations/abi/ColdChainDataIntegrity.json"
 DEFAULT_DEVICE_CONFIG_PATH = BACKEND_DIR.parent / "device/cold_chain_device/config.h"
+DEFAULT_DEVICE_KEYS_PATH = BACKEND_DIR / ".local/esp32-private-keys.txt"
 
 
 def is_placeholder(val: str | None) -> bool:
@@ -148,6 +149,7 @@ class Settings:
     public_api_base_url: str = ""
     device_provisioning_mode: str = "manual"
     device_config_path: Path = DEFAULT_DEVICE_CONFIG_PATH
+    device_keys_path: Path = DEFAULT_DEVICE_KEYS_PATH
 
     def __post_init__(self) -> None:
         if self.refresh_cookie_secure is None:
@@ -170,12 +172,18 @@ class Settings:
         )
         if self.device_provisioning_mode not in {"local", "manual"}:
             raise ValueError("DEVICE_PROVISIONING_MODE must be local or manual")
+        if self.app_env == "production" and self.device_provisioning_mode == "local":
+            raise ValueError("Local ESP32 private keys cannot be generated in production; use manual mode")
         config_path = Path(self.device_config_path)
         if config_path.name != "config.h":
             raise ValueError("DEVICE_CONFIG_PATH must point to a file named config.h")
         if not config_path.is_absolute():
             config_path = BACKEND_DIR.parent / config_path
         object.__setattr__(self, "device_config_path", config_path.resolve(strict=False))
+        keys_path = Path(self.device_keys_path).expanduser()
+        if not keys_path.is_absolute():
+            keys_path = BACKEND_DIR.parent / keys_path
+        object.__setattr__(self, "device_keys_path", keys_path.resolve(strict=False))
 
 
 def _mysql_url() -> URL:
@@ -411,5 +419,8 @@ def load_settings() -> Settings:
         device_config_path=Path(os.getenv(
             "DEVICE_CONFIG_PATH",
             "device/cold_chain_device/config.h",
+        ).strip()),
+        device_keys_path=Path(os.getenv(
+            "DEVICE_KEYS_PATH", str(DEFAULT_DEVICE_KEYS_PATH),
         ).strip()),
     )

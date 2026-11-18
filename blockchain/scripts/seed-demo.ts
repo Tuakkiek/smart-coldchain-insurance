@@ -27,10 +27,6 @@ async function main() {
   console.log(`Beneficiary:         ${beneficiaryAccount.address}`);
 
   // 1. Kết nối smart contracts
-  const token = await ethers.getContractAt(
-    "MockInsuranceToken",
-    deployment.contracts.MockInsuranceToken.address
-  );
   const dataIntegrity = await ethers.getContractAt(
     "ColdChainDataIntegrity",
     deployment.contracts.ColdChainDataIntegrity.address
@@ -41,15 +37,19 @@ async function main() {
   );
 
   // 2. Dữ liệu định danh mẫu (Deterministic IDs)
-  const demoShipmentId = "8b4fb8a2-2996-4da2-90b9-35019517f56f"; // UUID mẫu từ api-v1.md
-  const demoDeviceId = "device-coldchain-01";
-  const demoBatchId = "batch-0001-sealed";
+  const demoShipmentId = process.env.DEMO_SHIPMENT_ID?.trim() || "8b4fb8a2-2996-4da2-90b9-35019517f56f";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(demoShipmentId)) {
+    throw new Error("DEMO_SHIPMENT_ID phải là shipment_id UUID v4 trả về từ Backend, không phải tên lô hàng.");
+  }
+  const demoDeviceId = "ESP32-01";
+  const demoBatchId = process.env.DEMO_SHIPMENT_ID ? `demo-${demoShipmentId}-ESP32-01` : "batch-0001-sealed";
 
   const shipmentKey = ethers.keccak256(ethers.toUtf8Bytes(demoShipmentId));
   const deviceKey = ethers.keccak256(ethers.toUtf8Bytes(demoDeviceId));
   const batchKey = ethers.keccak256(ethers.toUtf8Bytes(demoBatchId));
 
-  // Merkle root từ Python protocol_vectors_v1.json (3 leaves canonical record vector)
+  // Static storage demo from protocol_vectors_v1.json, not real ESP32 evidence.
+  // Real batches must be signed, verified and anchored through the Backend.
   const merkleRoot = "0x5706c737b9d61c51fee11fca1da56f8a6f9986c220afa0b1e875908857a1ae37";
   const recordCount = 3;
   const firstSequence = 1n;
@@ -94,25 +94,20 @@ async function main() {
 
   // 4. Seed Module B: Ký quỹ và tạo Policy vào ColdChainInsurance
   console.log("\n--- [Module B] Tạo Chính sách Bảo hiểm ---");
-  const payoutAmount = ethers.parseEther("1000"); // 1,000 token MINS
+  const payoutAmount = ethers.parseEther("0.05"); // native ETH escrow on local Hardhat
   const expiry = Math.floor(Date.now() / 1000) + 86400 * 30; // Hiệu lực 30 ngày
 
   const policy = await insurance.getPolicy(shipmentKey);
   if (policy.status !== 0n) {
     console.log("   [INFO] Policy cho shipmentKey này đã tồn tại. Bỏ qua tạo mới.");
   } else {
-    const insuranceAddress = await insurance.getAddress();
-    console.log(`   1. Approve ${ethers.formatEther(payoutAmount)} MINS cho contract bảo hiểm...`);
-    const approveTx = await token.connect(deployer).approve(insuranceAddress, payoutAmount);
-    await approveTx.wait();
-    console.log("      ✓ Approve hoàn tất.");
-
-    console.log("   2. Tạo chính sách bảo hiểm (createPolicy)...");
+    console.log("   Tạo policy và ký quỹ native ETH...");
     const createTx = await insurance.connect(deployer).createPolicy(
       shipmentKey,
       beneficiaryAccount.address,
       payoutAmount,
-      expiry
+      expiry,
+      { value: payoutAmount }
     );
     const createReceipt = await createTx.wait();
     console.log(`      ✓ Policy created thành công (tx: ${createReceipt?.hash})`);
@@ -136,7 +131,7 @@ async function main() {
   console.log(`   - Shipment Key:  ${shipmentKey}`);
   console.log(`   - Insurer:       ${updatedPolicy.insurer}`);
   console.log(`   - Beneficiary:   ${updatedPolicy.beneficiary}`);
-  console.log(`   - Payout Amount: ${ethers.formatEther(updatedPolicy.payoutAmount)} MINS`);
+  console.log(`   - Payout Amount: ${ethers.formatEther(updatedPolicy.payoutAmount)} ETH`);
   console.log(`   - Expiry:        ${new Date(Number(updatedPolicy.expiry) * 1000).toISOString()}`);
   console.log(`   - Status:        ${statusLabels[Number(updatedPolicy.status)]}`);
   console.log("\n=== Seed Demo hoàn tất thành công! ===");

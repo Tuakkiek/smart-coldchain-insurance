@@ -83,16 +83,6 @@ export interface ShipmentDevicesOut {
   items: ShipmentDeviceOut[];
 }
 
-export interface DeviceRegisterPayload {
-  device_id: string;
-  device_name: string;
-}
-
-export interface DeviceDeleteOut {
-  device_id: string;
-  deleted: true;
-}
-
 export interface DeviceAssignmentPayload {
   shipment_id: string;
   active: boolean;
@@ -113,10 +103,9 @@ export interface AdminDeviceViewOut {
   device_name?: string;
   status: 'active' | 'revoked';
   key_id?: string;
-  provisioning_status?: 'ready';
   has_public_key: boolean;
   current_shipment_id: string | null;
-  current_shipment_code?: string | null;
+  current_shipment_name?: string | null;
   last_sequence_number: number;
   last_seen_at: string | null;
   keys: AdminDeviceKeyView[];
@@ -131,7 +120,7 @@ export interface DeviceItemOut {
   has_public_key?: boolean;
   firmware_version: string;
   assigned_shipment_id: string | null;
-  assigned_shipment_code: string | null;
+  assigned_shipment_name: string | null;
   signature_status: SignatureStatus;
   completeness_status: CompletenessStatus;
   health: DeviceHealthOut;
@@ -172,7 +161,7 @@ export interface IntegrityAnchorTransactionOut {
 export interface IntegrityBatch {
   batch_id: string;
   shipment_id: string;
-  shipment_code?: string;
+  shipment_name?: string;
   device_id: string;
   status?: 'SEALED';
   first_sequence?: number;
@@ -316,7 +305,8 @@ export type ShipmentStatus = 'created' | 'in_transit' | 'sensor_data_gap' | 'ins
 
 export interface ShipmentOut {
   id: string;
-  code: string;
+  shipment_id: string;
+  name: string;
   cargo_type: string;
   status: ShipmentStatus;
   origin: Place;
@@ -344,7 +334,7 @@ export interface ShipmentDeleteOut {
 }
 
 export interface ShipmentCreatePayload {
-  code: string;
+  name: string;
   cargo_type: string;
   origin: Place;
   destination: Place;

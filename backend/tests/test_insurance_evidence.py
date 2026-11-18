@@ -76,7 +76,7 @@ def _signed(key, shipment_id, sequence):
     payload = {
         "payload_version": 1,
         "shipment_id": shipment_id,
-        "device_id": "PHASE6-DEVICE",
+        "device_id": "ESP32-01",
         "key_id": "key-v1",
         "sequence_number": sequence,
         "temperature_c": 9.2,
@@ -118,7 +118,7 @@ def _setup(tmp_path):
     ).decode("ascii")
     client = TestClient(app, headers=ADMIN)
     shipment_id = client.post("/api/v1/shipments", headers=ADMIN, json={
-        "code": "PHASE6-EVIDENCE",
+        "name": "PHASE6-EVIDENCE",
         "cargo_type": "vaccine",
         "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
         "destination": {"name": "B", "latitude": 11.0, "longitude": 106.0},
@@ -127,14 +127,8 @@ def _setup(tmp_path):
         "violation_duration_minutes": 15,
         "insured_amount_vnd": 1000,
     }).json()["id"]
-    assert client.post("/api/v1/devices", headers=ADMIN, json={
-        "device_id": "PHASE6-DEVICE",
-        "device_name": "Evidence sensor",
-    }).status_code == 201
-    assert client.post("/api/v1/devices/PHASE6-DEVICE/assignments", headers=ADMIN,
-                       json={"shipment_id": shipment_id, "active": True}).status_code == 200
-    assert client.post("/api/v1/devices/PHASE6-DEVICE/keys", headers=ADMIN,
-                       json={"key_id": "key-v1", "public_key_pem": pem}).status_code == 201
+    from test_signed_ingestion import register
+    assert register(client, pem, shipment_id).status_code == 201
     return app, client, key, shipment_id, payout_gateway, integrity
 
 

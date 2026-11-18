@@ -2,6 +2,8 @@
 
 **Giám sát chuỗi vận chuyển lạnh bằng IoT, xác minh tính toàn vẹn dữ liệu trên Blockchain và mô phỏng bảo hiểm tự động bằng Smart Contract.**
 
+Luồng local hiện tại dùng **tên lô hàng**, trả `shipment_id` UUID và bộ **ESP32-01 đến ESP32-10** có khóa tạo một lần. Xem [hướng dẫn chạy local](docs/local-devices.md).
+
 ## 1. Tổng quan
 
 `smart-coldchain-insurance` theo dõi nhiệt độ và độ ẩm trong quá trình vận chuyển hàng hóa yêu cầu bảo quản lạnh. ESP32 gửi telemetry có chữ ký số lên FastAPI. Backend xác minh nguồn gửi, phát hiện mẫu trùng hoặc thiếu, lưu dữ liệu trong MySQL và đóng các mẫu hợp lệ thành những batch có Merkle Root. Smart Contract lưu hash đại diện cho batch để hỗ trợ đối chiếu dữ liệu về sau.

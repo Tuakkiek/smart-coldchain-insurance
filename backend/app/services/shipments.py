@@ -7,7 +7,6 @@ from itertools import chain
 from uuid import uuid4
 
 from sqlalchemy import case, delete, func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (DeviceAssignment, IngestionAudit, IntegrityBatch, Shipment,
@@ -22,10 +21,6 @@ from app.services.policy_blockchain import PolicyCoordinator
 
 
 class ShipmentNotFound(Exception):
-    pass
-
-
-class DuplicateShipmentCode(Exception):
     pass
 
 
@@ -67,7 +62,7 @@ def create_shipment(
     expiry_days = payload.policy_expiry_days or default_expiry_days
     shipment = Shipment(
         id=str(uuid4()),
-        code=payload.code,
+        name=payload.name,
         cargo_type=payload.cargo_type,
         origin_name=payload.origin.name,
         origin_formatted_address=payload.origin.formatted_address,
@@ -99,12 +94,7 @@ def create_shipment(
         created_at=now,
     )
     session.add(shipment)
-    try:
-        session.commit()
-    except IntegrityError as exc:
-        session.rollback()
-        # The only unique constraint on this insert is shipments.code.
-        raise DuplicateShipmentCode from exc
+    session.commit()
 
     if is_sepolia_eth and policy_coordinator is not None and policy_coordinator.can_submit_server_side:
         shipment = policy_coordinator.create_or_retry_policy(session, shipment.id)
@@ -412,7 +402,8 @@ def shipment_dict(
         status = "sensor_data_gap"
     result: dict = {
         "id": shipment.id,
-        "code": shipment.code,
+        "shipment_id": shipment.id,
+        "name": shipment.name,
         "cargo_type": shipment.cargo_type,
         "status": status,
         "origin": origin_data,

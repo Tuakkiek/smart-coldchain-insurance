@@ -21,7 +21,7 @@ describe("Deployment and Seed Workflow (Phase 5 Part 1)", function () {
   let beneficiary: SignerWithAddress;
 
   const demoShipmentId = "8b4fb8a2-2996-4da2-90b9-35019517f56f";
-  const demoDeviceId = "device-coldchain-01";
+  const demoDeviceId = "ESP32-01";
   const demoBatchId = "batch-0001-sealed";
 
   const shipmentKey = ethers.keccak256(ethers.toUtf8Bytes(demoShipmentId));
@@ -32,7 +32,7 @@ describe("Deployment and Seed Workflow (Phase 5 Part 1)", function () {
   const recordCount = 3;
   const firstSequence = 1n;
   const lastSequence = 3n;
-  const payoutAmount = ethers.parseEther("1000");
+  const payoutAmount = ethers.parseEther("0.05");
 
   before(async function () {
     [deployer, oracle, anchorer, beneficiary] = await ethers.getSigners();
@@ -55,12 +55,12 @@ describe("Deployment and Seed Workflow (Phase 5 Part 1)", function () {
 
     // 3. Insurance
     const InsuranceFactory = await ethers.getContractFactory("ColdChainInsurance");
-    insurance = await InsuranceFactory.deploy(await token.getAddress(), oracle.address);
+    insurance = await InsuranceFactory.deploy(oracle.address);
     await insurance.waitForDeployment();
     expect(await insurance.getAddress()).to.properAddress;
     expect(await insurance.owner()).to.equal(deployer.address);
     expect(await insurance.oracle()).to.equal(oracle.address);
-    expect(await insurance.payoutToken()).to.equal(await token.getAddress());
+    expect(await insurance.getContractBalance()).to.equal(0);
   });
 
   it("Should seed Module A telemetry batch deterministically", async function () {
@@ -107,13 +107,13 @@ describe("Deployment and Seed Workflow (Phase 5 Part 1)", function () {
     const expiry = Math.floor(Date.now() / 1000) + 86400 * 30;
 
     // Approve & create policy
-    await token.connect(deployer).approve(insuranceAddress, payoutAmount);
+
     await expect(
       insurance.connect(deployer).createPolicy(
         shipmentKey,
         beneficiary.address,
         payoutAmount,
-        expiry
+        expiry, { value: payoutAmount }
       )
     )
       .to.emit(insurance, "PolicyCreated")
@@ -121,7 +121,7 @@ describe("Deployment and Seed Workflow (Phase 5 Part 1)", function () {
 
     expect(await insurance.isPolicyActive(shipmentKey)).to.be.true;
     expect(await insurance.getContractBalance()).to.equal(payoutAmount);
-    expect(await token.balanceOf(insuranceAddress)).to.equal(payoutAmount);
+    expect(await ethers.provider.getBalance(insuranceAddress)).to.equal(payoutAmount);
 
     const policy = await insurance.getPolicy(shipmentKey);
     expect(policy.insurer).to.equal(deployer.address);
@@ -152,7 +152,7 @@ describe("Deployment and Seed Workflow (Phase 5 Part 1)", function () {
             address: await insurance.getAddress(),
             deployer: deployer.address,
             oracle: oracle.address,
-            payoutToken: await token.getAddress(),
+            currency: "ETH",
           },
         },
         roles: {

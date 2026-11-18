@@ -5,8 +5,6 @@ import {
   DeviceHealthOut,
   DeviceMissingSequencesOut,
   ShipmentDevicesOut,
-  DeviceRegisterPayload,
-  DeviceDeleteOut,
   DeviceAssignmentPayload,
   AdminDeviceViewOut,
   SignatureStatus,
@@ -15,30 +13,6 @@ import {
 } from '../types/api';
 
 export { ApiError };
-
-/**
- * Admin: Register a new ESP32 device with minimal fields (device_id and device_name).
- * In local provisioning mode the Backend creates the P-256 pair, stores only
- * the public key, and updates the configured ESP32 config.h. No key material
- * is sent through the browser.
- * Endpoint: POST /api/v1/devices
- * Authentication: current Admin Bearer session (attached by apiClient).
- */
-export async function registerDevice(
-  payload: DeviceRegisterPayload
-): Promise<AdminDeviceViewOut> {
-  return apiClient.post<AdminDeviceViewOut>('/api/v1/devices', payload);
-}
-
-/**
- * Delete a registered device that has no active shipment assignment.
- * Devices with telemetry history are retained to preserve audit evidence.
- */
-export async function deleteDevice(deviceId: string): Promise<DeviceDeleteOut> {
-  return apiClient.delete<DeviceDeleteOut>(
-    `/api/v1/devices/${encodeURIComponent(deviceId)}`
-  );
-}
 
 /**
  * Admin: Assign or unassign a device to a shipment.
@@ -157,7 +131,7 @@ export function normalizeDeviceItem(item: any): DeviceItemOut {
     has_public_key: item.has_public_key ?? false,
     firmware_version: item.firmware_version || 'v1.0.0',
     assigned_shipment_id: assignedShipmentId,
-    assigned_shipment_code: assignedShipmentId ? item.assigned_shipment_code || null : null,
+    assigned_shipment_name: assignedShipmentId ? item.current_shipment_name || item.assigned_shipment_name || null : null,
     signature_status: signatureStatus,
     completeness_status: completenessStatus,
     health: {

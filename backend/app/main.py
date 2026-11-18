@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -16,7 +17,7 @@ from app.api.routes import router
 from app.core.config import Settings, load_settings, validate_auth_config
 from app.core.database import make_engine, make_session_factory
 from app.integrations.blockchain_adapter import BlockchainError
-from app.services.shipments import DuplicateShipmentCode, ShipmentDeleteConflict, ShipmentNotFound
+from app.services.shipments import ShipmentDeleteConflict, ShipmentNotFound
 from app.services.clock import SYSTEM_CLOCK
 from app.services.blockchain_outbox import configured_coordinator
 from app.services.google_maps_service import GoogleMapsService, LocationResolveError
@@ -26,7 +27,7 @@ from app.services.policy_blockchain import configured_policy_coordinator
 from app.services.signed_ingestion import IngestionError
 from app.services.batch_service import BatchServiceError
 from app.services.auth import AuthError, LoginRateLimiter
-from app.services.device_provisioning import DeviceProvisioner, ProvisioningError
+from app.services.device_provisioning import initialize_fixed_devices, ProvisioningError
 
 
 logger = logging.getLogger(__name__)
@@ -132,7 +133,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.jwt_access_token_expire_minutes,
     )
     logging.basicConfig(level=getattr(logging, settings.log_level, logging.INFO))
-    app = FastAPI(title="Smart Cold Chain Insurance API", version="1.0.0")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        if settings.device_provisioning_mode == "local":
+            with app.state.session_factory() as session:
+                initialize_fixed_devices(session, settings.device_keys_path)
+        yield
+
+    app = FastAPI(title="Smart Cold Chain Insurance API", version="1.0.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.engine = make_engine(settings.database_url)
     app.state.session_factory = make_session_factory(app.state.engine)
@@ -150,12 +158,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.integrity_blockchain,
     )
     app.state.login_rate_limiter = LoginRateLimiter(max_attempts=5, window_seconds=60)
-    app.state.device_provisioner = (
-        DeviceProvisioner(settings.device_config_path)
-        if settings.device_provisioning_mode == "local"
-        else None
-    )
-
     app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(RequestIdMiddleware)
 
@@ -197,10 +199,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(ShipmentNotFound)
     async def shipment_not_found(_request: Request, _exc: ShipmentNotFound):
         return error_response(404, "SHIPMENT_NOT_FOUND", "Không tìm thấy lô hàng")
-
-    @app.exception_handler(DuplicateShipmentCode)
-    async def duplicate_code(_request: Request, _exc: DuplicateShipmentCode):
-        return error_response(409, "DUPLICATE_SHIPMENT_CODE", "Mã lô hàng đã tồn tại")
 
     @app.exception_handler(ShipmentDeleteConflict)
     async def shipment_delete_conflict(_request: Request, exc: ShipmentDeleteConflict):

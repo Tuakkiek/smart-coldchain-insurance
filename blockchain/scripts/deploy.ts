@@ -4,7 +4,7 @@ import * as path from "path";
 
 /**
  * Script deploy toàn bộ smart contracts của hệ thống Smart Cold Chain Insurance:
- * 1. MockInsuranceToken (MINS) - ERC-20 token demo cho ký quỹ và chi trả bảo hiểm
+ * 1. MockInsuranceToken (MINS) - ERC-20 fixture cũ, độc lập với bảo hiểm native ETH
  * 2. ColdChainDataIntegrity (Module A) - Neo Merkle root và xác thực tính toàn vẹn dữ liệu telemetry
  * 3. ColdChainInsurance (Module B) - Quản lý chính sách bảo hiểm, khóa quỹ và tự động chi trả
  */
@@ -38,7 +38,7 @@ async function main() {
 
   // 3. Deploy ColdChainInsurance (Module B)
   const Insurance = await ethers.getContractFactory("ColdChainInsurance");
-  const insurance = await Insurance.deploy(tokenAddress, oracleAddress);
+  const insurance = await Insurance.deploy(oracleAddress);
   await insurance.waitForDeployment();
   const insuranceAddress = await insurance.getAddress();
   console.log(`[3/3] ColdChainInsurance deployed:     ${insuranceAddress}`);
@@ -62,7 +62,7 @@ async function main() {
         address: insuranceAddress,
         deployer: deployer.address,
         oracle: oracleAddress,
-        payoutToken: tokenAddress,
+        currency: "ETH",
       },
     },
     roles: {
