@@ -13,10 +13,14 @@ from sqlalchemy import select
 
 from app.core.database import get_session
 from app.schemas.api import (
+    BlockchainPublicConfigOut,
     EventListOut,
     HealthOut,
+    LocationResolveIn,
+    LocationResolveOut,
     LoginIn,
     LoginOut,
+    PolicyConfirmIn,
     ShipmentCreate,
     ShipmentOut,
     ShipmentDeleteOut,
@@ -57,6 +61,7 @@ from app.services.auth import (
 )
 from app.models import SignedTelemetryReceipt
 from app.services.device_health_service import shipment_devices
+from app.services.eth_units import SEPOLIA_CHAIN_ID, SEPOLIA_CURRENCY, SEPOLIA_NETWORK_NAME
 from app.services.health import service_health
 
 
@@ -218,10 +223,92 @@ def ready(request: Request, response: Response) -> HealthOut:
     return HealthOut.model_validate(result)
 
 
+@router.post("/locations/resolve", response_model=LocationResolveOut)
+def resolve_location(payload: LocationResolveIn, request: Request, _admin: Annotated[str, Depends(require_admin)]):
+    resolved = request.app.state.google_maps_service.resolve(payload.input)
+    return {
+        "success": True,
+        "data": {
+            "address": resolved.address,
+            "formatted_address": resolved.formatted_address,
+            "latitude": resolved.latitude,
+            "longitude": resolved.longitude,
+            "place_id": resolved.place_id,
+            "source": resolved.source,
+        },
+    }
+
+
+@router.get("/blockchain/config", response_model=BlockchainPublicConfigOut)
+def get_blockchain_public_config(request: Request, _admin: Annotated[str, Depends(require_admin)]):
+    settings = request.app.state.settings
+    policy_coordinator = getattr(request.app.state, "policy_blockchain", None)
+    is_sepolia = settings.blockchain_chain_id == SEPOLIA_CHAIN_ID
+    return BlockchainPublicConfigOut(
+        network=SEPOLIA_NETWORK_NAME if is_sepolia else settings.blockchain_network,
+        chain_id=settings.blockchain_chain_id if settings.blockchain_enabled else SEPOLIA_CHAIN_ID,
+        currency=SEPOLIA_CURRENCY,
+        insurance_contract_address=settings.blockchain_contract_address or None,
+        blockchain_enabled=settings.blockchain_enabled,
+        server_policy_creation_enabled=bool(
+            policy_coordinator is not None and policy_coordinator.can_submit_server_side
+        ),
+    )
+
+
 @router.post("/shipments", response_model=ShipmentOut, response_model_exclude_unset=True, status_code=201)
 def create_shipment(payload: ShipmentCreate, request: Request, session: AdminSession):
-    shipment = shipments.create_shipment(session, payload)
-    return shipments.shipment_dict(session, shipment, request.app.state.clock, request.app.state.settings.sensor_gap_minutes)
+    settings = request.app.state.settings
+    shipment = shipments.create_shipment(
+        session,
+        payload,
+        policy_coordinator=getattr(request.app.state, "policy_blockchain", None),
+        default_contract_address=settings.blockchain_contract_address,
+        default_expiry_days=settings.blockchain_default_policy_expiry_days,
+    )
+    return shipments.shipment_dict(session, shipment, request.app.state.clock, settings.sensor_gap_minutes)
+
+
+@router.post(
+    "/shipments/{shipment_id}/policy/retry",
+    response_model=ShipmentOut,
+    response_model_exclude_unset=True,
+)
+def retry_shipment_policy(shipment_id: UUID4, request: Request, session: AdminSession):
+    coordinator = getattr(request.app.state, "policy_blockchain", None)
+    if coordinator is None:
+        raise batch_service.BatchServiceError(
+            503,
+            "BLOCKCHAIN_NOT_CONFIGURED",
+            "Blockchain Smart Contract chưa được cấu hình trên máy chủ Backend",
+        )
+    shipment = shipments.get_shipment(session, str(shipment_id))
+    shipment = coordinator.create_or_retry_policy(session, shipment.id)
+    return shipments.shipment_dict(
+        session, shipment, request.app.state.clock, request.app.state.settings.sensor_gap_minutes,
+    )
+
+
+@router.post(
+    "/shipments/{shipment_id}/policy/confirm",
+    response_model=ShipmentOut,
+    response_model_exclude_unset=True,
+)
+def confirm_shipment_policy(
+    shipment_id: UUID4, payload: PolicyConfirmIn, request: Request, session: AdminSession,
+):
+    shipment = shipments.get_shipment(session, str(shipment_id))
+    coordinator = getattr(request.app.state, "policy_blockchain", None)
+    if coordinator is None:
+        raise batch_service.BatchServiceError(
+            503,
+            "BLOCKCHAIN_NOT_CONFIGURED",
+            "Blockchain Smart Contract chưa được cấu hình để xác minh giao dịch trên chuỗi",
+        )
+    shipment = coordinator.confirm_external_transaction(session, shipment.id, payload.transaction_hash)
+    return shipments.shipment_dict(
+        session, shipment, request.app.state.clock, request.app.state.settings.sensor_gap_minutes,
+    )
 
 
 @router.get("/shipments", response_model=ShipmentsOut, response_model_exclude_unset=True)

@@ -67,6 +67,20 @@ def legacy_database(engine, *, conflicting=False):
     with factory() as session:
         first = shipments.create_shipment(session, ShipmentCreate.model_validate(SHIPMENT))
         second = shipments.create_shipment(session, ShipmentCreate.model_validate(SHIPMENT | {"code": "OLD-002"}))
+    # Strip columns introduced in later migrations (20261118_07) so the legacy snapshot truly reflects 20261109_02.
+    post_02_shipment_cols = (
+        "origin_formatted_address", "origin_place_id",
+        "destination_formatted_address", "destination_place_id",
+        "insurance_amount", "insurance_amount_wei", "insurance_currency",
+        "blockchain_chain_id", "buyer_wallet_address",
+        "policy_contract_address", "policy_transaction_hash",
+        "policy_status", "policy_last_error", "policy_expiry",
+    )
+    existing_ship_cols = {c["name"] for c in sa.inspect(engine).get_columns("shipments")}
+    with engine.begin() as connection:
+        for col in post_02_shipment_cols:
+            if col in existing_ship_cols:
+                connection.exec_driver_sql(f"ALTER TABLE shipments DROP COLUMN {col}")
     now = datetime(2026, 11, 15, tzinfo=timezone.utc)
     metadata = sa.MetaData()
     devices = sa.Table("devices", metadata, autoload_with=engine)

@@ -57,6 +57,41 @@ class PreparedAnchor:
     raw_transaction: str
 
 
+@dataclass(frozen=True)
+class OnChainPolicy:
+    insurer: str
+    beneficiary: str
+    payout_amount_wei: int
+    expiry: int
+    status: int
+    evidence_hash: str
+    detected_at: int
+
+
+@dataclass(frozen=True)
+class PolicySubmission:
+    transaction_hash: str
+    contract_address: str
+    already_active: bool = False
+
+
+class PolicyGateway(Protocol):
+    @property
+    def contract_address(self) -> str: ...
+    @property
+    def chain_id(self) -> int: ...
+    @property
+    def can_submit_server_side(self) -> bool: ...
+    def read_policy(self, shipment_id: str) -> OnChainPolicy: ...
+    def submit_policy(
+        self, shipment_id: str, buyer_wallet: str, amount_wei: int, expiry_timestamp: int,
+    ) -> PolicySubmission: ...
+    def check_policy_confirmation(
+        self, transaction_hash: str, shipment_id: str, buyer_wallet: str, amount_wei: int,
+        confirmations: int = 1,
+    ) -> str: ...
+
+
 class BlockchainGateway(Protocol):
     def prepare_report(self, shipment_id: str, event_id: str, detected_at: datetime) -> PreparedReport: ...
     def broadcast(self, raw_transaction: str) -> None: ...
@@ -181,7 +216,7 @@ class Web3BlockchainAdapter:
                     web3,
                     contract.events.InsurancePaid,
                     {"shipmentKey": shipment_key},
-                    self.settings.blockchain_start_block,
+                    self.settings.blockchain_start_block or self.settings.blockchain_deploy_block,
                 )
                 for paid in logs:
                     if bytes(paid["args"]["evidenceHash"]) == evidence_hash and paid["args"]["detectedAt"] == self._detected_seconds(detected_at):
@@ -328,6 +363,210 @@ class Web3IntegrityAdapter:
             web3,
             contract.events.BatchAnchored,
             {"batchKey": batch_key},
-            self.settings.blockchain_start_block,
+            self.settings.blockchain_start_block or self.settings.blockchain_deploy_block,
         )
         return Web3.to_hex(logs[-1]["transactionHash"]) if logs else None
+
+
+_MINIMAL_ERC20_ABI = [
+    {
+        "inputs": [{"name": "account", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {"name": "owner", "type": "address"},
+            {"name": "spender", "type": "address"},
+        ],
+        "name": "allowance",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {"name": "spender", "type": "address"},
+            {"name": "amount", "type": "uint256"},
+        ],
+        "name": "approve",
+        "outputs": [{"name": "", "type": "bool"}],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+]
+
+
+class Web3PolicyAdapter:
+    """Create, verify, and read back ColdChainInsurance policies on Sepolia / EVM chains."""
+
+    def __init__(self, settings: Settings):
+        self.settings = settings
+
+    @property
+    def contract_address(self) -> str:
+        raw = self.settings.blockchain_contract_address
+        if not raw:
+            return ""
+        try:
+            return Web3.to_checksum_address(raw)
+        except ValueError:
+            return raw
+
+    @property
+    def chain_id(self) -> int:
+        return self.settings.blockchain_chain_id
+
+    @property
+    def can_submit_server_side(self) -> bool:
+        return bool(
+            self.settings.blockchain_enabled
+            and self.settings.blockchain_contract_address
+            and self.settings.blockchain_insurer_private_key
+        )
+
+    def _contract(self):
+        settings = self.settings
+        web3 = Web3(Web3.HTTPProvider(settings.blockchain_rpc_url, request_kwargs={"timeout": 8}))
+        if web3.eth.chain_id != settings.blockchain_chain_id:
+            raise BlockchainError("CHAIN_ID_MISMATCH")
+        try:
+            address = Web3.to_checksum_address(settings.blockchain_contract_address)
+        except ValueError as exc:
+            raise BlockchainError("INVALID_CONTRACT_ADDRESS") from exc
+        if not web3.eth.get_code(address):
+            raise BlockchainError("CONTRACT_NOT_DEPLOYED")
+        try:
+            with settings.blockchain_abi_path.open(encoding="utf-8") as artifact_file:
+                abi = json.load(artifact_file)["abi"]
+        except (OSError, ValueError, KeyError) as exc:
+            raise BlockchainError("ABI_UNAVAILABLE") from exc
+        return web3, web3.eth.contract(address=address, abi=abi), address
+
+    @staticmethod
+    def _shipment_key(shipment_id: str) -> bytes:
+        return bytes(Web3.keccak(text=shipment_id))
+
+    def read_policy(self, shipment_id: str) -> OnChainPolicy:
+        _web3, contract, _address = self._contract()
+        policy = contract.functions.getPolicy(self._shipment_key(shipment_id)).call()
+        return OnChainPolicy(
+            insurer=Web3.to_checksum_address(policy[0]),
+            beneficiary=Web3.to_checksum_address(policy[1]),
+            payout_amount_wei=int(policy[2]),
+            expiry=int(policy[3]),
+            status=int(policy[4]),
+            evidence_hash=Web3.to_hex(bytes(policy[5])),
+            detected_at=int(policy[6]),
+        )
+
+    def submit_policy(
+        self, shipment_id: str, buyer_wallet: str, amount_wei: int, expiry_timestamp: int,
+    ) -> PolicySubmission:
+        if not self.settings.blockchain_insurer_private_key:
+            raise BlockchainError("INSURER_SIGNER_NOT_CONFIGURED")
+        if amount_wei <= 0:
+            raise BlockchainError("INVALID_PAYOUT_AMOUNT")
+
+        web3, contract, insurance_address = self._contract()
+        insurer_account = web3.eth.account.from_key(self.settings.blockchain_insurer_private_key)
+        checksum_buyer = Web3.to_checksum_address(buyer_wallet)
+        shipment_key = self._shipment_key(shipment_id)
+
+        existing = contract.functions.getPolicy(shipment_key).call()
+        if int(existing[4]) != 0:
+            matches = (
+                int(existing[4]) == 1
+                and Web3.to_checksum_address(existing[1]) == checksum_buyer
+                and int(existing[2]) == amount_wei
+            )
+            if matches:
+                logs = contract.events.PolicyCreated().get_logs(
+                    from_block=self.settings.blockchain_deploy_block,
+                    argument_filters={"shipmentKey": shipment_key},
+                )
+                tx_hash = Web3.to_hex(logs[-1]["transactionHash"]) if logs else ""
+                return PolicySubmission(
+                    transaction_hash=tx_hash,
+                    contract_address=insurance_address,
+                    already_active=True,
+                )
+            raise BlockchainError("POLICY_ALREADY_EXISTS_MISMATCH")
+
+        token_address = Web3.to_checksum_address(contract.functions.payoutToken().call())
+        token = web3.eth.contract(address=token_address, abi=_MINIMAL_ERC20_ABI)
+        balance = int(token.functions.balanceOf(insurer_account.address).call())
+        if balance < amount_wei:
+            raise BlockchainError("INSURER_INSUFFICIENT_TOKEN_BALANCE")
+
+        allowance = int(token.functions.allowance(insurer_account.address, insurance_address).call())
+        nonce = web3.eth.get_transaction_count(insurer_account.address, "pending")
+        gas_price = web3.eth.gas_price
+
+        if allowance < amount_wei:
+            approve_tx = token.functions.approve(insurance_address, amount_wei).build_transaction({
+                "from": insurer_account.address,
+                "nonce": nonce,
+                "chainId": self.settings.blockchain_chain_id,
+                "gas": 100000,
+                "gasPrice": gas_price,
+            })
+            signed_approve = insurer_account.sign_transaction(approve_tx)
+            approve_hash = web3.eth.send_raw_transaction(signed_approve.raw_transaction)
+            approve_receipt = web3.eth.wait_for_transaction_receipt(
+                approve_hash, timeout=self.settings.blockchain_receipt_timeout_seconds,
+            )
+            if approve_receipt["status"] != 1:
+                raise BlockchainError("TOKEN_APPROVE_FAILED")
+            nonce += 1
+
+        # Note: ColdChainInsurance.createPolicy is nonpayable (locks ERC-20 payoutToken,
+        # never attaches native ETH via msg.value).
+        policy_tx = contract.functions.createPolicy(
+            shipment_key,
+            checksum_buyer,
+            amount_wei,
+            expiry_timestamp,
+        ).build_transaction({
+            "from": insurer_account.address,
+            "nonce": nonce,
+            "chainId": self.settings.blockchain_chain_id,
+            "gas": 300000,
+            "gasPrice": web3.eth.gas_price,
+        })
+        signed_policy = insurer_account.sign_transaction(policy_tx)
+        web3.eth.send_raw_transaction(signed_policy.raw_transaction)
+        return PolicySubmission(
+            transaction_hash=Web3.to_hex(signed_policy.hash),
+            contract_address=insurance_address,
+            already_active=False,
+        )
+
+    def check_policy_confirmation(
+        self,
+        transaction_hash: str,
+        shipment_id: str,
+        buyer_wallet: str,
+        amount_wei: int,
+        confirmations: int = 1,
+    ) -> str:
+        web3, _contract, _address = self._contract()
+        try:
+            receipt = web3.eth.get_transaction_receipt(transaction_hash)
+        except TransactionNotFound:
+            return "pending"
+        if receipt["status"] != 1:
+            return "failed"
+        observed = web3.eth.block_number - receipt["blockNumber"] + 1
+        if observed < confirmations:
+            return "pending"
+        on_chain = self.read_policy(shipment_id)
+        if (
+            on_chain.status == 1
+            and on_chain.beneficiary.lower() == buyer_wallet.lower()
+            and on_chain.payout_amount_wei == amount_wei
+        ):
+            return "confirmed"
+        return "failed"

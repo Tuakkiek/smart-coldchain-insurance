@@ -13,6 +13,7 @@ import { ShipmentOut, ShipmentStatus } from '../types/api';
 import { Search, MapPin, Thermometer, Shield, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { CreateShipmentModal } from '../components/shipments/CreateShipmentModal';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
+import { formatInsuranceCoverage, shortenAddress } from '../utils/ethereum';
 
 export const ShipmentsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -370,17 +371,30 @@ export const ShipmentsPage: React.FC = () => {
                   {/* Insurance Amount */}
                   <div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                      <Shield size={12} /> Mức bồi thường cam kết
+                      <Shield size={12} /> Giá trị bảo hiểm (Coverage)
                     </div>
-                    <div className="tabular-nums" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginTop: '2px' }}>
-                      {shipment.insurance.insured_amount_vnd.toLocaleString('vi-VN')} VND
-                    </div>
-                    <div style={{ fontSize: '10px', color: '#b45309', marginTop: '1px', fontWeight: 500 }}>
-                      (Local/Testnet Token — không phải tiền thật)
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
-                      Vi phạm liên tục {shipment.violation_duration_minutes} phút
-                    </div>
+                    {(() => {
+                      const cov = formatInsuranceCoverage(shipment.insurance);
+                      const buyerWallet = shipment.buyer_wallet_address || shipment.insurance.buyer_wallet_address;
+                      return (
+                        <>
+                          <div className="tabular-nums font-mono" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginTop: '2px' }}>
+                            {cov.primaryText}
+                          </div>
+                          <div style={{ fontSize: '10px', color: cov.isEth ? 'var(--color-accent)' : '#b45309', marginTop: '1px', fontWeight: 500 }}>
+                            {cov.unitLabel}
+                          </div>
+                          {buyerWallet && (
+                            <div className="font-mono" style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '2px' }} title={buyerWallet}>
+                              Buyer: {shortenAddress(buyerWallet)}
+                            </div>
+                          )}
+                          <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
+                            Vi phạm liên tục {shipment.violation_duration_minutes} phút
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </Card>

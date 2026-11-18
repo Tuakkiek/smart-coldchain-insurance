@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import {
+  BlockchainPublicConfigOut,
   ShipmentOut,
   ShipmentsOut,
   ShipmentCreatePayload,
@@ -43,4 +44,22 @@ export async function postShipmentTelemetry(
   payload: TelemetryCreatePayload
 ): Promise<TelemetryOut> {
   return apiClient.post<TelemetryOut>(`/api/v1/shipments/${shipmentId}/telemetry`, payload, undefined, false);
+}
+
+export async function getBlockchainPublicConfig(): Promise<BlockchainPublicConfigOut> {
+  return apiClient.get<BlockchainPublicConfigOut>('/api/v1/blockchain/config');
+}
+
+export async function retryShipmentPolicy(shipmentId: string): Promise<ShipmentOut> {
+  return apiClient.post<ShipmentOut>(`/api/v1/shipments/${encodeURIComponent(shipmentId)}/policy/retry`);
+}
+
+export async function confirmShipmentPolicy(
+  shipmentId: string,
+  transactionHash: string
+): Promise<ShipmentOut> {
+  return apiClient.post<ShipmentOut>(
+    `/api/v1/shipments/${encodeURIComponent(shipmentId)}/policy/confirm`,
+    { transaction_hash: transactionHash }
+  );
 }

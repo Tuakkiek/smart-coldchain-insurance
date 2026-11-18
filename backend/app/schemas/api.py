@@ -6,7 +6,14 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
+
+from app.services.eth_units import (
+    SEPOLIA_CURRENCY,
+    parse_eth_to_wei,
+    validate_and_checksum_wallet,
+    validate_tx_hash,
+)
 
 
 class StrictBody(BaseModel):
@@ -39,9 +46,22 @@ class LoginOut(StrictBody):
 
 
 class Place(StrictBody):
-    name: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=255)
+    formatted_address: str | None = Field(default=None, max_length=500)
+    place_id: str | None = Field(default=None, max_length=255)
     latitude: float = Field(ge=-90, le=90, allow_inf_nan=False, strict=True)
     longitude: float = Field(ge=-180, le=180, allow_inf_nan=False, strict=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_address_alias(cls, data: object) -> object:
+        if isinstance(data, dict) and "address" in data:
+            copied = dict(data)
+            addr = copied.pop("address")
+            if "name" not in copied or not copied["name"]:
+                copied["name"] = addr
+            return copied
+        return data
 
     @field_validator("name")
     @classmethod
@@ -50,6 +70,19 @@ class Place(StrictBody):
         if not value:
             raise ValueError("must not be blank")
         return value
+
+    @field_validator("formatted_address", "place_id")
+    @classmethod
+    def clean_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class InsuranceCreateIn(StrictBody):
+    coverage_amount: str
+    currency: Literal["SepoliaETH"] = SEPOLIA_CURRENCY
 
 
 class ShipmentCreate(StrictBody):
@@ -60,7 +93,33 @@ class ShipmentCreate(StrictBody):
     temp_min_c: float = Field(allow_inf_nan=False, strict=True)
     temp_max_c: float = Field(allow_inf_nan=False, strict=True)
     violation_duration_minutes: int = Field(default=15, gt=0, strict=True)
-    insured_amount_vnd: int = Field(ge=0, strict=True)
+    insured_amount_vnd: int | None = Field(default=None, ge=0, strict=True)
+    insurance_amount: str | None = None
+    insurance_currency: Literal["SepoliaETH", "VND"] | None = None
+    insurance: InsuranceCreateIn | None = None
+    buyer_wallet_address: str | None = None
+    policy_expiry_days: int | None = Field(default=None, ge=1, le=3650, strict=True)
+
+    _resolved_eth_amount: str | None = PrivateAttr(default=None)
+    _resolved_wei_amount: str | None = PrivateAttr(default=None)
+    _resolved_currency: str = PrivateAttr(default="VND")
+    _resolved_buyer_wallet: str | None = PrivateAttr(default=None)
+
+    @property
+    def resolved_eth_amount(self) -> str | None:
+        return self._resolved_eth_amount
+
+    @property
+    def resolved_wei_amount(self) -> str | None:
+        return self._resolved_wei_amount
+
+    @property
+    def resolved_currency(self) -> str:
+        return self._resolved_currency
+
+    @property
+    def resolved_buyer_wallet(self) -> str | None:
+        return self._resolved_buyer_wallet
 
     @field_validator("code", "cargo_type")
     @classmethod
@@ -71,10 +130,80 @@ class ShipmentCreate(StrictBody):
         return value
 
     @model_validator(mode="after")
-    def valid_temperature_range(self) -> ShipmentCreate:
+    def valid_shipment_policy(self) -> ShipmentCreate:
         if self.temp_min_c >= self.temp_max_c:
             raise ValueError("temp_min_c must be smaller than temp_max_c")
+
+        raw_eth = self.insurance.coverage_amount if self.insurance is not None else self.insurance_amount
+        explicit_currency = self.insurance.currency if self.insurance is not None else self.insurance_currency
+
+        is_eth_mode = (
+            self.insurance is not None
+            or self.insurance_amount is not None
+            or explicit_currency == SEPOLIA_CURRENCY
+            or self.insured_amount_vnd is None
+        )
+
+        if is_eth_mode:
+            if explicit_currency is not None and explicit_currency != SEPOLIA_CURRENCY:
+                raise ValueError("Đơn vị tiền tệ bảo hiểm mới phải là SepoliaETH")
+            normalized_eth, wei_str = parse_eth_to_wei(raw_eth)
+            checksum_wallet = validate_and_checksum_wallet(self.buyer_wallet_address)
+            self._resolved_eth_amount = normalized_eth
+            self._resolved_wei_amount = wei_str
+            self._resolved_currency = SEPOLIA_CURRENCY
+            self._resolved_buyer_wallet = checksum_wallet
+            self.insured_amount_vnd = 0
+        else:
+            self._resolved_currency = "VND"
+            if self.buyer_wallet_address is not None:
+                self._resolved_buyer_wallet = validate_and_checksum_wallet(self.buyer_wallet_address)
+
         return self
+
+
+class LocationResolveIn(StrictBody):
+    input: str = Field(min_length=1, max_length=2048)
+
+    @field_validator("input")
+    @classmethod
+    def nonblank_input(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Vui lòng nhập địa chỉ hoặc đường dẫn Google Maps")
+        return cleaned
+
+
+class ResolvedLocationData(BaseModel):
+    address: str
+    formatted_address: str
+    latitude: float
+    longitude: float
+    place_id: str | None = None
+    source: str
+
+
+class LocationResolveOut(BaseModel):
+    success: Literal[True] = True
+    data: ResolvedLocationData
+
+
+class PolicyConfirmIn(StrictBody):
+    transaction_hash: str
+
+    @field_validator("transaction_hash")
+    @classmethod
+    def valid_hash(cls, value: str) -> str:
+        return validate_tx_hash(value)
+
+
+class BlockchainPublicConfigOut(BaseModel):
+    network: str
+    chain_id: int
+    currency: str
+    insurance_contract_address: str | None = None
+    blockchain_enabled: bool
+    server_policy_creation_enabled: bool
 
 
 class TelemetryCreate(StrictBody):
@@ -233,13 +362,26 @@ class LatestTelemetryOut(BaseModel):
 
 class InsuranceOut(BaseModel):
     insured_amount_vnd: int
+    coverage_amount: str | None = None
+    coverage_amount_wei: str | None = None
+    currency: Literal["SepoliaETH", "VND"] | None = None
+    chain_id: int | None = None
+    buyer_wallet_address: str | None = None
+    policy_contract_address: str | None = None
+    policy_transaction_hash: str | None = None
+    policy_status: Literal["PENDING", "SUBMITTED", "CONFIRMED", "FAILED"] | None = None
+    policy_last_error: str | None = None
     status: Literal["active", "triggered"]
     payout_status: Literal["not_requested", "evidence_pending", "pending", "paid", "failed"]
 
 
 class BlockchainOut(BaseModel):
     network: str
+    chain_id: int | None = None
+    contract_address: str | None = None
     transaction_hash: str | None
+    policy_transaction_hash: str | None = None
+    policy_status: Literal["PENDING", "SUBMITTED", "CONFIRMED", "FAILED"] | None = None
     confirmation_status: Literal["pending", "success", "failed"]
 
 
@@ -253,6 +395,7 @@ class ShipmentOut(BaseModel):
     temp_min_c: float
     temp_max_c: float
     violation_duration_minutes: int
+    buyer_wallet_address: str | None = None
     latest_telemetry: LatestTelemetryOut | None
     location: LocationOut | None
     insurance: InsuranceOut
