@@ -6,7 +6,7 @@ from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Session
 
 from app.cli import seed_demo
-from app.core.config import load_settings
+from app.core.config import BACKEND_DIR, _mysql_url, load_settings
 from app.core.database import Base, make_engine, make_session_factory
 from app.migrate_sqlite_to_mysql import compare_rows, copy_into_empty_target, migrate
 from app.models import Shipment, ShipmentEvent, Telemetry
@@ -22,6 +22,7 @@ def test_runtime_settings_use_mysql_and_keep_special_password(monkeypatch):
     monkeypatch.setenv("SENSOR_GAP_MINUTES", "7")
     monkeypatch.setenv("MAX_SAMPLE_GAP_SECONDS", "90")
     monkeypatch.setenv("PAYOUT_REQUIRES_ANCHORED_EVIDENCE", "false")
+    monkeypatch.setenv("BLOCKCHAIN_ENABLED", "false")
     settings = load_settings()
     assert settings.database_url.drivername == "mysql+pymysql"
     assert settings.database_url.password == "p@ss/w:rd"
@@ -34,6 +35,9 @@ def test_runtime_settings_use_mysql_and_keep_special_password(monkeypatch):
     monkeypatch.setenv("BLOCKCHAIN_ENABLED", "true")
     monkeypatch.setenv("BLOCKCHAIN_CONTRACT_ADDRESS", "")
     monkeypatch.setenv("BLOCKCHAIN_ORACLE_PRIVATE_KEY", "")
+    monkeypatch.setenv("BLOCKCHAIN_INSURER_PRIVATE_KEY", "")
+    monkeypatch.setenv("DATA_INTEGRITY_CONTRACT_ADDRESS", "")
+    monkeypatch.setenv("BACKEND_ANCHORER_PRIVATE_KEY", "")
     with pytest.raises(ValueError, match="contract address and oracle private key"):
         load_settings()
     monkeypatch.setenv("BLOCKCHAIN_ENABLED", "false")
@@ -67,6 +71,46 @@ def test_database_url_takes_precedence_and_uses_pymysql(monkeypatch):
     assert settings.database_url.database == "coldchain"
     assert settings.database_url.password == "p@ss/word"
     assert settings.database_url.query == {"charset": "utf8mb4"}
+
+
+@pytest.mark.parametrize("source", ["env", "url"])
+def test_mysql_ca_path_is_relative_to_backend_not_working_directory(monkeypatch, tmp_path, source):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("MYSQL_SSL_CA", raising=False)
+    database_url = "mysql://provider:password@mysql.example.com:25060/coldchain"
+    if source == "env":
+        monkeypatch.setenv("MYSQL_SSL_CA", " certs/aiven-ca.crt ")
+    else:
+        database_url += "?ssl_ca=certs/aiven-ca.crt"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
+    url = _mysql_url()
+
+    assert url.query["ssl_ca"] == str((BACKEND_DIR / "certs/aiven-ca.crt").resolve())
+
+
+def test_mysql_ca_preserves_absolute_secret_file_path(monkeypatch, tmp_path):
+    ca_file = tmp_path / "mysql-ca.pem"
+    ca_file.write_bytes((BACKEND_DIR / "certs/aiven-ca.crt").read_bytes())
+    monkeypatch.setenv("DATABASE_URL", "mysql://provider:password@mysql.example.com:25060/coldchain")
+    monkeypatch.setenv("MYSQL_SSL_CA", str(ca_file))
+
+    assert _mysql_url().query["ssl_ca"] == str(ca_file.resolve())
+
+
+@pytest.mark.parametrize("source", ["env", "url"])
+def test_missing_mysql_ca_fails_before_accepting_login_requests(monkeypatch, tmp_path, source):
+    missing_file = tmp_path / "missing-ca.pem"
+    monkeypatch.delenv("MYSQL_SSL_CA", raising=False)
+    database_url = "mysql://provider:password@mysql.example.com:25060/coldchain"
+    if source == "env":
+        monkeypatch.setenv("MYSQL_SSL_CA", str(missing_file))
+    else:
+        database_url += "?ssl_ca=certs/missing-ca.pem"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
+    with pytest.raises(ValueError, match="MySQL CA file is missing"):
+        load_settings()
 
 
 def test_production_requires_admin_secret_and_explicit_cors(monkeypatch):
