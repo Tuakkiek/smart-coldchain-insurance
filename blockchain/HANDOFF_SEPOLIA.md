@@ -58,7 +58,7 @@ BACKEND_ANCHORER_PRIVATE_KEY=0x...
 DATA_INTEGRITY_ABI_PATH=blockchain/deployments/abi/ColdChainDataIntegrity.json
 
 # Module B — ColdChainInsurance (dùng bản native SepoliaETH mới)
-BLOCKCHAIN_CONTRACT_ADDRESS=<DIA_CHI_COLDCHAININSURANCE_SEPOLIAETH_MOI>
+BLOCKCHAIN_CONTRACT_ADDRESS=0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F
 # Điền private key của ví Oracle: 0x7747f2c48C0D9562c311BbeBE4F822aE372C54bb
 BLOCKCHAIN_ORACLE_PRIVATE_KEY=0x...
 BLOCKCHAIN_ABI_PATH=blockchain/deployments/abi/ColdChainInsurance.json
@@ -73,10 +73,10 @@ BLOCKCHAIN_START_BLOCK=12145351
 
 ## 4. Trạng thái Contracts hiện tại trên Sepolia
 
-| Contract | Địa chỉ trên Sepolia | Trạng thái | Ghi chú |
+| Contract | Địa chỉ trên Sepolia | Deploy Block | Deploy Tx |
 |---|---|---|---|
-| `ColdChainDataIntegrity` (Module A) | `0xE04F6f1bb80C438D356E0547ec10337F33ecD81f` | **Giữ nguyên (Đã deploy block `12145351`)** | Không thay đổi source/ABI |
-| `ColdChainInsurance` (Module B — Native SepoliaETH) | *(Cần NTD deploy lại 1 lần trên Remix với `_oracle = 0x7747...`)* | **Đợi re-deploy trên Remix** | Địa chỉ cũ `0xeD8266...` là bản MINS cũ; sau khi NTD deploy bản mới sẽ cập nhật `deployments/sepolia.json` |
+| `ColdChainDataIntegrity` (Module A) | `0xE04F6f1bb80C438D356E0547ec10337F33ecD81f` | `12145351` | [`0x669df6...50b3f0`](https://sepolia.etherscan.io/tx/0x669df621fdbd5962f2e3e6cf4311b7686da0f62a28e04b36f8c5f5a39450b3f0) |
+| `ColdChainInsurance` (Module B — Native SepoliaETH) | `0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F` | `12159144` | [`0x6a8112...e07ddb`](https://sepolia.etherscan.io/tx/0x6a811214cdb38cc1eccd55fcf1f8e6d06942af01e19dc670bccb817126e07ddb) |
 
 ---
 
