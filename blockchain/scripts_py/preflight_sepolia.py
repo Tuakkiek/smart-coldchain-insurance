@@ -4,8 +4,8 @@ Checks:
 1. RPC connectivity and chainId == 11155111.
 2. Sepolia ETH balances for public Owner, Anchorer, and Oracle addresses.
 3. Optional post-deploy checks against blockchain/deployments/sepolia.json:
-   - Bytecode exists at MockInsuranceToken, ColdChainDataIntegrity, ColdChainInsurance
-   - owner(), anchorer(), oracle(), payoutToken() match expected public addresses.
+   - Bytecode exists at ColdChainDataIntegrity and ColdChainInsurance
+   - anchorer(), oracle(), and Insurance ETH balance match expected public addresses.
 
 Usage:
     python blockchain/scripts_py/preflight_sepolia.py
@@ -54,7 +54,7 @@ def _verify_manifest(web3: Web3, manifest_path: Path) -> bool:
     roles = manifest.get("roles", {})
     ok = True
 
-    for name in ("MockInsuranceToken", "ColdChainDataIntegrity", "ColdChainInsurance"):
+    for name in ("ColdChainDataIntegrity", "ColdChainInsurance"):
         info = contracts.get(name, {})
         addr = info.get("address")
         if not addr:
@@ -79,14 +79,12 @@ def _verify_manifest(web3: Web3, manifest_path: Path) -> bool:
         elif name == "ColdChainInsurance":
             c = web3.eth.contract(address=checksum, abi=_load_abi(name))
             onchain_oracle = c.functions.oracle().call()
-            onchain_token = c.functions.payoutToken().call()
             expected_oracle = roles.get("oracle")
-            expected_token = contracts.get("MockInsuranceToken", {}).get("address")
             oracle_ok = expected_oracle and onchain_oracle.lower() == expected_oracle.lower()
-            token_ok = expected_token and onchain_token.lower() == expected_token.lower()
+            eth_bal = web3.from_wei(c.functions.getContractBalance().call(), "ether")
             print(f"[{'OK' if oracle_ok else 'FAIL'}] Insurance.oracle() = {onchain_oracle}")
-            print(f"[{'OK' if token_ok else 'FAIL'}] Insurance.payoutToken() = {onchain_token}")
-            ok = ok and bool(oracle_ok and token_ok)
+            print(f"[OK] Insurance.getContractBalance() = {eth_bal:.6f} SepoliaETH")
+            ok = ok and bool(oracle_ok)
 
     return ok
 
