@@ -1,146 +1,134 @@
-# Kịch bản Kiểm thử Thủ công trên Remix + MetaMask (Dành cho người mới — NTK & TTDK)
+# Hướng dẫn Demo E2E & Thao tác Remix + MetaMask trên Sepolia (`11155111`)
 
-> **Mục tiêu:** Tài liệu này hướng dẫn từng bước bấm nút trực tiếp trên **Remix IDE kết nối `Browser Extension` (MetaMask) mạng Ethereum Sepolia (`11155111`)** sử dụng **trực tiếp `SepoliaETH`** (không cần tạo token riêng) để kiểm tra các kịch bản phổ biến của Smart Contract.
->
-> **Thời gian thực hiện:** ~10–15 phút.
+> **Mục tiêu:** Hướng dẫn từng bước rõ ràng cho cả nhóm (**NTD, NTK, TTDK**) thực hiện **Demo E2E hoàn chỉnh** (Dashboard ↔ Backend ↔ Ethereum Sepolia) với **native `SepoliaETH`**, kèm kịch bản tự thực hành nhanh trên Remix cho người mới.
 
 ---
 
-## Khác biệt cần biết khi dùng `Browser Extension (MetaMask)` & Native `SepoliaETH`
+## Thông tin Contracts đang chạy trên Sepolia (`11155111`)
 
-1. **Đơn giản hơn trước (Chỉ còn 2 Contract):** Không còn `MockInsuranceToken` và không cần bước `approve(...)` — khi gọi `createPolicy(...)` chỉ cần điền số `SepoliaETH` (`0.01 SepoliaETH` = `10000000000000000` `wei` = `10 Finney`) vào ô **`VALUE`** trên Remix.
-2. **Cách đổi ví khi test quyền:** Không bấm đổi ở ô `ACCOUNT` trong Remix được — phải **mở tiện ích MetaMask trên trình duyệt và chuyển sang Account khác**, Remix sẽ tự cập nhật theo MetaMask.
-3. **Popup cảnh báo khi test lỗi (`revert`):** Ở Kịch bản 3 và Kịch bản 6 (cố tình gọi sai quyền hoặc gửi trùng), MetaMask/Remix sẽ hiện cảnh báo *"Gas estimation failed / Transaction is likely to fail"* ngay trước khi ký — đó chính là dấu hiệu contract đã chặn đúng! Bạn có thể bấm **Cancel** để đỡ tốn gas.
-4. **Dữ liệu lưu vĩnh viễn trên Sepolia:**
-   - Để bấm test thoải mái mà không làm thay đổi trạng thái bộ contract chính của nhóm (trong `deployments/sepolia.json`), người test nên dùng ví MetaMask cá nhân **Deploy 1 bộ contract test riêng** (với 2–3 account con có ít SepoliaETH).
-   - Nếu chạy lại kịch bản nhiều lần trên cùng 1 contract đã deploy, hãy **đổi 2 ký tự cuối** của `_batchKey` / `_shipmentKey` để tránh bị trùng key cũ đã lưu trên chain.
-
----
-
-## Phần 0: Chuẩn bị & Dữ liệu mẫu (Chỉ cần Copy & Paste)
-
-### Bước 0.1 — Chuẩn bị MetaMask trên trình duyệt
-1. Cài tiện ích **MetaMask** trên Chrome/Edge/Brave.
-2. Bật chế độ hiển thị mạng thử nghiệm (**Show test networks**) và chọn mạng **Sepolia**.
-3. Tạo **3–4 Account con** trong cùng ví MetaMask và mỗi account có tối thiểu `~0.05 SepoliaETH` (với mức `0.01 SepoliaETH` mỗi policy, ví `2–10 SepoliaETH` test được hàng trăm lần):
-
-| Account trong MetaMask | Vai trò trong kịch bản | Ghi chú |
+| Thành phần | Giá trị chính thức | Link kiểm tra |
 |---|---|---|
-| **Account 1** | **Owner / Insurer** | Deploy 2 contract, gửi `0.01 SepoliaETH` ký quỹ khi gọi `createPolicy` |
-| **Account 2** | **Anchorer** | Ví Backend neo Merkle Root (`Module A`) |
-| **Account 3** | **Oracle** | Ví Backend báo vi phạm nhiệt độ (`Module B`) |
-| **Account 4** | **Beneficiary** | Ví nhận `0.01 SepoliaETH` tiền bồi thường & test gọi trái quyền |
+| **Module A — `ColdChainDataIntegrity`** | `0xE04F6f1bb80C438D356E0547ec10337F33ecD81f` | [Xem trên Etherscan](https://sepolia.etherscan.io/address/0xE04F6f1bb80C438D356E0547ec10337F33ecD81f) |
+| **Module B — `ColdChainInsurance`** | `0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F` | [Xem trên Etherscan](https://sepolia.etherscan.io/address/0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F) |
+| **Ví Owner** (Deploy & tạo Policy) | `0x66077Ef603B524911B9226011A3C17Dd4B623fEF` | MetaMask của NTD |
+| **Ví Anchorer** (Backend neo Batch) | `0xd2D62EB2cd0731383b9F49A7e8DdD7cdD54b355E` | Cấu hình ở `BACKEND_ANCHORER_PRIVATE_KEY` |
+| **Ví Oracle** (Backend báo vi phạm) | `0x7747f2c48C0D9562c311BbeBE4F822aE372C54bb` | Cấu hình ở `BLOCKCHAIN_ORACLE_PRIVATE_KEY` |
+| **Mức ký quỹ Policy chuẩn** | **`0.01 SepoliaETH`** = **`10000000000000000` `wei`** (`10 Finney`) | Gửi trực tiếp qua ô `VALUE` khi gọi `createPolicy` |
 
-### Bước 0.2 — Mở Remix và Compile
-1. Mở [Remix IDE](https://remix.ethereum.org/).
-2. Tạo/copy **2 file** từ thư mục `blockchain/contracts/` vào Remix:
-   - `ColdChainDataIntegrity.sol`
-   - `ColdChainInsurance.sol`
-3. Ở tab **Solidity Compiler** (biểu tượng chữ S bên trái):
-   - **Compiler:** `0.8.36+commit.8a079791`
-   - Tick **Enable optimization** = `200`
-   - Bấm **Compile** từng file (đảm bảo có dấu tick xanh, không lỗi đỏ).
+---
 
-### Bước 0.3 — Kết nối `Browser Extension` (MetaMask) & Deploy 2 Contract
-Ở tab **Deploy & Run Transactions** (biểu tượng Ethereum bên trái):
-1. Ở mục **ENVIRONMENT**, chọn **`Browser Extension`** → **MetaMask**.
-2. Kiểm tra ngay bên dưới thấy **Sepolia (11155111) network** và ô **ACCOUNT** đang hiện địa chỉ **Account 1 (Owner)**.
-3. Lần lượt chọn từng contract ở ô **CONTRACT** và bấm **Deploy** → **Confirm trên MetaMask**:
-   - **`ColdChainDataIntegrity`**:
-     - Copy địa chỉ **Account 2 (Anchorer)** dán vào ô `_anchorer` → **Deploy** → **Confirm MetaMask**.
-   - **`ColdChainInsurance`**:
-     - Copy địa chỉ **Account 3 (Oracle)** dán vào ô `_oracle` → **Deploy** → **Confirm MetaMask**.
+## Phần 1: Quy trình Demo E2E Chính thức (Frontend + Backend + Sepolia)
 
-*(Lưu ý: Nếu chỉ muốn gọi hàm xem trạng thái như `verifyBatch` / `getPolicy` / `getContractBalance` trên bộ contract chính của nhóm, dán địa chỉ từ `blockchain/deployments/sepolia.json` vào ô **`At Address`** và bấm nút **`At Address`**.)*
+> Dùng đúng 2 Smart Contract đã deploy sẵn ở trên — **không cần deploy lại** khi trình diễn.
 
-### Bước 0.4 — Bảng giá trị mẫu dùng chung (Copy nguyên dòng để dán vào Remix)
+### Bước 1 — Tạo Thiết bị, Chuyến hàng & Lấy `shipment_id` (UUID)
+1. Mở Dashboard (TTDK), đăng nhập bằng tài khoản Admin (JWT).
+2. Đăng ký thiết bị mới (ví dụ `device_id = ESP32-001`).
+3. Tạo chuyến hàng mới (ví dụ `code = SHIP-001`) → hệ thống trả về **UUID `shipment_id`** (dạng `8b4fb8a2-2996-4da2-90b9-35019517f56f`).
+4. Gán thiết bị vào chuyến hàng vừa tạo và cấp/nạp cặp khóa ECDSA P-256 cho thiết bị (hoặc simulator).
 
-| Tên tham số | Giá trị copy sẵn (đúng chuẩn `bytes32` / `uint256`) |
+### Bước 2 — Tạo & Ký quỹ Policy `0.01 SepoliaETH` trên Remix (NTD thao tác bằng MetaMask Owner)
+> Backend tạo shipment trong MySQL chưa tự động nạp `SepoliaETH` lên Blockchain; cần thực hiện bước này trước khi chạy kịch bản vi phạm để giao dịch bồi thường thành công.
+
+1. **Tính `shipmentKey` từ UUID `shipment_id` vừa tạo ở Bước 1** (chạy nhanh bằng Python, **không** dùng mã `SHIP-001`):
+   ```bash
+   python -c "from web3 import Web3; print(Web3.to_hex(Web3.keccak(text='DAN_UUID_SHIPMENT_VAO_DAY')))"
+   ```
+   *(Ví dụ: `8b4fb8a2-2996-4da2-90b9-35019517f56f` → `0x770fdffbbe559e11472e63e8a6058bb3c9dc5170704a7e3db36c6d5f694688b8`.)*
+2. Mở [Remix IDE](https://remix.ethereum.org/), chọn tab **Solidity Compiler** → compile `ColdChainInsurance.sol` bằng **`0.8.36+commit.8a079791`** (`Enable optimization = 200`).
+3. Sang tab **Deploy & Run Transactions**:
+   - **ENVIRONMENT:** Chọn **`Browser Extension`** → kết nối **MetaMask** (ví Owner `0x66077Ef603B524911B9226011A3C17Dd4B623fEF`, mạng **Sepolia**).
+   - Ở ô **`At Address`**, dán `0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F` rồi bấm nút **`At Address`**.
+4. Nhập số tiền ký quỹ vào ô **`VALUE`** (phía trên cùng bên trái Remix):
+   - Nhập **`10000000000000000`** và chọn đơn vị **`Wei`** *(hoặc nhập `10` đơn vị **`Finney`** = `0.01 SepoliaETH`)*.
+5. Mở rộng contract vừa gắn, điền hàm **`createPolicy`** (nút đỏ `payable`):
+   - `_shipmentKey`: dán kết quả `0x...` ở bước tính UUID
+   - `_beneficiary`: địa chỉ ví Sepolia nhận tiền bồi thường
+   - `_payoutAmount`: `10000000000000000`
+   - `_expiry`: timestamp tương lai còn hạn dài (ví dụ `1893456000`)
+6. Bấm **transact** → **Confirm trên MetaMask** → chờ ~12–15 giây thấy tick xanh.
+7. **Đưa ô `VALUE` về lại `0` ngay**, rồi bấm gọi `getPolicy(_shipmentKey)` → xác nhận `status = 1` (`Active`) và `getContractBalance()` đã tăng thêm `10000000000000000`.
+
+### Bước 3 — Gửi Telemetry hợp lệ & Neo Merkle Root lên Sepolia (Module A)
+1. Bật ESP32 hoặc script simulator gửi các gói signed telemetry hợp lệ về Backend.
+2. Quan sát trên Dashboard:
+   - Các mẫu hợp lệ hiện trạng thái `DATA_VERIFIED`.
+   - Khi đủ điều kiện đóng lô (`SEALED`), Backend tự dùng ví **Anchorer (`0xd2D6...`)** gọi `anchorBatch(...)` lên contract `0xE04F6f1bb80C438D356E0547ec10337F33ecD81f`.
+   - Giao dịch đi qua `BLOCKCHAIN_PENDING` → sau **2 confirmations (~24s)** chuyển thành **`DATA_ANCHORED`**.
+3. Kiểm chứng chéo (tùy chọn khi demo):
+   - Bấm link transaction hash trên `sepolia.etherscan.io` để xem event `BatchAnchored`.
+   - Hoặc gắn `0xE04F6f1bb80C438D356E0547ec10337F33ecD81f` bằng `At Address` trên Remix → gọi `verifyBatch(batchKey, merkleRoot)` (miễn phí) → trả về **`true`**.
+
+### Bước 4 — Kiểm chứng phát hiện sửa dữ liệu (Tamper Check)
+1. *(Dùng chuyến hàng test hoặc bản sao DB demo)*: Sửa trực tiếp nhiệt độ của 1 bản ghi đã thuộc batch `DATA_ANCHORED` trong MySQL.
+2. Bấm nút kiểm tra toàn vẹn (**Verify Batch**) trên Dashboard.
+3. **Kết quả:** Hệ thống tính lại `MERKLE-v1` root bị lệch so với gốc bất biến trên Sepolia → hiển thị **`DATA_INTEGRITY_FAILED`** và **chặn sử dụng lô này làm bằng chứng bồi thường**.
+
+### Bước 5 — Kích hoạt Vi phạm ≥ 15 phút & Bồi thường tự động (Module B)
+1. Trên một chuyến hàng sạch đã có Policy `Active` (tạo ở Bước 2) và toàn bộ batch bằng chứng ở trạng thái `DATA_ANCHORED`:
+   - Gửi chuỗi dữ liệu vượt ngưỡng nhiệt độ **liên tục ≥ 15 phút** (hoặc dùng simulator/test clock của Backend dev).
+2. Khi đủ điều kiện bằng chứng (`PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`), Backend tự dùng ví **Oracle (`0x7747...`)** gọi `reportViolation(...)` lên contract `0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F`.
+3. **Đối chiếu kết quả hoàn chỉnh tại 3 nơi:**
+   - **Dashboard (TTDK):** Trạng thái bảo hiểm chuyển `paid` (`CONFIRMED`), hiển thị `transaction_hash`.
+   - **Remix (`getPolicy` & `getContractBalance`):** `status` đổi từ `1` sang **`2` (`PaidOut`)**, số dư contract giảm đi `0.01 SepoliaETH`.
+   - **Sepolia Etherscan & MetaMask:** Mở tab **Internal Transactions** trên [link contract `0x13Cb...`](https://sepolia.etherscan.io/address/0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F) hoặc kiểm tra ví **Beneficiary** thấy số dư tăng đúng **`+0.01 SepoliaETH`**.
+
+---
+
+## Phần 2: Kịch bản Tự thực hành nhanh trên Remix (Không cần Backend — cho người mới)
+
+Nếu bạn (NTK / TTDK) muốn tự tay bấm thử hết 2 contract trên Sepolia qua Remix + MetaMask mà **không làm ảnh hưởng tới bộ contract chính của nhóm**:
+
+### Chuẩn bị nhanh
+1. Trong MetaMask (chọn mạng **Sepolia**), tạo **3–4 Account con** (chỉ cần ~`0.05 SepoliaETH`/ví từ faucet):
+   - **Account 1 (`Owner`):** Deploy contract & gửi `0.01 SepoliaETH` tạo policy.
+   - **Account 2 (`Anchorer`):** Neo batch lên Module A.
+   - **Account 3 (`Oracle`):** Báo vi phạm lên Module B.
+   - **Account 4 (`Beneficiary` / `Stranger`):** Ví nhận tiền & test gọi trái quyền.
+2. Trên Remix (`0.8.36+commit.8a079791`, `200` runs), compile 2 file `ColdChainDataIntegrity.sol` và `ColdChainInsurance.sol`.
+3. Chọn `ENVIRONMENT = Browser Extension (MetaMask)`, dùng **Account 1** deploy riêng bộ test:
+   - `ColdChainDataIntegrity(_anchorer = địa chỉ Account 2)`
+   - `ColdChainInsurance(_oracle = địa chỉ Account 3)`
+
+### Bộ giá trị mẫu (Copy & Paste)
+
+| Tham số | Giá trị copy sẵn |
 |---|---|
 | `_shipmentKey` | `0x770fdffbbe559e11472e63e8a6058bb3c9dc5170704a7e3db36c6d5f694688b8` |
 | `_batchKey` | `0xe5b396f0394f112e1489b4621b121e385ac41b015188ef7d92a60c2585ca6f66` |
 | `_deviceKey` | `0x665aa8370a5792d4b2b3e44ea73ac8f2401dd778dcd729e657fc3d4409704b97` |
-| `_merkleRoot` (gốc đúng) | `0x5706c737b9d61c51fee11fca1da56f8a6f9986c220afa0b1e875908857a1ae37` |
-| `_candidateRoot` (bị sửa sai 1 ký tự cuối) | `0x5706c737b9d61c51fee11fca1da56f8a6f9986c220afa0b1e875908857a1ae38` |
+| `_merkleRoot` (đúng) | `0x5706c737b9d61c51fee11fca1da56f8a6f9986c220afa0b1e875908857a1ae37` |
+| `_candidateRoot` (sai 1 ký tự cuối) | `0x5706c737b9d61c51fee11fca1da56f8a6f9986c220afa0b1e875908857a1ae38` |
 | `_evidenceHash` | `0x369a9b80a854d96f09ef468093609abd2b42614119fff486a6019d378a29886e` |
-| `_payoutAmount` (`0.01 SepoliaETH` = `10 Finney`) | `10000000000000000` *(điền cùng số này vào ô `VALUE` đơn vị `Wei`)* |
-| `_expiry` (còn hạn tới năm 2030) | `1893456000` |
+| `_payoutAmount` (`0.01 SepoliaETH`) | `10000000000000000` *(nhập cùng số này vào ô `VALUE` đơn vị `Wei`)* |
+| `_expiry` (năm 2030) | `1893456000` |
 | `_detectedAt` | `1763300000` |
 
----
-
-## Phần 1: Các kịch bản Module A — `ColdChainDataIntegrity`
-
-### Kịch bản 1: Neo batch dữ liệu hợp lệ & Xác minh khớp gốc (`anchorBatch` → `verifyBatch`)
-1. Mở **MetaMask**, chuyển sang **Account 2 (Anchorer)**.
-2. Mở rộng contract **`COLDCHAINDATAINTEGRITY`** ở dưới **Deployed Contracts**, tìm **`anchorBatch`** (nút màu cam):
-   - `_batchKey`: dán `_batchKey`
-   - `_shipmentKey`: dán `_shipmentKey`
-   - `_deviceKey`: dán `_deviceKey`
-   - `_merkleRoot`: dán `_merkleRoot` (gốc đúng)
-   - `_firstSequence`: `1`, `_lastSequence`: `3`, `_recordCount`: `3`
-3. Đảm bảo ô **`VALUE`** ở phía trên là **`0`** → Bấm **transact** → **Confirm trên MetaMask**.
-4. Gọi **`verifyBatch`** (nút màu xanh dương — miễn phí) với `_batchKey` và `_merkleRoot` → trả về **`true`**.
-
-### Kịch bản 2: Phát hiện giả mạo dữ liệu (`verifyBatch` trả về `false`)
-1. Vẫn ở **`COLDCHAINDATAINTEGRITY`**, mở **`verifyBatch`**.
-2. Điền `_batchKey` và `_candidateRoot` bị sửa 1 ký tự (`...ae38`).
-3. Bấm **call** → trả về **`false`** (root gốc trên Sepolia không bị thay đổi).
-
-### Kịch bản 3: Chặn gửi trùng & Chặn ví lạ neo dữ liệu (`Security`)
-- **3a. Chặn gửi trùng:** Đang ở **Account 2**, bấm lại `anchorBatch` với đúng `_batchKey` cũ → báo revert **`ColdChain__BatchAlreadyExists`** (bấm **Cancel** để khỏi tốn gas).
-- **3b. Chặn ví lạ:** Chuyển MetaMask sang **Account 4** (hoặc Account 1), thử gọi `anchorBatch` với `_batchKey` đổi 2 ký tự cuối → báo revert **`ColdChain__CallerNotAnchorer`**.
+### 4 Thao tác kiểm tra cốt lõi
+1. **Neo & Verify Batch (Module A):**
+   - Mở MetaMask chuyển sang **Account 2** (`VALUE = 0`) → gọi `anchorBatch(_batchKey, _shipmentKey, _deviceKey, _merkleRoot, 1, 3, 3)`.
+   - Gọi `verifyBatch(_batchKey, _merkleRoot)` → **`true`**; thử với `_candidateRoot` (`...ae38`) → **`false`**.
+   - Bấm lại `anchorBatch` cùng `_batchKey` → MetaMask cảnh báo revert **`ColdChain__BatchAlreadyExists`** (bấm **Cancel** để khỏi tốn gas).
+2. **Tạo & Ký quỹ Policy (Module B):**
+   - Chuyển MetaMask về **Account 1**, điền **`10000000000000000` `Wei`** vào ô **`VALUE`** → gọi `createPolicy(_shipmentKey, địa chỉ Account 4, 10000000000000000, 1893456000)`.
+   - Đặt lại `VALUE = 0`, gọi `getContractBalance()` → thấy **`10000000000000000`**.
+3. **Báo vi phạm & Nhận tiền (Module B):**
+   - Chuyển MetaMask sang **Account 3 (`Oracle`)**, gọi `reportViolation(_shipmentKey, _evidenceHash, 1763300000)`.
+   - Số dư **Account 4** tăng **`+0.01 SepoliaETH`**, `getPolicy(_shipmentKey)` chuyển `status = 2 (PaidOut)`.
+4. **Kiểm tra bảo vệ (Security):**
+   - Gọi lại `reportViolation` lần 2 → cảnh báo revert **`ColdChain__PolicyNotActive`** (bấm **Cancel**).
+   - Đổi MetaMask sang **Account 4** thử gọi `reportViolation` → cảnh báo revert **`ColdChain__CallerNotOracle`** (bấm **Cancel**).
 
 ---
 
-## Phần 2: Các kịch bản Module B — `ColdChainInsurance` (Native `SepoliaETH`)
-
-### Kịch bản 4: Tạo & Ký quỹ Policy bằng `SepoliaETH` (`createPolicy` — chỉ 1 bước duy nhất)
-- **Mục đích:** Tạo policy cho 1 chuyến hàng và gửi thẳng `0.01 SepoliaETH` vào hợp đồng làm tiền ký quỹ.
-- **Các bước:**
-  1. Mở **MetaMask**, chuyển về **Account 1 (Owner / Insurer)**.
-  2. Trên thanh điều khiển bên trái của Remix (Tab Deploy & Run), tìm ô **`VALUE`** ở gần trên cùng:
-     - Nhập **`10000000000000000`** và chọn đơn vị bên cạnh là **`Wei`** *(hoặc nhập `10` và chọn **`Finney`** — tương đương `0.01 SepoliaETH`)*.
-  3. Mở rộng **`COLDCHAININSURANCE`**, tìm hàm **`createPolicy`** (nút **màu đỏ** `payable` vì có nhận ETH):
-     - `_shipmentKey`: dán `_shipmentKey`
-     - `_beneficiary`: copy & dán địa chỉ **Account 4 (Beneficiary)**
-     - `_payoutAmount`: `10000000000000000` *(hoặc nhập `0` để contract tự lấy theo ô `VALUE`)*
-     - `_expiry`: `1893456000`
-  4. Bấm **transact** → kiểm tra trên popup MetaMask thấy gửi `0.01 SepoliaETH` → bấm **Confirm**.
-  5. *(Nhớ đưa ô **`VALUE`** về lại **`0`** ngay sau bước này để các lệnh sau không gửi nhầm thêm ETH!)*
-- **Kết quả mong đợi:**
-  - Gọi `getPolicy(_shipmentKey)` → `status = 1` (`Active`) và `payoutAmount = 10000000000000000`.
-  - Gọi `getContractBalance()` → trả về **`10000000000000000`** (`0.01 SepoliaETH` đang được khóa trong contract).
-
-### Kịch bản 5: Oracle báo vi phạm & Chi trả `0.01 SepoliaETH` cho Beneficiary (`reportViolation`)
-- **Mục đích:** Kiểm tra chỉ ví Oracle hợp lệ mới kích hoạt được bồi thường và cộng thẳng `0.01 SepoliaETH` vào ví Beneficiary.
-- **Các bước:**
-  1. Mở **MetaMask** xem số dư hiện tại của **Account 4 (Beneficiary)** (ghi nhớ lại).
-  2. Chuyển MetaMask sang **Account 3 (Oracle)**. Đảm bảo ô **`VALUE`** ở Remix đang là **`0`**.
-  3. Mở **`COLDCHAININSURANCE`**, tìm hàm **`reportViolation`** (nút màu cam):
-     - `_shipmentKey`: dán `_shipmentKey`
-     - `_evidenceHash`: dán `_evidenceHash`
-     - `_detectedAt`: `1763300000`
-     - Bấm **transact** → **Confirm trên MetaMask** → đợi ~10–15s thấy tick xanh.
-- **Kết quả mong đợi:**
-  - Gọi `getPolicy(_shipmentKey)` → `status` đổi từ `1` sang **`2` (`PaidOut`)**.
-  - Gọi `getContractBalance()` → giảm từ `10000000000000000` về **`0`**.
-  - Kiểm tra **Account 4 (Beneficiary)** trên MetaMask (hoặc tab *Internal Transactions* trên Sepolia Etherscan) → số dư tăng đúng thêm **`0.01 SepoliaETH`**.
-
-### Kịch bản 6: Chống chi trả trùng & Chặn ví lạ (`Security`)
-- **6a. Chống chi trả 2 lần (`Double Payout`):** Vẫn ở **Account 3 (Oracle)**, bấm gọi lại `reportViolation` cho cùng `_shipmentKey` của Kịch bản 5 → Remix/MetaMask cảnh báo revert **`ColdChain__PolicyNotActive`** (bấm **Cancel**).
-- **6b. Chặn ví lạ gọi `reportViolation` (`Unauthorized Oracle`):** Chuyển MetaMask sang **Account 4** (hoặc bất kỳ ví nào không phải Account 3), thử gọi `reportViolation` → báo revert **`ColdChain__CallerNotOracle`**.
-
----
-
-## Tóm tắt nhanh các lỗi (Revert) thường gặp khi test
+## Bảng tra cứu lỗi thường gặp
 
 | Thông báo lỗi | Nguyên nhân | Cách xử lý |
 |---|---|---|
-| `ColdChain__CallerNotAnchorer` | MetaMask đang chọn sai ví (không phải Account Anchorer) | Đổi lại sang Account Anchorer |
-| `ColdChain__CallerNotOracle` | MetaMask đang chọn sai ví (không phải Account Oracle) | Đổi lại sang Account Oracle |
-| `ColdChain__IncorrectETHDeposit` | Số ETH trong ô `VALUE` của Remix khác `_payoutAmount` truyền vào hàm | Nhập ô `VALUE` khớp `_payoutAmount` (`10000000000000000` `Wei`), hoặc truyền `_payoutAmount = 0` |
-| `ColdChain__InvalidPayoutAmount` | Quên nhập ETH vào ô `VALUE` (để `0` khi gọi `createPolicy`) | Nhập `10000000000000000` `Wei` vào ô `VALUE` rồi mới bấm `transact` |
-| `ColdChain__BatchAlreadyExists` | `_batchKey` đã từng được neo trước đó | Đổi 2 ký tự cuối của `_batchKey` |
-| `ColdChain__PolicyAlreadyExists` | `_shipmentKey` đã tạo policy rồi | Đổi 2 ký tự cuối của `_shipmentKey` |
-| `ColdChain__PolicyNotActive` | Policy chưa tạo hoặc đã chi trả (`PaidOut`) / hoàn tiền (`Refunded`) | Tạo policy mới với `_shipmentKey` khác |
+| `ColdChain__CallerNotAnchorer` | MetaMask đang chọn sai ví Anchorer | Mở MetaMask đổi đúng ví Anchorer |
+| `ColdChain__CallerNotOracle` | MetaMask đang chọn sai ví Oracle | Mở MetaMask đổi đúng ví Oracle |
+| `ColdChain__IncorrectETHDeposit` | Ô `VALUE` trên Remix khác `_payoutAmount` | Điền ô `VALUE` khớp `_payoutAmount` (`10000000000000000` `Wei`), hoặc truyền `_payoutAmount = 0` |
+| `ColdChain__InvalidPayoutAmount` | Quên điền ETH vào ô `VALUE` khi gọi `createPolicy` | Điền `10000000000000000` `Wei` vào ô `VALUE` |
+| `ColdChain__BatchAlreadyExists` | `_batchKey` đã từng được neo trước đó | Đổi 2 ký tự hex cuối của `_batchKey` |
+| `ColdChain__PolicyAlreadyExists` | `_shipmentKey` đã từng tạo policy trước đó | Đổi 2 ký tự hex cuối của `_shipmentKey` |
+| `ColdChain__PolicyNotActive` | Policy chưa tạo hoặc đã chi trả / hoàn tiền | Kiểm tra lại `shipmentKey` hoặc tạo policy cho UUID mới |
