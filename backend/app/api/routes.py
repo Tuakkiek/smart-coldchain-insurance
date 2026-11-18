@@ -348,6 +348,12 @@ def delete_shipment(shipment_id: UUID4, session: AdminSession):
 def add_telemetry(shipment_id: UUID4, payload: SignedTelemetryCreate | TelemetryCreate,
                   request: Request, response: Response, session: DbSession):
     if isinstance(payload, SignedTelemetryCreate):
+        if payload.payload_version != 1:
+            raise signed_ingestion.IngestionError(
+                422,
+                "DEVICE_ENDPOINT_REQUIRED",
+                "payload_version 2 must be sent to /devices/{device_id}/telemetry",
+            )
         result = signed_ingestion.ingest(
             session,
             str(shipment_id),
@@ -376,6 +382,38 @@ def add_telemetry(shipment_id: UUID4, payload: SignedTelemetryCreate | Telemetry
     if request.app.state.insurance_evidence is not None:
         request.app.state.insurance_evidence.reconcile(session, str(shipment_id))
     return shipments.telemetry_dict(sample)
+
+
+@router.post(
+    "/devices/{device_id}/telemetry",
+    response_model=SignedTelemetryOut,
+    response_model_exclude_unset=True,
+    status_code=201,
+)
+def add_device_telemetry(
+    device_id: str,
+    payload: SignedTelemetryCreate,
+    request: Request,
+    response: Response,
+    session: DbSession,
+):
+    result = signed_ingestion.ingest_for_current_assignment(
+        session,
+        device_id,
+        payload,
+        request.app.state.clock,
+        request.app.state.settings.sensor_gap_minutes,
+        request.app.state.settings.max_sample_gap_seconds,
+        request.app.state.settings.signed_rate_limit_per_minute,
+        request.app.state.settings.integrity_batch_max_records,
+        request.app.state.settings.integrity_batch_max_age_minutes,
+        request.app.state.integrity_blockchain,
+        request.app.state.blockchain,
+        request.app.state.insurance_evidence,
+    )
+    if result["duplicate"]:
+        response.status_code = 200
+    return result
 
 
 @router.post("/devices", status_code=403)

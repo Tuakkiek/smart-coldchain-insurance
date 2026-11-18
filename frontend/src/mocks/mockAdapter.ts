@@ -3,7 +3,6 @@ import {
   ShipmentsOut,
   ShipmentCreatePayload,
   ShipmentDeleteOut,
-  TelemetryCreatePayload,
   TelemetryOut,
   TelemetryListOut,
   EventOut,
@@ -371,80 +370,6 @@ class MockAdapter {
     return {
       items: JSON.parse(JSON.stringify(samples)),
     };
-  }
-
-  async postTelemetry(shipmentId: string, payload: TelemetryCreatePayload): Promise<TelemetryOut> {
-    const item = this.shipments.find((s) => s.id === shipmentId);
-    if (!item) {
-      throw new Error(`Mock 404: Shipment ${shipmentId} not found`);
-    }
-
-    const now = new Date().toISOString();
-    const currentSamples = this.telemetry[item.id] || [];
-    const sampleCount = currentSamples.length + 1;
-    const progress = Math.min(100, Math.max(5, sampleCount * 5));
-
-    const lat = item.origin.latitude + ((item.destination.latitude - item.origin.latitude) * progress) / 100;
-    const lng = item.origin.longitude + ((item.destination.longitude - item.origin.longitude) * progress) / 100;
-
-    const sample: TelemetryOut = {
-      id: `tel-mock-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      shipment_id: item.id,
-      device_id: payload.device_id,
-      sequence_number: sampleCount,
-      temperature_c: payload.temperature_c,
-      humidity_pct: payload.humidity_pct,
-      recorded_at: payload.recorded_at || now,
-      received_at: now,
-      signature_status: 'VALID',
-      data_status: 'DATA_VERIFIED',
-      location: {
-        latitude: parseFloat(lat.toFixed(6)),
-        longitude: parseFloat(lng.toFixed(6)),
-        location_source: 'backend_simulated',
-        progress_pct: progress,
-      },
-    };
-
-    if (!this.telemetry[item.id]) {
-      this.telemetry[item.id] = [];
-    }
-    this.telemetry[item.id].push(sample);
-
-    item.status = 'in_transit';
-    item.latest_telemetry = {
-      id: sample.id,
-      device_id: sample.device_id,
-      sequence_number: sample.sequence_number,
-      temperature_c: sample.temperature_c,
-      humidity_pct: sample.humidity_pct,
-      recorded_at: sample.recorded_at,
-      received_at: sample.received_at,
-      signature_status: sample.signature_status,
-      data_status: sample.data_status,
-    };
-    item.location = sample.location;
-
-    // Kiểm tra xem có vượt ngưỡng nhiệt độ không
-    if (payload.temperature_c < item.temp_min_c || payload.temperature_c > item.temp_max_c) {
-      const breachEvent: EventOut = {
-        id: `ev-breach-${Date.now()}`,
-        shipment_id: item.id,
-        type: 'TEMPERATURE_BREACH_STARTED',
-        occurred_at: now,
-        details: {
-          temperature_c: payload.temperature_c,
-          temp_min_c: item.temp_min_c,
-          temp_max_c: item.temp_max_c,
-        },
-      };
-      if (!this.events[item.id]) {
-        this.events[item.id] = [];
-      }
-      this.events[item.id].push(breachEvent);
-    }
-
-    return JSON.parse(JSON.stringify(sample));
   }
 
   async listEvents(id: string): Promise<EventListOut> {

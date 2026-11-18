@@ -17,10 +17,20 @@ from app.schemas.api import SignedTelemetryCreate
 from cryptography.hazmat.primitives import serialization
 
 
+def test_firmware_and_config_template_do_not_contain_shipment_identity():
+    root = Path(__file__).resolve().parents[2]
+    firmware = (root / "device/cold_chain_device/cold_chain_device.ino").read_text()
+    config_template = (root / "device/cold_chain_device/config.example.h").read_text()
+    assert "SHIPMENT_ID" not in firmware
+    assert "shipment_id" not in firmware
+    assert "SHIPMENT_ID" not in config_template
+    assert '"/api/v1/devices/"' in firmware
+    assert "payload_version\\\":2" in firmware
+
+
 def test_simulator_signed_payload_matches_backend():
     key = ec.generate_private_key(ec.SECP256R1())
     payload = payload_for(
-        shipment_id="67f1e79a-68cb-461b-b104-5c7583bd9047",
         device_id="SIM-001", key_id="sim-v1", sequence=1,
         temperature="5.125", humidity="80.25",
         recorded_at="2026-11-08T12:00:00Z", private_key=key,
@@ -29,6 +39,8 @@ def test_simulator_signed_payload_matches_backend():
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
     )
     validated = SignedTelemetryCreate.model_validate(payload)
+    assert validated.payload_version == 2
+    assert "shipment_id" not in payload
     assert verify_signature(validated.model_dump(), public)
     tampered = dict(payload)
     tampered["temperature_c"] = 6.125
@@ -58,8 +70,7 @@ def test_simulator_scenario_sequences_and_retry(tmp_path, monkeypatch, capsys, s
 
     monkeypatch.setattr(send_telemetry, "post", fake_post)
     send_telemetry.run(Namespace(
-        private_key=key_path, shipment_id="67f1e79a-68cb-461b-b104-5c7583bd9047",
-        device_id="SIM-001", key_id="sim-v1", sequence=10,
+        private_key=key_path, device_id="SIM-001", key_id="sim-v1", sequence=10,
         temperature="5.0", humidity="80.0", recorded_at="2026-11-08T12:00:00Z",
         scenario=scenario, dry_run=False, base_url="https://api.example.test", timeout=10,
     ))

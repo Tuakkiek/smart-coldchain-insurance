@@ -41,9 +41,9 @@ Sketch dùng `WiFiClientSecure.setCACert()`; thiếu CA hoặc CA không khớp 
 |---|---|
 | `HTTP 503 ADMIN_NOT_CONFIGURED` khi cấp thiết bị | `ADMIN_API_KEY` chưa được đặt trên Render. |
 | `HTTP 401 INVALID_SIGNATURE` | Kiểm tra `config.h` và public key đã đăng ký cùng device ID/key ID. |
-| `HTTP 403 DEVICE_NOT_ASSIGNED` | Device và shipment ID trong `config.h` không khớp assignment. |
+| `HTTP 403 DEVICE_NOT_ASSIGNED` | Thiết bị chưa có assignment active trong MySQL; gán thiết bị trên Frontend. |
 | `HTTP 409 SEQUENCE_REPLAY` | Wokwi mất NVS; cấp thiết bị mới. |
-| `HTTP 422` | Xem JSON lỗi trong Serial; kiểm tra UUID, timestamp UTC, giá trị cảm biến. |
+| `HTTP 422` | Xem JSON lỗi trong Serial; kiểm tra Device ID, timestamp UTC và giá trị cảm biến. |
 | `HTTP 500` ở `/shipments` | Kiểm tra Render logs, MySQL credentials, quyền tạo/đọc bảng và CA secret file. |
 | Timeout lần gửi đầu | Render Free có thể khởi động chậm; chờ rồi gửi mẫu tiếp theo. |
 

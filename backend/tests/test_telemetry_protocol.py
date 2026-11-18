@@ -86,3 +86,30 @@ def test_batch_membership_and_empty_batch_rejected():
     mixed = dict(batch[1], device_id="OTHER")
     with pytest.raises(ValueError, match="mix"):
         batch_root([batch[0], mixed])
+
+
+def test_v2_signature_excludes_shipment_but_record_hash_binds_backend_assignment():
+    payload = {
+        "payload_version": 2,
+        "device_id": "ESP32-01",
+        "key_id": "key-v1",
+        "sequence_number": 1,
+        "temperature_milli_c": 5000,
+        "humidity_milli_pct": 80000,
+        "recorded_at": "2026-11-18T12:00:00Z",
+        "firmware_version": "esp32-2.0",
+    }
+    canonical = canonical_signed_bytes(payload)
+    assert b"shipment_id" not in canonical
+
+    record = {
+        **payload,
+        "shipment_id": "11111111-1111-4111-8111-111111111111",
+        "received_at": "2026-11-18T12:00:01.000000Z",
+        "signature": VECTORS["valid_request"]["signature"],
+    }
+    other_assignment = {
+        **record,
+        "shipment_id": "22222222-2222-4222-8222-222222222222",
+    }
+    assert leaf_hash(record) != leaf_hash(other_assignment)

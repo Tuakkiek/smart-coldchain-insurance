@@ -120,7 +120,7 @@ Mỗi phần tử `items` có cùng schema **ShipmentDetail**. Chưa có phân t
 
 ## Telemetry
 
-`POST /api/v1/shipments/{shipment_id}/telemetry` → `201 Created`, body là **TelemetryRecord**. Thiết bị gửi:
+`POST /api/v1/shipments/{shipment_id}/telemetry` → `201 Created` cho payload unsigned dưới đây chỉ là luồng mô phỏng khi `APP_ENV=development`; firmware thật không dùng payload này:
 
 ```json
 {
@@ -282,13 +282,17 @@ Giữ `PATCH /devices/{device_id}` và `PATCH /devices/{device_id}/keys/key-v1`,
 
 Migration `20261118_08` đổi cột `code` thành `name`, bỏ unique cho tên, giữ nguyên UUID và toàn bộ quan hệ. Xem [hướng dẫn local](../local-devices.md) để dùng simulator và ghi `config.h` từ khóa có sẵn, không truyền private key qua HTTP.
 
-## Signed Telemetry v1 và Integrity
+## Signed Telemetry v2 và Integrity
 
 **Signed telemetry, API quản trị thiết bị, integrity batch và local-chain anchoring đã có trong OpenAPI.** Khi Blockchain chưa cấu hình, batch mới seal ở trạng thái `NOT_READY`; khi adapter được bật, durable outbox chuyển qua `BLOCKCHAIN_PENDING` và chỉ thành `DATA_ANCHORED` sau receipt đủ confirmations cùng on-chain readback khớp.
 
-`POST /api/v1/shipments/{shipment_id}/telemetry` nhận `payload_version=1`, `shipment_id`, `device_id`, `key_id`, `sequence_number`, `temperature_c`, `humidity_pct`, `temperature_milli_c`, `humidity_milli_pct`, `recorded_at`, `firmware_version`, `signature`. Hai số hiển thị phải bằng chính xác integer đã scale ÷1000, tối đa ba chữ số thập phân. `shipment_id` body phải khớp path. Chữ ký ECDSA P-256/SHA-256 trên projection cố định trong [data-integrity.md](../architecture/data-integrity.md), truyền DER/Base64. Backend gán `received_at`, không chấp nhận client gửi tọa độ hoặc `received_at`. Mẫu hợp lệ trả `201` và `signature_status: "VALID"`, `sequence_number`, `completeness_status`, `missing_sequences`, `duplicate: false`; retry cùng canonical content trả `200`, `duplicate: true` và cùng telemetry ID.
+`POST /api/v1/devices/{device_id}/telemetry` nhận `payload_version=2`, `device_id`, `key_id`, `sequence_number`, `temperature_c`, `humidity_pct`, `temperature_milli_c`, `humidity_milli_pct`, `recorded_at`, `firmware_version`, `signature`. Payload **không nhận `shipment_id`**. Hai số hiển thị phải bằng chính xác integer đã scale ÷1000, tối đa ba chữ số thập phân. Chữ ký ECDSA P-256/SHA-256 trên projection cố định trong [data-integrity.md](../architecture/data-integrity.md), truyền DER/Base64.
 
-Trước khi nhận signed telemetry, Backend kiểm tra device đăng ký/active, assignment đúng shipment, key active trong MySQL, chữ ký rồi sequence. Giữ lỗi `403 DEVICE_NOT_ACTIVE`/`DEVICE_NOT_ASSIGNED`, `401 UNKNOWN_KEY`/`INVALID_SIGNATURE`, `422 SHIPMENT_MISMATCH`, `409 SEQUENCE_CONFLICT`/`SEQUENCE_REPLAY`. Key ID vẫn bắt buộc và protocol/canonical fields giữ nguyên; device không tự đăng ký key. Response telemetry thành công có `signature_status: VALID`, `completeness_status: COMPLETE/DATA_INCOMPLETE`; last seen/sequence có ở DeviceView. Payload bị từ chối chỉ audit, không vào accepted telemetry/Merkle/evidence.
+Backend khóa device, xác minh public key/chữ ký, tra assignment active trong MySQL rồi dùng `assignment.shipment_id` để tạo telemetry và signed receipt. Backend gán `received_at`; không chấp nhận client gửi tọa độ, `received_at` hay `shipment_id`. Mẫu hợp lệ trả `201` cùng `shipment_id` đã resolve, `signature_status: "VALID"`, `sequence_number`, `completeness_status`, `missing_sequences`, `duplicate: false`; retry cùng canonical content trả `200`, `duplicate: true` và cùng telemetry ID.
+
+Endpoint `POST /api/v1/shipments/{shipment_id}/telemetry` với `payload_version=1` được giữ để tương thích client cũ. Firmware/simulator mới không sử dụng endpoint này; gửi v2 vào endpoint cũ trả `422 DEVICE_ENDPOINT_REQUIRED`.
+
+Trước khi nhận v2, Backend kiểm tra path/body cùng device, device active, key active, chữ ký hợp lệ, assignment active và sequence. Các lỗi chính: `403 DEVICE_NOT_ACTIVE`/`DEVICE_NOT_ASSIGNED`, `401 UNKNOWN_KEY`/`INVALID_SIGNATURE`, `422 DEVICE_MISMATCH`/`DEVICE_ENDPOINT_REQUIRED`, `409 SEQUENCE_CONFLICT`/`SEQUENCE_REPLAY`. Payload bị từ chối chỉ audit, không vào accepted telemetry/Merkle/evidence.
 `GET /api/v1/shipments/{shipment_id}/devices` trả danh sách thiết bị đang được assignment, gồm `device_id`, `registration_status`, `last_sequence_number`, `last_seen_at` và `telemetry_status: UNKNOWN/ONLINE/OFFLINE`. Trạng thái này được tính từ mẫu signed hợp lệ cuối cùng và `SENSOR_GAP_MINUTES`; retry một mẫu cũ không cập nhật `last_seen_at`. Signed heartbeat riêng vẫn chưa triển khai. Mỗi response có header `X-Request-ID` để đối chiếu log. `data_status` tổng hợp vẫn là kế hoạch.
 
 Idempotency hiện có: cùng `(device_id, sequence_number)` và cùng canonical signed content trả mẫu cũ với `duplicate=true`; cùng sequence nhưng content khác trả `409` và audit. Gap cắt chuỗi vi phạm 15 phút. `recorded_at` chỉ là metadata; thời lượng vi phạm dựa trên `received_at` của Backend. `BODY_TOO_LARGE` trả `413`, `RATE_LIMITED` trả `429` cho thiết bị đã đăng ký. Public history/detail hiển thị `signature_status`, `sequence_number`, `completeness_status` và `missing_sequences` ở mẫu đã ký; mẫu cũ không có các field này.

@@ -6,7 +6,7 @@
 > **Trạng thái:** Roadmap triển khai được đề xuất; **không** có nghĩa các tính năng đã được lập trình hoặc deploy.  
 > **Mục tiêu nâng cấp:** **IoT Data Integrity + Blockchain Data Anchoring + Smart Contract Insurance + Public FastAPI Backend on Render**.
 
-> **Cập nhật tiến độ 2026-11-05:** Phase 0 **IN_PROGRESS**. Đã kiểm tra repo/nhánh `feat/iot-backend`; đã triển khai và test thư viện `SIGNED-TELEMETRY-v1`/`MERKLE-v1`, golden vectors công khai và đặc tả byte-level tại `docs/architecture/data-integrity.md`. Chưa có ESP32 cross-test, Data Integrity Contract, Render URL hoặc xác nhận contract từ Member 2/3. Không đánh dấu Phase 0 hoàn tất trước các xác nhận đó.
+> **Cập nhật kiến trúc 2026-11-18:** Firmware dùng `SIGNED-TELEMETRY-v2` không chứa `shipment_id`; Backend resolve assignment active trong MySQL. Decoder v1 và golden vector v1 được giữ để tương thích dữ liệu/client cũ; `MERKLE-v1` không đổi.
 > **Tiến độ Backend tiếp theo:** Phase 2 **IN_PROGRESS**. Đã có API admin đăng ký/revoke device key/assignment và tiếp nhận signed telemetry với duplicate/replay/gap audit; production từ chối payload chưa ký. Alembic revision `20261105_01` nâng schema trên DB nền hiện có; có body limit, rate limit theo thiết bị, request ID và device status suy ra từ `last_seen_at`. Chưa có signed heartbeat, giới hạn theo IP ở gateway, batch anchoring hoặc payout evidence gate; không dùng kết quả hiện tại để tuyên bố hoàn tất Phase 2.
 > **Cập nhật 2026-11-08 — Phase 1 IN_PROGRESS:** Đã bổ sung simulator ký P-256 thật với các kịch bản happy/invalid/duplicate/replay/gap/reconnect; test tương thích với Backend pass. Sketch đã chuyển Wi-Fi/private key/CA sang `config.h` bị Git bỏ qua và dùng `setCACert()` thay `setInsecure()`. Chưa cross-test trên board ESP32, chưa có queue bền vững khi mất mạng. Credential/key từng được commit phải được đổi/revoke; xóa khỏi bản hiện tại không xóa Git history. Không đánh dấu Phase 1 hoàn tất.
 > **Cập nhật 2026-11-09 — Phase 4 IN_PROGRESS/LOCAL_TESTED:** Đã thêm Alembic `20261109_02`, bảng batch/item/outbox, auto/manual sealing theo cặp shipment/device, membership bất biến, API summary/list/detail/verify và tamper alert `INTEGRITY_MISMATCH`. Bộ Backend pass `63`, Hardhat pass `66` gồm golden vector/E2E contract. Chưa áp dụng migration lên MySQL production và chưa dispatch outbox tới `ColdChainDataIntegrity`; anchoring/readback thuộc Phase 5 nên chưa đánh dấu Phase 4/5 hoàn tất trên môi trường deploy.
@@ -204,14 +204,13 @@ Frontend (Member 3) → REST/HTTPS → Public FastAPI Backend ONLY
 
 Nếu thuật toán/thư viện ký số không phù hợp với ESP32 thật, phải mở quyết định kỹ thuật và cập nhật **cả** firmware, API, fixture, tài liệu; không âm thầm thay đổi giao thức.
 
-### 2.4. Signed Telemetry v1 — định dạng cần dùng thống nhất
+### 2.4. Signed Telemetry v2 — định dạng hiện tại
 
-`POST /api/v1/shipments/{shipment_id}/telemetry`
+`POST /api/v1/devices/{device_id}/telemetry`
 
 ```json
 {
-  "payload_version": 1,
-  "shipment_id": "8b4fb8a2-2996-4da2-90b9-35019517f56f",
+  "payload_version": 2,
   "device_id": "ESP32-001",
   "key_id": "key-v1",
   "sequence_number": 1524,
@@ -226,12 +225,12 @@ Nếu thuật toán/thư viện ký số không phù hợp với ESP32 thật, p
 ```
 
 - Hai trường `temperature_c` và `humidity_pct` vẫn giữ phục vụ giao diện/API cũ; các trường `*_milli_*` là **số nguyên** được ký để loại sai số khi biểu diễn float. Backend yêu cầu `temperature_c × 1000 == temperature_milli_c`, `humidity_pct × 1000 == humidity_milli_pct` bằng phép tính thập phân chính xác; chỉ cho phép tối đa 3 chữ số thập phân, không cho `NaN`, `Infinity` hay số mũ bất thường. Ví dụ cảm biến 12,5°C được scale thành `12500`.
-- `shipment_id` ở body phải khớp path và ánh xạ thiết bị-lô hàng đang được cho phép. `sequence_number` tăng theo **device**, không reset khi đổi shipment hoặc reboot; trạng thái được lưu trong NVS/secure storage của ESP32.
+- Payload không có `shipment_id`. `sequence_number` tăng theo **device**, không reset khi đổi shipment hoặc reboot; trạng thái được lưu trong NVS/secure storage của ESP32.
 - `recorded_at` dùng định dạng UTC `YYYY-MM-DDTHH:mm:ssZ` với đồng hồ đã đồng bộ nếu có thể; không cho thiết bị tự định nghĩa `received_at`. Backend tự ghi `received_at` và cảnh báo lệch giờ.
-- `firmware_version`, `payload_version`, `key_id`, `shipment_id` **nằm trong nội dung được ký**, ngăn sửa ngữ cảnh sau khi ký.
+- `firmware_version`, `payload_version`, `key_id` **nằm trong nội dung được ký**. Backend khóa device, xác minh chữ ký rồi lấy assignment active từ MySQL và gắn `shipment_id` vào accepted record.
 - Device registration do API quản trị được xác thực thực hiện; **ESP32 không được tự đăng ký key mới tùy ý** khi đang gửi telemetry.
 
-**Quy tắc canonicalization ký số — `SIGNED-TELEMETRY-v1`:**
+**Quy tắc canonicalization ký số — `SIGNED-TELEMETRY-v2`:**
 
 1. Backend/ESP32 xây dựng một object **chỉ** có các field bên dưới, bỏ `signature`, các số float hiển thị và mọi field do server sinh.
 2. Sử dụng thứ tự key ASCII **tăng dần**, UTF-8, JSON compact không whitespace, escape string theo JSON; IDs/key/firmware/timestamp giới hạn ASCII và pattern đã chốt để tránh khác biệt Unicode. Numeric **chỉ là integer thập phân**, không dấu `+`, không leading zero, không scientific notation.
@@ -241,12 +240,12 @@ Nếu thuật toán/thư viện ký số không phù hợp với ESP32 thật, p
 Canonical JSON projection minh họa:
 
 ```json
-{"device_id":"ESP32-001","firmware_version":"1.0.0","humidity_milli_pct":80000,"key_id":"key-v1","payload_version":1,"recorded_at":"2026-11-04T10:30:00Z","sequence_number":1524,"shipment_id":"8b4fb8a2-2996-4da2-90b9-35019517f56f","temperature_milli_c":12500}
+{"device_id":"ESP32-001","firmware_version":"1.0.0","humidity_milli_pct":80000,"key_id":"key-v1","payload_version":2,"recorded_at":"2026-11-04T10:30:00Z","sequence_number":1524,"temperature_milli_c":12500}
 ```
 
-> **Ghi chú triển khai:** profile canonical này là giao thức v1 của dự án (object cố định, không số thực), **không** tuyên bố là triển khai đầy đủ RFC 8785/JCS. Nếu muốn thay bằng JCS, phải chốt lại và cập nhật tất cả golden fixtures trước khi triển khai. Không được dùng `json.dumps()` mặc định trên mọi object tùy ý rồi cho là canonical.
+> **Ghi chú triển khai:** profile canonical này là giao thức v2 của dự án (object cố định, không số thực), **không** tuyên bố là triển khai đầy đủ RFC 8785/JCS. Backend vẫn đọc v1 ở endpoint shipment cũ để tương thích. Nếu muốn thay bằng JCS, phải chốt lại và cập nhật tất cả golden fixtures trước khi triển khai.
 
-**Chu trình tiếp nhận bắt buộc:** validate payload → kiểm tra thiết bị đang active / `key_id` hợp lệ / shipment assignment → verify chữ ký → kiểm tra `(device_id, sequence_number)` → phân loại duplicate/gap/replay → lưu accepted telemetry + `received_at` trong transaction → tạo sự kiện/outbox. Đầu vào bị từ chối chỉ được ghi **audit có kiểm soát**, không trở thành accepted/verified telemetry.
+**Chu trình tiếp nhận bắt buộc:** validate payload/path → kiểm tra thiết bị đang active / `key_id` hợp lệ → verify chữ ký → khóa và đọc assignment active → kiểm tra `(device_id, sequence_number)` → phân loại duplicate/gap/replay → gắn `shipment_id`, lưu accepted telemetry + `received_at` trong transaction → tạo sự kiện/outbox. Đầu vào bị từ chối chỉ được ghi **audit có kiểm soát**, không trở thành accepted/verified telemetry.
 
 ### 2.5. Chính sách sequence, offline và dữ liệu đáng tin cậy
 
@@ -325,7 +324,7 @@ Backend validate min/max, thời lượng và số tiền; giữ `cargo_type` v�
 | `GET` | `/api/v1/shipments` | Danh sách chuyến `{items, total}` | Có; giữ nguyên |
 | `POST` | `/api/v1/devices/{device_id}/assignments` | **Admin UI:** `{shipment_id, active}` | Có; chặn nhiều assignment active, bảo đảm idempotent |
 | `POST` | `/api/v1/devices/{device_id}/keys` | **Script trên máy tin cậy:** `{key_id, public_key_pem}` | Có; dùng cho cấp khóa ban đầu sau đăng ký |
-| `POST` | `/api/v1/shipments/{shipment_id}/telemetry` | **ESP32/simulator:** signed payload v1 | Có; giữ protocol và kiểm tra key/assignment/sequence |
+| `POST` | `/api/v1/devices/{device_id}/telemetry` | **ESP32/simulator:** signed payload v2 không có shipment ID | Backend tự resolve assignment active rồi kiểm tra sequence |
 | `GET` | `/api/v1/devices/{device_id}` | **Admin:** metadata device, keys, assignments | Có; mở rộng cùng DeviceView §3.6 |
 | `PATCH` | `/api/v1/devices/{device_id}` | **Admin:** active/revoked | Có; giữ để xử lý sự cố, không bắt buộc thêm UI |
 | `PATCH` | `/api/v1/devices/{device_id}/keys/{key_id}` | **Admin:** active/revoked key | Có; giữ để thu hồi key, không tạo `/keys/rotate` |
@@ -364,7 +363,7 @@ Thành công `200`:
 - Sai credential hoặc Bearer thiếu/sai chữ ký/hết hạn/sai subject trả `401` với lỗi chung, header `WWW-Authenticate: Bearer`; body validation trả `422`. Rate limit đề xuất 5 lần/phút/IP, vượt trả `429` và `Retry-After`; cấu hình IP/proxy tin cậy trên Render, test không giả mạo được qua header tùy ý.
 - Cấu hình auth thiếu/rỗng/placeholder phải fail closed khi khởi động; không có chế độ bỏ auth khi secret rỗng, kể cả development. HTTPS trên Render; không ghi raw login body hoặc Authorization vào request/error log.
 - Chỉ Access Token; hết hạn thì đăng nhập lại. Không refresh token, OAuth bên thứ ba, MFA, quên/đổi mật khẩu hoặc session DB. Logout là xóa token ở Frontend; token đã cấp còn hiệu lực tới `exp`, không xây revocation/session service trong demo.
-- JWT Admin chỉ cho FastAPI; không cấp quyền Owner/Oracle/anchorer của Solidity. ESP32 giữ cặp P-256 riêng và `SIGNED-TELEMETRY-v1`, không đăng nhập username/password hay dùng JWT Admin.
+- JWT Admin chỉ cho FastAPI; không cấp quyền Owner/Oracle/anchorer của Solidity. ESP32 giữ cặp P-256 riêng và `SIGNED-TELEMETRY-v2`, không đăng nhập username/password hay dùng JWT Admin.
 - Admin được quản lý device (metadata, active/revoked, public key, gán/bỏ gán), shipment/policy khi quy tắc cho phép, monitoring/audit, verify và retry/reconcile đã hỗ trợ; không nhập thêm API key. Nếu thiếu API sửa metadata/shipment thì ghi task/schema cần bổ sung và review trong Phase 2/3, không tự coi route chưa có đã chạy, không cho sửa evidence/policy đã khóa trái luật nghiệp vụ.
 
 Không thêm alias `/assign`, `/public-key`, device registry contract hoặc dịch vụ provisioning riêng. Pagination/filter là mở rộng khi cần, không giả đã có trong v1; demo có thể dùng `{items, total}` hiện tại.
@@ -453,7 +452,7 @@ DTO ID/tên, DeviceOut/list và constraint assignment đã có code khi đối c
 - Cho phép gán khi chưa có public key; telemetry vẫn bị chặn đến khi cấp key hợp lệ. Device phải tồn tại/active, shipment phải tồn tại; không tìm thấy trả `404 DEVICE_NOT_FOUND`/`SHIPMENT_NOT_FOUND`.
 - Nếu đã có assignment active tới UUID khác, trả **`409 DEVICE_ALREADY_ASSIGNED` (đã có code)** và giữ quan hệ cũ. Bỏ gán bằng cùng endpoint với `active=false` rồi gán mới; không ngầm chuyển chuyến.
 - Giữ khóa dòng device trong transaction, cùng thứ tự khóa với ingestion và unique active assignment ở Phase 3 để chặn hai request đồng thời của cùng Admin. Không thêm state machine chuyến chỉ cho mục đích gán.
-- Một shipment nhận nhiều device. Telemetry/batch vẫn tách theo device, không trộn sequence giữa thiết bị; giữ logic evidence theo policy hiện có. Khi đổi chuyến cập nhật `SHIPMENT_ID` trong `config.h` rồi nạp USB; queue cũ không được đổi `shipment_id`/ký lại để đưa vào chuyến mới.
+- Một shipment nhận nhiều device. Telemetry/batch vẫn tách theo device, không trộn sequence giữa thiết bị; giữ logic evidence theo policy hiện có. Khi đổi chuyến chỉ cập nhật assignment trên Frontend/MySQL; ESP32 không chứa `SHIPMENT_ID` và không cần nạp lại firmware.
 
 **D. Cấp public key:** giữ `POST /api/v1/devices/ESP32-001/keys`, auth admin, do script gọi:
 
@@ -463,7 +462,7 @@ DTO ID/tên, DeviceOut/list và constraint assignment đã có code khi đối c
 
 PEM trên là placeholder, phải thay bằng public key thật khi gọi. `201` trả DeviceView với `has_public_key=true`, `keys=[{"key_id":"key-v1","status":"active"}]`; assignment giữ nguyên. Device chưa đăng ký trả `404 DEVICE_NOT_FOUND`; public key sai định dạng/curve hoặc PEM private key trả `422 INVALID_PUBLIC_KEY`; key ID đã có trả `409 KEY_EXISTS`. Không ghi đè key khi retry; kiểm tra key đã đăng ký trước khi chạy lại, không tự sinh key mới vì request upload bị timeout. Demo vận hành một key active mỗi device; thu hồi key cũ qua PATCH hiện có nếu thay khóa. Không thêm endpoint nhận private key.
 
-**E. Nhận telemetry:** request §2.4 giữ nguyên `key_id` bắt buộc, DER/Base64, integer scaling, canonical fields và UUID. Kiểm tra tuần tự: device đăng ký/active → assignment khớp shipment → key active từ MySQL → chữ ký → duplicate/replay/gap → lưu MySQL. Giữ mã lỗi hiện có: `403 DEVICE_NOT_ACTIVE`, `403 DEVICE_NOT_ASSIGNED`, `401 UNKNOWN_KEY`, `401 INVALID_SIGNATURE`, `422 SHIPMENT_MISMATCH`, `409 SEQUENCE_CONFLICT`/`SEQUENCE_REPLAY`. Unknown device không tự tạo registry/key/assignment. `201` lưu mẫu mới; cùng nội dung ký đã nhận trả `200 duplicate=true` khi các điều kiện ủy quyền vẫn hợp lệ. Không reset sequence khi cấp key, reboot hoặc đổi shipment; dữ liệu bị từ chối không vào Merkle batch/evidence.
+**E. Nhận telemetry:** request §2.4 giữ `key_id` bắt buộc, DER/Base64, integer scaling và canonical fields nhưng không có shipment UUID. Kiểm tra tuần tự: device/path → key active từ MySQL → chữ ký → assignment active → duplicate/replay/gap → Backend gắn shipment và lưu MySQL. Giữ mã lỗi: `403 DEVICE_NOT_ACTIVE`, `403 DEVICE_NOT_ASSIGNED`, `401 UNKNOWN_KEY`, `401 INVALID_SIGNATURE`, `422 DEVICE_MISMATCH`, `409 SEQUENCE_CONFLICT`/`SEQUENCE_REPLAY`. Unknown device không tự tạo registry/key/assignment.
 
 ---
 
@@ -491,7 +490,7 @@ PEM trên là placeholder, phải thay bằng public key thật khi gọi. `201`
 - [x] Chốt stack **FastAPI + ESP32 + external MySQL + Web3.py + Alchemy + Ethereum Sepolia + Remix + Render**; chọn phiên bản Python/Arduino core/mbedTLS/driver MySQL. Không cần Hardhat Node hoặc chain `31337` để chạy Backend mới.
 - [ ] Khóa login §3.2.1, danh sách route Admin dùng JWT, TTL và rate limit với TTDK; không Register/User table/đa vai trò. Lập checklist đổi settings, routes, OpenAPI, tests, CLI/provisioning, frontend client và runbook cùng lần chuyển đổi; không bỏ bảo vệ API trong lúc gỡ API key.
 - [x] Chốt quy trình demo và contract §3.6 với NTD/TTDK: ID/tên device riêng, `code` chuyến ánh xạ UUID, một assignment active/device, cấp key bằng script; giữ `/keys` và `/assignments` đang có. Lập danh sách caller cần đổi DTO đăng ký.
-- [x] Khóa `SIGNED-TELEMETRY-v1`: các field, scaled integer, ECDSA P-256 SHA-256, DER/Base64, public key PEM, UTC timestamp, signed canonical projection.
+- [x] Khóa `SIGNED-TELEMETRY-v2`: bỏ shipment khỏi payload ký; giữ scaled integer, ECDSA P-256 SHA-256, DER/Base64, public key PEM, UTC timestamp và decoder v1 tương thích.
 - [x] Khóa `MERKLE-v1`: canonical record, leaf/node prefixes, odd-node rule, root bytes32, batch membership, sort order, empty batch.
 - [x] Làm 2–3 golden fixtures: một mẫu ký đúng, một mẫu sai chữ ký, một batch 1/2/3 leaf kèm expected root. Chia sẻ Member 2.
 - [x] Tạo/cập nhật `docs/contracts/api-v1.md`, schema và enum; thống nhất `shipment_key`, `batch_key`, oracle/anchorer address cùng Member 2.
@@ -512,7 +511,7 @@ PEM trên là placeholder, phải thay bằng public key thật khi gọi. `201`
 - [x] Giữ cảm biến **DHT22** và sketch thực tế `device/cold_chain_device/cold_chain_device.ino` (GPIO 27 theo cấu hình hiện có); kiểm tra `NaN`, phạm vi và lỗi cảm biến, không tạo sketch trùng ở đường dẫn khác.
 - [ ] Thêm script đề xuất `device/provisioning/provision_device.py`, dùng Python `cryptography` sẵn có trên máy tin cậy: chọn device đã đăng ký, sinh cặp P-256 riêng bằng secure RNG, xuất private key vào `device/cold_chain_device/config.h` và public key SPKI PEM local. Không ghi đè key/config đã có, không in private key ra terminal/log.
 - [ ] Script/hướng dẫn đăng nhập `POST /auth/login` trên máy tin cậy rồi đăng ký **public key đã sinh** qua `POST /devices/{device_id}/keys` với JWT Bearer, sau khi nạp `config.h` bằng USB. Token ngắn hạn ở bộ nhớ tiến trình, hết hạn thì đăng nhập lại; không log hay ghi token/password vào firmware. Tách bước tạo file và upload; lỗi mạng không làm sinh lại cặp khóa. Private key không đi qua Frontend, HTTP API hoặc Backend/MySQL.
-- [x] `config.example.h` chỉ placeholder cho `API_BASE_URL`, Wi-Fi, `DEVICE_ID`, `SHIPMENT_ID` (UUID lấy từ API), `KEY_ID`, `DEVICE_PRIVATE_KEY_PEM`, `TLS_ROOT_CA_PEM`; script giữ placeholder phần chưa cấu hình để admin điền local trước khi nạp. `.gitignore` tiếp tục loại `config.h`, `*.pem`, `*.key`; kiểm tra mọi file output local mới cũng bị bỏ qua.
+- [x] `config.example.h` chỉ placeholder cho `API_BASE_URL`, Wi-Fi, `DEVICE_ID`, `KEY_ID`, `DEVICE_PRIVATE_KEY_PEM`; không có `SHIPMENT_ID`. `.gitignore` tiếp tục loại `config.h`, `*.pem`, `*.key`.
 - [x] Thực hiện ECDSA P-256/SHA-256 bằng thư viện mbedTLS được hỗ trợ; tự kiểm bằng golden fixture với Python.
 - [x] Gắn `sequence_number` toàn cục theo device vào mẫu, lưu counter bền vững trước khi sử dụng; cấu hình `key_id`, `firmware_version`, `payload_version`.
 - [x] Đồng bộ thời gian NTP khi có mạng và phát `recorded_at` UTC; xử lý clock chưa đồng bộ rõ ràng, không giả giờ chính xác.
@@ -920,7 +919,7 @@ Tóm tắt workflow thay thế, package NTD → NTK, công việc Sepolia và r�
 
 1. **Phần cứng:** xác nhận board/Arduino core/mbedTLS và cross-test DHT22 GPIO 27; tiếp tục dùng Preferences/NVS hiện có, không bắt buộc thêm secure element cho demo.
 2. **Crypto/provisioning:** P-256 + SHA-256, DER/Base64 và `key_id` đã có code; cần script local/USB, kiểm chứng key trên board thật, quy trình revoke/add key khi lộ.
-3. **Canonicalization/Hash:** Members 1–2 xác nhận `SIGNED-TELEMETRY-v1`, `MERKLE-v1`, `bytes32` `batch_key` và danh sách field được hash; không cho thay đổi ngầm.
+3. **Canonicalization/Hash:** Members 1–2 xác nhận `SIGNED-TELEMETRY-v2`, compatibility v1, `MERKLE-v1`, `bytes32` `batch_key` và danh sách field được hash; không cho thay đổi ngầm.
 4. **Insurance evidence:** cả nhóm chốt `PAYOUT_REQUIRES_ANCHORED_EVIDENCE`, cách xử lý nếu vi phạm 15 phút nhưng một batch chưa anchor/verify được, max allowed gap.
 5. **Chain đã chọn:** Ethereum Sepolia `11155111`, Remix + MetaMask deploy, Alchemy RPC do NTK tạo. Còn thiếu deployment thật, ABI/settings/manifest, addresses/roles, confirmations và funding; không mở lại lựa chọn local Hardhat làm gate.
 6. **Production:** chọn external MySQL provider, vùng triển khai, TLS, backup, budget Render, domain thực tế/CORS; Free chỉ phù hợp demo, không phải monitoring SLA.

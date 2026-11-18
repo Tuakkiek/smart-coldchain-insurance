@@ -58,7 +58,7 @@ Từ gốc repository, sau khi gán ESP32-01 vào lô hàng:
 
 ```powershell
 .\backend\.venv\Scripts\python.exe device/simulator/send_telemetry.py `
-  --shipment-id '<shipment_id vừa nhận>' --device-id ESP32-01 `
+  --device-id ESP32-01 `
   --sequence 1 --scenario happy
 ```
 
@@ -68,14 +68,16 @@ Simulator tự đọc khóa tương ứng từ file local; không cần sao ché
 
 ## 4. Nạp ESP32 thật
 
-Sau khi gán thiết bị trên frontend, chạy từ `backend/`:
+Chạy một lần cho thiết bị từ `backend/` (không cần gán shipment trước):
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.cli configure-device `
-  --device-id ESP32-01 --shipment-id '<shipment_id vừa nhận>'
+  --device-id ESP32-01
 ```
 
-Lệnh lấy đúng khóa đã có, ghi `DEVICE_ID`, `KEY_ID`, `SHIPMENT_ID` và private key vào `device/cold_chain_device/config.h`. Không tạo khóa mới, không in khóa ra terminal. Điền Wi-Fi/API URL phù hợp rồi nạp sketch qua USB. Khi đổi thiết bị cần nạp, chạy lại lệnh với Device ID tương ứng.
+Lệnh lấy đúng khóa đã có, ghi `DEVICE_ID`, `KEY_ID` và private key vào `device/cold_chain_device/config.h`; nếu file cũ còn `SHIPMENT_ID`, lệnh sẽ xóa khai báo đó. Không tạo khóa mới, không in khóa ra terminal. Điền Wi-Fi/API URL phù hợp rồi nạp sketch qua USB.
+
+Firmware gửi payload v2 không chứa `shipment_id`. Backend xác minh thiết bị/key/chữ ký, khóa assignment active hiện tại trong MySQL rồi gắn `shipment_id` vào telemetry. Vì vậy khi Admin đổi chuyến trên Frontend, ESP32 tiếp tục gửi bằng cùng firmware, không cần chạy lại `configure-device` hay nạp USB.
 
 ## 5. Blockchain
 

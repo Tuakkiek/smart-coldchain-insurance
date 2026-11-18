@@ -60,6 +60,7 @@ def test_health_and_openapi(api):
     assert client.get("/api/v1/ready").json() == expected
     paths = client.get("/openapi.json").json()["paths"]
     assert "/api/v1/shipments/{shipment_id}/telemetry" in paths
+    assert "/api/v1/devices/{device_id}/telemetry" in paths
     assert "/api/v1/ready" in paths
     assert client.get("/docs").status_code == 200
 

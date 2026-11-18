@@ -191,9 +191,17 @@ def set_assignment(session: Session, device_id: str, shipment_id: str, active: b
         raise
 
 
-def _reject(session: Session, payload: SignedTelemetryCreate, code: str, status: int, message: str) -> None:
+def _reject(
+    session: Session,
+    payload: SignedTelemetryCreate,
+    code: str,
+    status: int,
+    message: str,
+    *,
+    shipment_id: str | None = None,
+) -> None:
     session.add(IngestionAudit(
-        id=str(uuid4()), shipment_id=payload.shipment_id, device_id=payload.device_id,
+        id=str(uuid4()), shipment_id=shipment_id or payload.shipment_id, device_id=payload.device_id,
         sequence_number=payload.sequence_number, code=code, received_at=datetime.now(timezone.utc),
     ))
     session.commit()
@@ -213,34 +221,39 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
            gap_minutes: int, max_sample_gap_seconds: int, rate_limit_per_minute: int,
            batch_max_records: int = 100, batch_max_age_minutes: int = 5,
            integrity_anchor=None, insurance_blockchain=None, evidence_coordinator=None) -> dict:
-    if payload.shipment_id != shipment_id:
+    if payload.payload_version == 1 and payload.shipment_id != shipment_id:
         _reject(session, payload, "SHIPMENT_MISMATCH", 422, "Body shipment_id does not match path")
+    if payload.payload_version == 2 and payload.shipment_id is not None:
+        _reject(
+            session, payload, "SHIPMENT_ID_NOT_ALLOWED", 422,
+            "payload_version 2 must not contain shipment_id", shipment_id=shipment_id,
+        )
     shipments.get_shipment(session, shipment_id)
     device = session.scalar(
         select(Device).where(Device.id == payload.device_id).with_for_update()
         .execution_options(populate_existing=True)
     )
     if device is None or payload.device_id not in DEVICE_IDS or device.status != "active":
-        _reject(session, payload, "DEVICE_NOT_ACTIVE", 403, "Device is not active")
+        _reject(session, payload, "DEVICE_NOT_ACTIVE", 403, "Device is not active", shipment_id=shipment_id)
     # Locking reads see current committed rows on MySQL REPEATABLE READ even if
     # the earlier shipment lookup established an older consistent snapshot.
     assignment = session.scalar(select(DeviceAssignment).where(
         DeviceAssignment.device_id == device.id, DeviceAssignment.shipment_id == shipment_id,
     ).with_for_update().execution_options(populate_existing=True))
     if assignment is None or not assignment.active:
-        _reject(session, payload, "DEVICE_NOT_ASSIGNED", 403, "Device is not assigned to shipment")
+        _reject(session, payload, "DEVICE_NOT_ASSIGNED", 403, "Device is not assigned to shipment", shipment_id=shipment_id)
     key = session.scalar(select(DeviceKey).where(
         DeviceKey.device_id == device.id, DeviceKey.key_id == payload.key_id,
     ).with_for_update().execution_options(populate_existing=True))
     if key is None or payload.key_id != DEFAULT_KEY_ID or key.status != "active":
-        _reject(session, payload, "UNKNOWN_KEY", 401, "Key is unknown or revoked")
+        _reject(session, payload, "UNKNOWN_KEY", 401, "Key is unknown or revoked", shipment_id=shipment_id)
     value = payload.model_dump()
     try:
         signature_valid = verify_signature(value, key.public_key_pem.encode("ascii"))
     except ValueError:
         signature_valid = False
     if not signature_valid:
-        _reject(session, payload, "INVALID_SIGNATURE", 401, "Signature verification failed")
+        _reject(session, payload, "INVALID_SIGNATURE", 401, "Signature verification failed", shipment_id=shipment_id)
     digest = hashlib.sha256(canonical_signed_bytes(value)).hexdigest()
     existing = session.scalar(select(SignedTelemetryReceipt).where(
         SignedTelemetryReceipt.device_id == device.id,
@@ -248,18 +261,18 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
     ).with_for_update())
     if existing:
         if existing.canonical_sha256 != digest:
-            _reject(session, payload, "SEQUENCE_CONFLICT", 409, "Sequence already has different content")
+            _reject(session, payload, "SEQUENCE_CONFLICT", 409, "Sequence already has different content", shipment_id=shipment_id)
         sample = session.scalar(select(Telemetry).where(Telemetry.id == existing.telemetry_id).with_for_update())
         return _response(sample, existing, True)
     if payload.sequence_number <= device.last_sequence_number:
-        _reject(session, payload, "SEQUENCE_REPLAY", 409, "Sequence is older than last accepted sequence")
+        _reject(session, payload, "SEQUENCE_REPLAY", 409, "Sequence is older than last accepted sequence", shipment_id=shipment_id)
     now = shipments.ensure_utc(clock.now())
     window_start = shipments.ensure_utc(device.rate_window_started_at)
     if window_start is None or now < window_start or now - window_start >= timedelta(minutes=1):
         device.rate_window_started_at = now
         device.rate_window_count = 0
     if device.rate_window_count >= rate_limit_per_minute:
-        _reject(session, payload, "RATE_LIMITED", 429, "Device telemetry rate limit exceeded")
+        _reject(session, payload, "RATE_LIMITED", 429, "Device telemetry rate limit exceeded", shipment_id=shipment_id)
     gap = ((device.last_sequence_number + 1, payload.sequence_number - 1)
            if payload.sequence_number > device.last_sequence_number + 1 else None)
     sample = shipments.add_telemetry(
@@ -299,7 +312,7 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
         ))
         if existing and existing.canonical_sha256 == digest:
             return _response(session.get(Telemetry, existing.telemetry_id), existing, True)
-        _reject(session, payload, "SEQUENCE_CONFLICT", 409, "Sequence already has different content")
+        _reject(session, payload, "SEQUENCE_CONFLICT", 409, "Sequence already has different content", shipment_id=shipment_id)
     try:
         # Telemetry is already committed. Sealing is a separate transaction so
         # a batch failure can never roll back accepted sensor data.
@@ -344,3 +357,72 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
             session.rollback()
             logger.exception("Insurance evidence reconciliation failed shipment_id=%s", shipment_id)
     return _response(sample, receipt, False)
+
+
+def ingest_for_current_assignment(
+    session: Session,
+    device_id: str,
+    payload: SignedTelemetryCreate,
+    clock,
+    gap_minutes: int,
+    max_sample_gap_seconds: int,
+    rate_limit_per_minute: int,
+    batch_max_records: int = 100,
+    batch_max_age_minutes: int = 5,
+    integrity_anchor=None,
+    insurance_blockchain=None,
+    evidence_coordinator=None,
+) -> dict:
+    """Authenticate a v2 device payload and bind it to the active DB assignment."""
+    if payload.payload_version != 2:
+        _reject(
+            session, payload, "PAYLOAD_VERSION_UNSUPPORTED", 422,
+            "Device telemetry endpoint requires payload_version 2",
+        )
+    if payload.device_id != device_id:
+        _reject(
+            session, payload, "DEVICE_MISMATCH", 422,
+            "Body device_id does not match path",
+        )
+
+    # Assignment changes take the same device-row lock, so the assignment used
+    # below cannot change between authentication and the telemetry commit.
+    device = session.scalar(
+        select(Device).where(Device.id == device_id).with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if device is None or device_id not in DEVICE_IDS or device.status != "active":
+        _reject(session, payload, "DEVICE_NOT_ACTIVE", 403, "Device is not active")
+    key = session.scalar(select(DeviceKey).where(
+        DeviceKey.device_id == device.id, DeviceKey.key_id == payload.key_id,
+    ).with_for_update().execution_options(populate_existing=True))
+    if key is None or payload.key_id != DEFAULT_KEY_ID or key.status != "active":
+        _reject(session, payload, "UNKNOWN_KEY", 401, "Key is unknown or revoked")
+    try:
+        signature_valid = verify_signature(payload.model_dump(), key.public_key_pem.encode("ascii"))
+    except ValueError:
+        signature_valid = False
+    if not signature_valid:
+        _reject(session, payload, "INVALID_SIGNATURE", 401, "Signature verification failed")
+
+    assignment = session.scalar(select(DeviceAssignment).where(
+        DeviceAssignment.device_id == device.id,
+        DeviceAssignment.active.is_(True),
+    ).with_for_update().execution_options(populate_existing=True))
+    if assignment is None:
+        _reject(session, payload, "DEVICE_NOT_ASSIGNED", 403, "Device has no active shipment assignment")
+
+    return ingest(
+        session,
+        assignment.shipment_id,
+        payload,
+        clock,
+        gap_minutes,
+        max_sample_gap_seconds,
+        rate_limit_per_minute,
+        batch_max_records,
+        batch_max_age_minutes,
+        integrity_anchor,
+        insurance_blockchain,
+        evidence_coordinator,
+    )

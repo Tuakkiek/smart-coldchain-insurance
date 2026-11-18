@@ -1,4 +1,4 @@
-"""Send real SIGNED-TELEMETRY-v1 samples using a separately provisioned test key."""
+"""Send shipment-agnostic SIGNED-TELEMETRY-v2 samples for one fixed device."""
 
 from __future__ import annotations
 
@@ -22,14 +22,13 @@ from app.services.device_registry import DEFAULT_KEY_ID, DEVICE_IDS  # noqa: E40
 from app.services.device_provisioning import load_device_keys, ProvisioningError  # noqa: E402
 
 
-def payload_for(*, shipment_id: str, device_id: str, key_id: str,
-                sequence: int, temperature: str, humidity: str,
+def payload_for(*, device_id: str, key_id: str, sequence: int, temperature: str, humidity: str,
                 recorded_at: str, private_key: ec.EllipticCurvePrivateKey) -> dict:
     temp, humid = Decimal(temperature), Decimal(humidity)
     if (temp * 1000 != int(temp * 1000) or humid * 1000 != int(humid * 1000)):
         raise ValueError("temperature and humidity must have at most three decimal places")
     payload = {
-        "payload_version": 1, "shipment_id": shipment_id, "device_id": device_id,
+        "payload_version": 2, "device_id": device_id,
         "key_id": key_id, "sequence_number": sequence,
         "temperature_c": float(temp), "humidity_pct": float(humid),
         "temperature_milli_c": int(temp * 1000),
@@ -47,7 +46,7 @@ def post(base_url: str, payload: dict, *, timeout: float = 10) -> tuple[int, dic
         parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
     ):
         raise ValueError("Use HTTPS, or HTTP only for localhost development")
-    url = base_url.rstrip("/") + "/api/v1/shipments/" + payload["shipment_id"] + "/telemetry"
+    url = base_url.rstrip("/") + "/api/v1/devices/" + payload["device_id"] + "/telemetry"
     request = Request(url, data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
                       headers={"Content-Type": "application/json"}, method="POST")
     try:
@@ -67,8 +66,7 @@ def run(args: argparse.Namespace) -> None:
     recorded_at = args.recorded_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def sample(sequence: int) -> dict:
-        return payload_for(shipment_id=args.shipment_id, device_id=args.device_id,
-                           key_id=args.key_id, sequence=sequence,
+        return payload_for(device_id=args.device_id, key_id=args.key_id, sequence=sequence,
                            temperature=args.temperature, humidity=args.humidity,
                            recorded_at=recorded_at, private_key=private_key)
 
@@ -104,7 +102,6 @@ def run(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
-    parser.add_argument("--shipment-id", required=True)
     parser.add_argument("--device-id", required=True, choices=DEVICE_IDS)
     parser.add_argument("--key-id", default=DEFAULT_KEY_ID)
     key_source = parser.add_mutually_exclusive_group()

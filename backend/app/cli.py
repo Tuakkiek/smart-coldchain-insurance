@@ -17,7 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import load_settings
 from app.core.database import Base, make_engine, make_session_factory
-from app.models import DeviceAssignment, IntegrityBatch, IntegrationOutbox, Shipment, ShipmentEvent, Telemetry
+from app.models import IntegrityBatch, IntegrationOutbox, Shipment, ShipmentEvent, Telemetry
 from app.schemas.api import ShipmentCreate, TelemetryCreate
 from app.services.shipments import add_telemetry, create_shipment
 from app.services.blockchain_outbox import configured_coordinator
@@ -137,8 +137,8 @@ def main() -> None:
     parser.add_argument("--device-id", choices=DEVICE_IDS, help="fixed ESP32 identity to write to config.h")
     args = parser.parse_args()
     settings = load_settings()
-    if args.command == "configure-device" and (not args.device_id or not args.shipment_id):
-        parser.error("configure-device requires --device-id and --shipment-id")
+    if args.command == "configure-device" and not args.device_id:
+        parser.error("configure-device requires --device-id")
     if args.command in {"init-devices", "configure-device"} and settings.device_provisioning_mode != "local":
         parser.error("Use DEVICE_PROVISIONING_MODE=local on your local computer")
     try:
@@ -158,19 +158,15 @@ def main() -> None:
                         initialize_fixed_devices(session, settings.device_keys_path)
                     print("ESP32-01 through ESP32-10 ready; existing local keys preserved.")
             if args.command == "configure-device":
-                with make_session_factory(engine)() as session:
-                    assignment = session.get(DeviceAssignment, (args.device_id, args.shipment_id))
-                    if assignment is None or not assignment.active:
-                        parser.exit(2, "Assign this device to the shipment on the Frontend first.\n")
                 key = load_device_keys(settings.device_keys_path)[args.device_id]
                 pem = key.private_bytes(
                     serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
                     serialization.NoEncryption(),
                 ).decode("ascii")
                 FirmwareConfigWriter(settings.device_config_path).update(
-                    args.device_id, DEFAULT_KEY_ID, pem, shipment_id=args.shipment_id,
+                    args.device_id, DEFAULT_KEY_ID, pem,
                 )
-                print(f"Updated config.h for {args.device_id}, shipment_id={args.shipment_id}")
+                print(f"Updated config.h for {args.device_id}; shipment assignment is resolved by Backend")
             if args.command == "seed-demo":
                 seed_demo(make_session_factory(engine))
             if args.command == "retry-blockchain":
