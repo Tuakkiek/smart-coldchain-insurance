@@ -11,7 +11,6 @@ import {
   Copy,
   Check,
   X,
-  AlertTriangle,
   Info,
   Loader2,
 } from 'lucide-react';
@@ -20,7 +19,6 @@ interface BatchVerificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   result: BatchVerifyResultOut | null;
-  error?: string | null;
   batch?: IntegrityBatch | null;
   loading?: boolean;
 }
@@ -29,7 +27,6 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
   isOpen,
   onClose,
   result,
-  error,
   batch,
   loading = false,
 }) => {
@@ -73,12 +70,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
   const isMatched = result?.verification_status === 'MATCHED';
   const isFailed = result?.verification_status === 'DATA_INTEGRITY_FAILED';
 
-  let headerBg = 'var(--color-surface-secondary)';
-  if (error) {
-    headerBg = '#FFFBEB';
-  } else if (isFailed) {
-    headerBg = '#FFF1F2';
-  }
+  const headerBg = isFailed ? '#FFF1F2' : 'var(--color-surface-secondary)';
 
   const modalContent = (
     <div
@@ -130,9 +122,7 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
           }}
         >
           <div className="flex-row items-center gap-2">
-            {error ? (
-              <AlertTriangle size={22} style={{ color: '#D97706' }} />
-            ) : isFailed ? (
+            {isFailed ? (
               <ShieldAlert size={22} style={{ color: '#E11D48' }} />
             ) : (
               <ShieldCheck size={22} style={{ color: 'var(--color-success)' }} />
@@ -142,12 +132,10 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
                 style={{
                   fontSize: 'var(--text-md)',
                   fontWeight: 600,
-                  color: error ? '#92400E' : isFailed ? '#9F1239' : 'var(--color-text-primary)',
+                  color: isFailed ? '#9F1239' : 'var(--color-text-primary)',
                 }}
               >
-                {error
-                  ? 'Lỗi Yêu Cầu Xác Minh Merkle Batch'
-                  : 'Kết quả Kiểm tra Tính toàn vẹn Merkle Batch'}
+                Kết quả Kiểm tra Tính toàn vẹn Merkle Batch
               </div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
                 Mã Batch: <span className="font-mono">{result?.batch_id || batch?.batch_id}</span>
@@ -202,55 +190,6 @@ export const BatchVerificationModal: React.FC<BatchVerificationModalProps> = ({
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', maxWidth: 420 }}>
                 Hệ thống đang duyệt toàn bộ accepted telemetry của batch từ MySQL, tính toán cây Merkle theo chuẩn MERKLE-v1 và đối chiếu với Root đã neo on-chain.
               </p>
-            </div>
-          ) : error ? (
-            /* Error State Banner (Network/Auth/Server error) */
-            <div
-              style={{
-                padding: 'var(--space-4)',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: '#FFFBEB',
-                border: '1px solid #FCD34D',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 'var(--space-3)',
-              }}
-            >
-              <AlertTriangle size={24} style={{ color: '#D97706', flexShrink: 0, marginTop: '2px' }} />
-              <div>
-                <div
-                  style={{
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 700,
-                    color: '#92400E',
-                  }}
-                >
-                  KHÔNG THỂ THỰC HIỆN XÁC MINH
-                </div>
-                <div
-                  style={{
-                    fontSize: 'var(--text-xs)',
-                    color: '#78350F',
-                    marginTop: '4px',
-                    lineHeight: '18px',
-                  }}
-                >
-                  {error}
-                </div>
-                <div
-                  style={{
-                    fontSize: '11px',
-                    color: '#92400E',
-                    marginTop: '8px',
-                    lineHeight: '16px',
-                    padding: '6px 8px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-                    borderRadius: 'var(--radius-sm)',
-                  }}
-                >
-                  <strong>Lưu ý:</strong> Lỗi kết nối, hết thời gian chờ hoặc quyền truy cập (401/403) không đồng nghĩa dữ liệu bị can thiệp (tamper). Trạng thái toàn vẹn của batch được giữ nguyên theo kết luận backend.
-                </div>
-              </div>
             </div>
           ) : result ? (
             <>

@@ -4,6 +4,7 @@ import { ToastContainer } from './ToastContainer';
 
 const DEFAULT_DURATION = 4500;
 const DEDUP_COOLDOWN_MS = 1500;
+const MAX_VISIBLE_TOASTS = 5;
 
 export const ToastContext = createContext<ToastContextValue | null>(null);
 
@@ -11,25 +12,34 @@ let toastCounter = 0;
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const toastsRef = useRef<ToastItem[]>([]);
   const recentToastsRef = useRef<Map<string, number>>(new Map());
 
   const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    setToasts((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      toastsRef.current = next;
+      return next;
+    });
   }, []);
 
   const clearToasts = useCallback(() => {
+    toastsRef.current = [];
+    recentToastsRef.current.clear();
     setToasts([]);
   }, []);
 
   const addToast = useCallback(
     (type: ToastType, message: string, options?: ToastOptions): string => {
       const trimmedMessage = message.trim();
+      if (!trimmedMessage) return '';
+
       const dedupKey =
         options?.dedupKey || `${type}:${options?.title || ''}:${trimmedMessage}`;
       const now = Date.now();
 
       // Check if identical toast is already active in list
-      const existing = toasts.find((t) => t.dedupKey === dedupKey);
+      const existing = toastsRef.current.find((t) => t.dedupKey === dedupKey);
       if (existing) {
         return existing.id;
       }
@@ -64,10 +74,18 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         action: options?.action,
       };
 
-      setToasts((prev) => [...prev, newToast]);
+      setToasts((prev) => {
+        if (prev.some((t) => t.dedupKey === dedupKey)) {
+          toastsRef.current = prev;
+          return prev;
+        }
+        const next = [...prev, newToast].slice(-MAX_VISIBLE_TOASTS);
+        toastsRef.current = next;
+        return next;
+      });
       return id;
     },
-    [toasts]
+    []
   );
 
   const toast = useMemo(

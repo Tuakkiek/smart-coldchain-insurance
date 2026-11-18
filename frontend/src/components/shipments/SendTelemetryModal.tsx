@@ -4,14 +4,13 @@ import { TelemetryCreatePayload, TelemetryOut } from '../../types/api';
 import { postShipmentTelemetry } from '../../api/shipments';
 import { Button } from '../ui/Button';
 import { ApiError } from '../../api/client';
-import { useToast } from '../feedback/Toast';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../feedback/Toast';
 import {
   Radio,
   X,
   Thermometer,
   Droplets,
   Cpu,
-  Clock,
   AlertTriangle,
   CheckCircle,
   Info,
@@ -48,7 +47,6 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
   const [useCurrentTime, setUseCurrentTime] = useState(true);
   const [customRecordedAt, setCustomRecordedAt] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -56,7 +54,6 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
         setDeviceId(assignedDevices[0]);
       }
       setTemperature(((tempMin + tempMax) / 2).toFixed(1));
-      setError(null);
     }
   }, [isOpen, assignedDevices, tempMin, tempMax]);
 
@@ -94,28 +91,21 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deviceId.trim()) {
-      const msg = 'Mã thiết bị (Device ID) không được để trống';
-      setError(msg);
-      toast.warning(msg, { title: 'Thông tin chưa đầy đủ' });
+      toast.warning('Mã thiết bị (Device ID) không được để trống.', { title: 'Thông tin chưa đầy đủ' });
       return;
     }
     const t = parseFloat(temperature);
     if (isNaN(t)) {
-      const msg = 'Nhiệt độ không hợp lệ';
-      setError(msg);
-      toast.warning(msg, { title: 'Thông tin chưa hợp lệ' });
+      toast.warning('Nhiệt độ không hợp lệ.', { title: 'Thông tin chưa hợp lệ' });
       return;
     }
     const h = parseFloat(humidity);
     if (isNaN(h) || h < 0 || h > 100) {
-      const msg = 'Độ ẩm phải từ 0% đến 100%';
-      setError(msg);
-      toast.warning(msg, { title: 'Thông tin chưa hợp lệ' });
+      toast.warning('Độ ẩm phải từ 0% đến 100%.', { title: 'Thông tin chưa hợp lệ' });
       return;
     }
 
     setSubmitting(true);
-    setError(null);
 
     const payload: TelemetryCreatePayload = {
       device_id: deviceId.trim(),
@@ -129,6 +119,7 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
       onSuccess(sample);
       onClose();
     } catch (err: unknown) {
+      if (isRequestCancelled(err)) return;
       let msg = '';
       if (err instanceof ApiError) {
         if (err.code === 'SIGNED_TELEMETRY_REQUIRED' || err.status === 403) {
@@ -136,13 +127,14 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
         } else if (err.code === 'SHIPMENT_NOT_FOUND') {
           msg = 'Không tìm thấy lô hàng này trên máy chủ.';
         } else {
-          msg = err.message || 'Lỗi gửi dữ liệu đo cảm biến';
+          msg = formatApiErrorMessage(err, 'Lỗi gửi dữ liệu đo cảm biến. Vui lòng thử lại.');
         }
       } else {
-        msg = err instanceof Error ? err.message : 'Lỗi không xác định khi gửi telemetry';
+        msg = formatApiErrorMessage(err, 'Lỗi không xác định khi gửi telemetry.');
       }
-      setError(msg);
-      toast.error(msg, { title: 'Gửi Telemetry thất bại' });
+      if (msg) {
+        toast.error(msg, { title: 'Gửi Telemetry thất bại' });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -275,26 +267,6 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
               Dữ liệu gửi sẽ được Backend ghi nhận, cập nhật tọa độ hành trình và kiểm tra quy tắc vi phạm bảo hiểm.
             </div>
           </div>
-
-          {error && (
-            <div
-              style={{
-                marginBottom: 'var(--space-4)',
-                padding: 'var(--space-3) var(--space-4)',
-                backgroundColor: 'var(--color-danger-soft)',
-                border: '1px solid var(--color-danger)',
-                borderRadius: 'var(--radius-md)',
-                color: 'var(--color-danger)',
-                fontSize: 'var(--text-xs)',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8,
-              }}
-            >
-              <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-              <div>{error}</div>
-            </div>
-          )}
 
           {/* Device ID Selection */}
           <div style={{ marginBottom: 'var(--space-4)' }}>

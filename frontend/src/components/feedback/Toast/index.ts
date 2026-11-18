@@ -8,3 +8,4 @@ export type {
 export { ToastItem } from './ToastItem';
 export { ToastContainer } from './ToastContainer';
 export { ToastContext, ToastProvider, useToast } from './ToastContext';
+export { formatApiErrorMessage, isRequestCancelled } from './errorMessage';

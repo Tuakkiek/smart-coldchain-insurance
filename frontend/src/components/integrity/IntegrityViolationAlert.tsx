@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { IntegrityBatch } from '../../types/api';
 import { Button } from '../ui/Button';
+import { useToast } from '../feedback/Toast';
 import {
   ShieldAlert,
   AlertTriangle,
@@ -9,8 +10,6 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  FileWarning,
-  ExternalLink,
 } from 'lucide-react';
 
 interface IntegrityViolationAlertProps {
@@ -26,6 +25,7 @@ export const IntegrityViolationAlert: React.FC<IntegrityViolationAlertProps> = (
   verifyingBatchId,
   onSelectBatch,
 }) => {
+  const { toast } = useToast();
   const [expanded, setExpanded] = useState(true);
   const [copiedRootId, setCopiedRootId] = useState<string | null>(null);
 
@@ -34,9 +34,17 @@ export const IntegrityViolationAlert: React.FC<IntegrityViolationAlertProps> = (
   }
 
   const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedRootId(id);
-    setTimeout(() => setCopiedRootId(null), 2000);
+    if (!text) return;
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopiedRootId(id);
+        toast.info('Đã sao chép Merkle Root vào bộ nhớ tạm.', { title: 'Sao chép' });
+        setTimeout(() => setCopiedRootId(null), 2000);
+      })
+      .catch(() => {
+        toast.error('Không thể sao chép vào bộ nhớ tạm.', { title: 'Lỗi sao chép' });
+      });
   };
 
   return (

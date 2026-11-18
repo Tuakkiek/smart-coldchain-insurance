@@ -5,14 +5,14 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { ShipmentStatusBadge, InsuranceStatusBadge } from '../components/data-display/StatusBadge';
 import { LoadingState } from '../components/feedback/LoadingState';
-import { ErrorState } from '../components/feedback/ErrorState';
 import { EmptyState } from '../components/feedback/EmptyState';
+import { ConfirmModal } from '../components/feedback/ConfirmModal';
 import { deleteShipment, getShipments } from '../api/shipments';
 import { ApiError } from '../api/client';
 import { ShipmentOut, ShipmentStatus } from '../types/api';
-import { Search, MapPin, Thermometer, Shield, Plus, CheckCircle, ArrowRight, AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
+import { Search, MapPin, Thermometer, Shield, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { CreateShipmentModal } from '../components/shipments/CreateShipmentModal';
-import { useToast } from '../components/feedback/Toast';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 
 export const ShipmentsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -22,31 +22,44 @@ export const ShipmentsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [successShipment, setSuccessShipment] = useState<ShipmentOut | null>(null);
-  const [deleteSuccessMsg, setDeleteSuccessMsg] = useState<string | null>(null);
-  const [deleteErrorMsg, setDeleteErrorMsg] = useState<string | null>(null);
+  const [shipmentToDelete, setShipmentToDelete] = useState<ShipmentOut | null>(null);
   const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const fetchShipments = async (isBackground = false) => {
+  const fetchShipments = async (isBackground = false, notifyManual = false) => {
     if (!isBackground && !hasLoadedOnce) {
       setLoading(true);
     } else {
       setRefreshing(true);
     }
-    setError(null);
+    setLoadFailed(false);
     try {
       const data = await getShipments();
       setShipments(data.items);
       setFiltered(data.items);
       setHasLoadedOnce(true);
+      if (notifyManual) {
+        toast.success('Đã làm mới danh sách lô hàng.', { title: 'Làm mới thành công' });
+      }
     } catch (err: unknown) {
-      if (!isBackground && !hasLoadedOnce) {
-        setError(err instanceof Error ? err.message : 'Không thể tải danh sách lô hàng');
+      if (isRequestCancelled(err)) return;
+      const msg = formatApiErrorMessage(err, 'Không thể tải danh sách lô hàng. Vui lòng thử lại.');
+      if (!hasLoadedOnce) {
+        setLoadFailed(true);
+      }
+      if (msg && (!isBackground || notifyManual)) {
+        toast.error(msg, {
+          title: 'Lỗi tải danh sách lô hàng',
+          dedupKey: 'shipments-fetch-error',
+          action: {
+            label: 'Thử lại',
+            onClick: () => fetchShipments(false),
+          },
+        });
       }
     } finally {
       setLoading(false);
@@ -56,7 +69,6 @@ export const ShipmentsPage: React.FC = () => {
 
   const handleShipmentCreated = (newShipment: ShipmentOut) => {
     setShipments((prev) => [newShipment, ...prev]);
-    setSuccessShipment(newShipment);
     toast.success(`Đã tạo thành công lô hàng mới: ${newShipment.code}`, {
       title: 'Tạo lô hàng thành công',
       action: {
@@ -66,33 +78,36 @@ export const ShipmentsPage: React.FC = () => {
     });
   };
 
-  const handleDeleteShipment = async (shipment: ShipmentOut) => {
-    setDeleteSuccessMsg(null);
-    setDeleteErrorMsg(null);
-    const confirmed = window.confirm(
-      `Xóa lô hàng ${shipment.code}? Chỉ lô hàng chưa liên kết thiết bị và chưa có dữ liệu vận hành mới có thể xóa.`
-    );
-    if (!confirmed) return;
+  const handleRequestDeleteShipment = (shipment: ShipmentOut) => {
+    setShipmentToDelete(shipment);
+  };
+
+  const handleConfirmDeleteShipment = async () => {
+    if (!shipmentToDelete || deletingShipmentId) return;
+    const shipment = shipmentToDelete;
 
     setDeletingShipmentId(shipment.id);
     try {
       await deleteShipment(shipment.id);
       setShipments((current) => current.filter((item) => item.id !== shipment.id));
-      if (successShipment?.id === shipment.id) setSuccessShipment(null);
-      const successMsg = `Đã xóa lô hàng ${shipment.code} thành công.`;
-      setDeleteSuccessMsg(successMsg);
-      toast.success(successMsg, { title: 'Xóa lô hàng thành công' });
+      setShipmentToDelete(null);
+      toast.success(`Đã xóa lô hàng ${shipment.code} thành công.`, {
+        title: 'Xóa lô hàng thành công',
+      });
     } catch (err: unknown) {
+      setShipmentToDelete(null);
+      if (isRequestCancelled(err)) return;
       let msg = '';
       if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_ASSIGNED_DEVICES') {
         msg = `Không thể xóa ${shipment.code}: vẫn còn thiết bị đang liên kết. Hãy bỏ liên kết trong trang Thiết bị trước.`;
       } else if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_DATA') {
         msg = `Không thể xóa ${shipment.code} vì đã có dữ liệu vận hành hoặc lịch sử đối soát.`;
       } else {
-        msg = err instanceof Error ? err.message : 'Không thể xóa lô hàng.';
+        msg = formatApiErrorMessage(err, 'Không thể xóa lô hàng. Vui lòng thử lại.');
       }
-      setDeleteErrorMsg(msg);
-      toast.error(msg, { title: 'Lỗi xóa lô hàng' });
+      if (msg) {
+        toast.error(msg, { title: 'Lỗi xóa lô hàng' });
+      }
     } finally {
       setDeletingShipmentId(null);
     }
@@ -127,13 +142,17 @@ export const ShipmentsPage: React.FC = () => {
     return <LoadingState fullPage message="Đang tải danh sách lô hàng..." />;
   }
 
-  if (error && !hasLoadedOnce) {
+  if (loadFailed && !hasLoadedOnce) {
     return (
-      <ErrorState
-        title="Lỗi tải danh sách lô hàng"
-        message={error}
-        onRetry={() => fetchShipments(false)}
-      />
+      <div>
+        <PageHeader title="Danh sách Lô hàng Lạnh" />
+        <EmptyState
+          title="Chưa thể tải danh sách lô hàng"
+          description="Vui lòng kiểm tra kết nối máy chủ Backend và thử tải lại."
+          actionText="Thử lại"
+          onAction={() => fetchShipments(false)}
+        />
+      </div>
     );
   }
 
@@ -146,10 +165,7 @@ export const ShipmentsPage: React.FC = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => {
-                fetchShipments(true);
-                toast.info('Đang làm mới danh sách lô hàng...', { title: 'Làm mới', duration: 2500 });
-              }}
+              onClick={() => fetchShipments(true, true)}
               loading={refreshing}
               disabled={loading || refreshing}
               icon={<RefreshCw size={14} />}
@@ -168,117 +184,6 @@ export const ShipmentsPage: React.FC = () => {
           </div>
         }
       />
-
-      {/* Success Notification Banner */}
-      {successShipment && (
-        <div
-          style={{
-            marginBottom: 'var(--space-5)',
-            padding: 'var(--space-3) var(--space-4)',
-            backgroundColor: 'var(--color-success-soft)',
-            border: '1px solid var(--color-success)',
-            borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-            animation: 'fadeIn 0.2s ease-out',
-          }}
-        >
-          <div className="flex-row items-center gap-2">
-            <CheckCircle size={18} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
-            <div>
-              <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-success)' }}>
-                Đã tạo thành công lô hàng mới: {successShipment.code} ({successShipment.cargo_type})
-              </span>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                Lộ trình: {successShipment.origin.name} ➔ {successShipment.destination.name} | Nhiệt độ an toàn: {successShipment.temp_min_c}°C đến {successShipment.temp_max_c}°C
-              </div>
-            </div>
-          </div>
-          <div className="flex-row items-center gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => navigate(`/shipments/${successShipment.id}`)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)' }}
-            >
-              Xem chi tiết <ArrowRight size={14} />
-            </Button>
-            <button
-              onClick={() => setSuccessShipment(null)}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'var(--color-text-tertiary)',
-                padding: '2px 6px',
-                fontSize: 'var(--text-sm)',
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
-      {deleteSuccessMsg && (
-        <div
-          style={{
-            marginBottom: 'var(--space-5)',
-            padding: 'var(--space-3) var(--space-4)',
-            backgroundColor: 'var(--color-success-soft)',
-            border: '1px solid var(--color-success)',
-            borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-          }}
-        >
-          <div className="flex-row items-center gap-2">
-            <CheckCircle size={18} style={{ color: 'var(--color-success)' }} />
-            <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-              {deleteSuccessMsg}
-            </span>
-          </div>
-          <button
-            onClick={() => setDeleteSuccessMsg(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {deleteErrorMsg && (
-        <div
-          style={{
-            marginBottom: 'var(--space-5)',
-            padding: 'var(--space-3) var(--space-4)',
-            backgroundColor: 'var(--color-danger-soft)',
-            border: '1px solid var(--color-danger)',
-            borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-          }}
-        >
-          <div className="flex-row items-center gap-2">
-            <AlertTriangle size={18} style={{ color: 'var(--color-danger)', flexShrink: 0 }} />
-            <span style={{ color: 'var(--color-danger)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-              {deleteErrorMsg}
-            </span>
-          </div>
-          <button
-            onClick={() => setDeleteErrorMsg(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
 
       {/* Filter and Search Bar */}
       <Card style={{ marginBottom: 'var(--space-6)', padding: 'var(--space-4)' }}>
@@ -399,7 +304,7 @@ export const ShipmentsPage: React.FC = () => {
                       icon={<Trash2 size={13} />}
                       onClick={(event) => {
                         event.stopPropagation();
-                        handleDeleteShipment(shipment);
+                        handleRequestDeleteShipment(shipment);
                       }}
                     >
                       Xóa
@@ -489,6 +394,29 @@ export const ShipmentsPage: React.FC = () => {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={handleShipmentCreated}
+      />
+
+      {/* Modal Xác Nhận Xóa Lô Hàng */}
+      <ConfirmModal
+        isOpen={Boolean(shipmentToDelete)}
+        title="Xác nhận xóa lô hàng"
+        message={
+          shipmentToDelete ? (
+            <>
+              Bạn có chắc chắn muốn xóa lô hàng{' '}
+              <strong className="font-mono">{shipmentToDelete.code}</strong> không?
+            </>
+          ) : null
+        }
+        description="Chỉ lô hàng chưa liên kết thiết bị và chưa có dữ liệu vận hành hoặc lịch sử đối soát mới có thể xóa. Thao tác này không thể hoàn tác."
+        confirmLabel={deletingShipmentId ? 'Đang xóa...' : 'Xác nhận'}
+        cancelLabel="Hủy"
+        variant="danger"
+        loading={Boolean(deletingShipmentId)}
+        onConfirm={handleConfirmDeleteShipment}
+        onCancel={() => {
+          if (!deletingShipmentId) setShipmentToDelete(null);
+        }}
       />
     </div>
   );

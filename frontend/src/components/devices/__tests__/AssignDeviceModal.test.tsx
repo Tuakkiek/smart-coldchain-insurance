@@ -2,6 +2,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AssignDeviceModal } from '../AssignDeviceModal';
+import { ToastProvider } from '../../feedback/Toast';
 import { apiClient, ApiError } from '../../../api/client';
 import { getDevices } from '../../../api/devices';
 import { AdminDeviceViewOut } from '../../../types/api';
@@ -11,9 +12,8 @@ vi.mock('../../../api/client', async (importOriginal) => ({
   apiClient: { get: vi.fn(), post: vi.fn() },
 }));
 
-vi.mock('../../feedback/Toast', () => ({
-  useToast: () => ({ toast: { warning: vi.fn(), error: vi.fn() } }),
-}));
+const renderWithToast = (ui: React.ReactElement) =>
+  render(<ToastProvider>{ui}</ToastProvider>);
 
 const firstShipment = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const secondShipment = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -51,7 +51,7 @@ describe('device linking lifecycle', () => {
   it('keeps a device unlinked after reloading the catalog and reopening the modal', async () => {
     const onSuccess = vi.fn();
     const onClose = vi.fn();
-    const { rerender } = render(
+    const { rerender } = renderWithToast(
       <AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} initialDeviceId="ESP32-001" />
     );
 
@@ -63,8 +63,16 @@ describe('device linking lifecycle', () => {
     expect(device.assignments).toEqual([{ shipment_id: firstShipment, active: false }]);
     expect((await getDevices()).items[0].assigned_shipment_id).toBeNull();
 
-    rerender(<AssignDeviceModal isOpen={false} onClose={onClose} onSuccess={onSuccess} />);
-    rerender(<AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} initialDeviceId="ESP32-001" />);
+    rerender(
+      <ToastProvider>
+        <AssignDeviceModal isOpen={false} onClose={onClose} onSuccess={onSuccess} />
+      </ToastProvider>
+    );
+    rerender(
+      <ToastProvider>
+        <AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} initialDeviceId="ESP32-001" />
+      </ToastProvider>
+    );
     await screen.findByText('Chưa liên kết với chuyến hàng nào (Sẵn sàng gán).');
     expect(screen.queryByRole('button', { name: 'Bỏ liên kết chuyến hàng' })).not.toBeInTheDocument();
   });
@@ -72,7 +80,7 @@ describe('device linking lifecycle', () => {
   it('unlinks the current shipment before linking a different shipment', async () => {
     const onSuccess = vi.fn();
     const onClose = vi.fn();
-    render(<AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} />);
+    renderWithToast(<AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Bỏ liên kết chuyến hàng' }));
     await screen.findByText('Chưa liên kết với chuyến hàng nào (Sẵn sàng gán).');
     fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: secondShipment } });
@@ -89,13 +97,15 @@ describe('device linking lifecycle', () => {
     ]);
   });
 
-  it('retains the current link and displays the backend error when unlinking fails', async () => {
+  it('retains the current link and displays the backend error via Toast only when unlinking fails', async () => {
     vi.mocked(apiClient.post).mockRejectedValueOnce(new ApiError('Không thể gỡ liên kết', 500, 'INTERNAL_ERROR'));
     const onSuccess = vi.fn();
-    render(<AssignDeviceModal isOpen onClose={vi.fn()} onSuccess={onSuccess} />);
+    renderWithToast(<AssignDeviceModal isOpen onClose={vi.fn()} onSuccess={onSuccess} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Bỏ liên kết chuyến hàng' }));
 
-    await screen.findByText('Không thể gỡ liên kết');
+    const toastAlert = await screen.findByRole('alert');
+    expect(toastAlert).toHaveTextContent('Không thể gỡ liên kết');
+    expect(screen.getAllByText('Không thể gỡ liên kết')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Bỏ liên kết chuyến hàng' })).toBeEnabled();
     expect(onSuccess).not.toHaveBeenCalled();
     expect(device.current_shipment_id).toBe(firstShipment);
@@ -104,11 +114,21 @@ describe('device linking lifecycle', () => {
   it('clears previous selections when reopened with empty catalogs', async () => {
     const onSuccess = vi.fn();
     const onClose = vi.fn();
-    const { rerender } = render(<AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} />);
+    const { rerender } = renderWithToast(
+      <AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} />
+    );
     await screen.findByRole('button', { name: 'Bỏ liên kết chuyến hàng' });
-    rerender(<AssignDeviceModal isOpen={false} onClose={onClose} onSuccess={onSuccess} />);
+    rerender(
+      <ToastProvider>
+        <AssignDeviceModal isOpen={false} onClose={onClose} onSuccess={onSuccess} />
+      </ToastProvider>
+    );
     vi.mocked(apiClient.get).mockResolvedValue({ items: [], total: 0 });
-    rerender(<AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} />);
+    rerender(
+      <ToastProvider>
+        <AssignDeviceModal isOpen onClose={onClose} onSuccess={onSuccess} />
+      </ToastProvider>
+    );
 
     await waitFor(() => expect(screen.getAllByRole('combobox')[0].children).toHaveLength(0));
     expect(screen.getByRole('button', { name: 'Liên Kết Chuyến Hàng' })).toBeDisabled();

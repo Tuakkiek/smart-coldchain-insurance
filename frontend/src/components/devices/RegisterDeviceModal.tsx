@@ -4,11 +4,10 @@ import { DeviceRegisterPayload, AdminDeviceViewOut } from '../../types/api';
 import { registerDevice } from '../../api/devices';
 import { ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
-import { useToast } from '../feedback/Toast';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../feedback/Toast';
 import {
   Cpu,
   X,
-  AlertCircle,
   RefreshCw,
   Info,
 } from 'lucide-react';
@@ -29,7 +28,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
   const [deviceName, setDeviceName] = useState('Cold Chain Sensor 01');
 
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [invalidField, setInvalidField] = useState<'deviceId' | 'deviceName' | null>(null);
 
   const generateRandomDeviceId = () => {
     const rand = Math.floor(1 + Math.random() * 999).toString().padStart(3, '0');
@@ -40,7 +39,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
     if (isOpen) {
       setDeviceId('ESP32-001');
       setDeviceName('Cold Chain Sensor 01');
-      setError(null);
+      setInvalidField(null);
     }
   }, [isOpen]);
 
@@ -73,20 +72,18 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deviceId.trim()) {
-      const msg = 'Mã thiết bị (Device ID) không được để trống';
-      setError(msg);
-      toast.warning(msg, { title: 'Thông tin chưa đầy đủ' });
+      setInvalidField('deviceId');
+      toast.warning('Mã thiết bị (Device ID) không được để trống.', { title: 'Thông tin chưa đầy đủ' });
       return;
     }
     if (!deviceName.trim()) {
-      const msg = 'Tên thiết bị (Device Name) không được để trống';
-      setError(msg);
-      toast.warning(msg, { title: 'Thông tin chưa đầy đủ' });
+      setInvalidField('deviceName');
+      toast.warning('Tên thiết bị (Device Name) không được để trống.', { title: 'Thông tin chưa đầy đủ' });
       return;
     }
 
     setSubmitting(true);
-    setError(null);
+    setInvalidField(null);
 
     const payload: DeviceRegisterPayload = {
       device_id: deviceId.trim(),
@@ -98,6 +95,7 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
       onSuccess(result);
       onClose();
     } catch (err: unknown) {
+      if (isRequestCancelled(err)) return;
       let msg = '';
       if (err instanceof ApiError) {
         if (err.status === 401 || err.code === 'UNAUTHORIZED') {
@@ -105,15 +103,16 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
         } else if (err.status === 409 || err.code === 'DEVICE_EXISTS') {
           msg = `Mã thiết bị '${deviceId.trim()}' đã tồn tại trên hệ thống.`;
         } else if (err.status === 422) {
-          msg = err.message || 'Dữ liệu đăng ký không hợp lệ (Mã ID 1-100 ký tự).';
+          msg = formatApiErrorMessage(err, 'Dữ liệu đăng ký không hợp lệ (Mã ID 1-100 ký tự).');
         } else {
-          msg = err.message || 'Lỗi khi đăng ký thiết bị';
+          msg = formatApiErrorMessage(err, 'Lỗi khi đăng ký thiết bị. Vui lòng thử lại.');
         }
       } else {
-        msg = err instanceof Error ? err.message : 'Lỗi không xác định khi đăng ký thiết bị';
+        msg = formatApiErrorMessage(err, 'Lỗi không xác định khi đăng ký thiết bị.');
       }
-      setError(msg);
-      toast.error(msg, { title: 'Đăng ký thiết bị thất bại' });
+      if (msg) {
+        toast.error(msg, { title: 'Đăng ký thiết bị thất bại' });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -250,26 +249,6 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
               padding: 'var(--space-5)',
             }}
           >
-            {error && (
-              <div
-                style={{
-                  marginBottom: 'var(--space-4)',
-                  padding: 'var(--space-3) var(--space-4)',
-                  backgroundColor: 'var(--color-danger-soft)',
-                  border: '1px solid var(--color-danger)',
-                  borderRadius: 'var(--radius-md)',
-                  color: 'var(--color-danger)',
-                  fontSize: 'var(--text-xs)',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 8,
-                }}
-              >
-                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-                <div>{error}</div>
-              </div>
-            )}
-
             {/* Device ID Input */}
             <div style={{ marginBottom: 'var(--space-4)' }}>
               <label
@@ -289,13 +268,16 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
                   id="register-device-id-input"
                   type="text"
                   value={deviceId}
-                  onChange={(e) => setDeviceId(e.target.value)}
+                  onChange={(e) => {
+                    setDeviceId(e.target.value);
+                    if (invalidField === 'deviceId') setInvalidField(null);
+                  }}
                   placeholder="VD: ESP32-001"
                   style={{
                     flex: 1,
                     padding: '8px 12px',
                     borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border)',
+                    border: `1px solid ${invalidField === 'deviceId' ? 'var(--color-danger)' : 'var(--color-border)'}`,
                     fontSize: 'var(--text-sm)',
                     fontFamily: 'monospace',
                     fontWeight: 600,
@@ -347,13 +329,16 @@ export const RegisterDeviceModal: React.FC<RegisterDeviceModalProps> = ({
                 id="register-device-name-input"
                 type="text"
                 value={deviceName}
-                onChange={(e) => setDeviceName(e.target.value)}
+                onChange={(e) => {
+                  setDeviceName(e.target.value);
+                  if (invalidField === 'deviceName') setInvalidField(null);
+                }}
                 placeholder="VD: Cold Chain Sensor 01"
                 style={{
                   width: '100%',
                   padding: '8px 12px',
                   borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
+                  border: `1px solid ${invalidField === 'deviceName' ? 'var(--color-danger)' : 'var(--color-border)'}`,
                   fontSize: 'var(--text-sm)',
                   boxSizing: 'border-box',
                 }}

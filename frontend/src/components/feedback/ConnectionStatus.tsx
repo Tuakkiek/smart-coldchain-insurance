@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { checkBackendHealth } from '../../api/shipments';
 import { apiClient, ApiError } from '../../api/client';
 import { Badge } from '../ui/Badge';
+import { useToast } from './Toast';
 import { Activity, Wifi, WifiOff, Clock } from 'lucide-react';
 
 export type BackendConnectionState = 'ONLINE' | 'COLD_START' | 'OFFLINE' | 'CHECKING';
@@ -35,53 +36,94 @@ export function useBackendConnectionState(): BackendConnectionState {
   return state;
 }
 
+export function useBackendHealthMonitor() {
+  const { toast } = useToast();
+  const [connectionState, setConnectionState] = useState<BackendConnectionState>(globalBackendState);
+  const [checking, setChecking] = useState<boolean>(false);
+  const prevStateRef = useRef<BackendConnectionState>(globalBackendState);
+
+  useEffect(() => {
+    const handler: Listener = (nextState) => {
+      prevStateRef.current = nextState;
+      setConnectionState(nextState);
+    };
+    listeners.add(handler);
+    return () => {
+      listeners.delete(handler);
+    };
+  }, []);
+
+  const checkStatus = useCallback(
+    async (isManual = false) => {
+      setChecking(true);
+      const startTime = Date.now();
+      let nextState: BackendConnectionState = 'OFFLINE';
+
+      try {
+        const res = await checkBackendHealth();
+        nextState = res && res.status === 'ok' ? 'ONLINE' : 'OFFLINE';
+      } catch (err: unknown) {
+        const elapsed = Date.now() - startTime;
+        const isColdStart =
+          (err instanceof ApiError &&
+            (err.isBackendColdStart ||
+              err.code === 'RENDER_COLD_START_TIMEOUT' ||
+              err.status === 504 ||
+              err.status === 503)) ||
+          elapsed >= 5000;
+
+        nextState = isColdStart ? 'COLD_START' : 'OFFLINE';
+      } finally {
+        const prevState = prevStateRef.current;
+        prevStateRef.current = nextState;
+        setConnectionState(nextState);
+        setGlobalBackendState(nextState);
+        setChecking(false);
+
+        if (nextState === 'COLD_START' && (prevState !== 'COLD_START' || isManual)) {
+          toast.warning(
+            'Máy chủ Backend đang khởi động lại (Render Cold Start ~30s). Trạng thái thiết bị ESP32 vẫn được bảo lưu.',
+            { title: 'Backend đang khởi động', dedupKey: 'backend-cold-start', duration: 6000 }
+          );
+        } else if (nextState === 'OFFLINE' && (prevState !== 'OFFLINE' || isManual)) {
+          toast.error(
+            'Không thể kết nối tới máy chủ Backend. Hệ thống sẽ tự động kiểm tra lại.',
+            { title: 'Mất kết nối Backend', dedupKey: 'backend-offline' }
+          );
+        } else if (
+          nextState === 'ONLINE' &&
+          (prevState === 'OFFLINE' || prevState === 'COLD_START' || isManual)
+        ) {
+          toast.success(
+            isManual
+              ? 'Kết nối tới máy chủ Backend đang hoạt động ổn định.'
+              : 'Đã khôi phục kết nối tới máy chủ Backend.',
+            { title: 'Backend trực tuyến', dedupKey: 'backend-online' }
+          );
+        }
+      }
+    },
+    [toast]
+  );
+
+  useEffect(() => {
+    checkStatus(false);
+    const interval = setInterval(() => checkStatus(false), 25000);
+    return () => clearInterval(interval);
+  }, [checkStatus]);
+
+  return { connectionState, checking, checkStatus };
+}
+
 interface ConnectionStatusProps {
   onRefresh?: () => void;
 }
 
 export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ onRefresh }) => {
-  const [connectionState, setConnectionState] = useState<BackendConnectionState>('CHECKING');
-  const [checking, setChecking] = useState<boolean>(false);
-
-  const checkStatus = useCallback(async () => {
-    setChecking(true);
-    const startTime = Date.now();
-
-    try {
-      const res = await checkBackendHealth();
-      if (res && res.status === 'ok') {
-        setConnectionState('ONLINE');
-        setGlobalBackendState('ONLINE');
-      } else {
-        setConnectionState('OFFLINE');
-        setGlobalBackendState('OFFLINE');
-      }
-    } catch (err: unknown) {
-      const elapsed = Date.now() - startTime;
-      const isColdStart =
-        (err instanceof ApiError && (err.isBackendColdStart || err.code === 'RENDER_COLD_START_TIMEOUT' || err.status === 504 || err.status === 503)) ||
-        elapsed >= 5000;
-
-      if (isColdStart) {
-        setConnectionState('COLD_START');
-        setGlobalBackendState('COLD_START');
-      } else {
-        setConnectionState('OFFLINE');
-        setGlobalBackendState('OFFLINE');
-      }
-    } finally {
-      setChecking(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    checkStatus();
-    const interval = setInterval(checkStatus, 25000);
-    return () => clearInterval(interval);
-  }, [checkStatus]);
+  const { connectionState, checking, checkStatus } = useBackendHealthMonitor();
 
   const handleRetry = () => {
-    checkStatus();
+    checkStatus(true);
     if (onRefresh) onRefresh();
   };
 

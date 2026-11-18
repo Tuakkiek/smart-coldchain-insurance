@@ -4,16 +4,12 @@ import { MetricCard } from '../components/data-display/MetricCard';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { LoadingState } from '../components/feedback/LoadingState';
-import { ErrorState } from '../components/feedback/ErrorState';
-import {
-  BackendStatusAlert,
-} from '../components/feedback/BackendStatusAlert';
-import { useBackendConnectionState } from '../components/feedback/ConnectionStatus';
+import { EmptyState } from '../components/feedback/EmptyState';
 import { MerkleBatchTable } from '../components/integrity/MerkleBatchTable';
 import { IntegrityViolationAlert } from '../components/integrity/IntegrityViolationAlert';
 import { BatchVerificationModal } from '../components/integrity/BatchVerificationModal';
 import { BatchDetailModal } from '../components/integrity/BatchDetailModal';
-import { useToast } from '../components/feedback/Toast';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 import {
   getIntegrityBatches,
   getIntegritySummary,
@@ -27,33 +23,25 @@ import {
 import { ApiError } from '../api/client';
 import {
   Layers,
-  ShieldCheck,
   ShieldAlert,
-  AlertTriangle,
   RefreshCw,
   Database,
   Link as LinkIcon,
   CheckCircle2,
-  Info,
 } from 'lucide-react';
 
 export const DataIntegrityPage: React.FC = () => {
   const { toast } = useToast();
-  const backendConnectionState = useBackendConnectionState();
   const [batches, setBatches] = useState<IntegrityBatch[]>([]);
   const [summary, setSummary] = useState<IntegritySummaryOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isColdStart, setIsColdStart] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [isStale, setIsStale] = useState(false);
-  const [staleError, setStaleError] = useState<string | null>(null);
 
   // Verification State & Modal
   const [verifyingBatchId, setVerifyingBatchId] = useState<string | null>(null);
   const [verificationResult, setVerificationResult] = useState<BatchVerifyResultOut | null>(null);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [isVerifyingLoading, setIsVerifyingLoading] = useState(false);
 
@@ -62,15 +50,15 @@ export const DataIntegrityPage: React.FC = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   const isMountedRef = useRef(true);
+  const wasStaleRef = useRef(false);
 
-  const fetchData = async (isBackground = false) => {
+  const fetchData = async (isBackground = false, notifyManual = false) => {
     if (!isBackground) {
       setLoading(true);
     } else {
       setRefreshing(true);
     }
-    setError(null);
-    setIsColdStart(false);
+    setLoadFailed(false);
 
     try {
       const [batchesRes, summaryRes] = await Promise.all([
@@ -81,25 +69,46 @@ export const DataIntegrityPage: React.FC = () => {
       if (isMountedRef.current) {
         setBatches(batchesRes.items);
         setSummary(summaryRes);
-        setIsStale(false);
-        setStaleError(null);
+        wasStaleRef.current = false;
+        if (notifyManual) {
+          toast.success('Đã cập nhật dữ liệu Merkle Batches.', { title: 'Làm mới thành công' });
+        }
       }
     } catch (err: unknown) {
+      if (isRequestCancelled(err)) return;
       if (isMountedRef.current) {
+        const coldStart = err instanceof ApiError && !!err.isBackendColdStart;
+        const msg = formatApiErrorMessage(err, 'Không thể tải danh sách Merkle Batch. Vui lòng thử lại.');
+
         if (!isBackground) {
-          if (err instanceof ApiError) {
-            setIsColdStart(!!err.isBackendColdStart);
-            setError(err.message);
-          } else {
-            setError(
-              err instanceof Error
-                ? err.message
-                : 'Lỗi không xác định khi tải danh sách Merkle Batch'
-            );
+          setLoadFailed(true);
+          if (coldStart) {
+            toast.warning(msg, {
+              title: 'Backend đang khởi động',
+              dedupKey: 'integrity-cold-start',
+              action: { label: 'Thử lại', onClick: () => fetchData(false) },
+            });
+          } else if (msg) {
+            toast.error(msg, {
+              title: 'Lỗi tải dữ liệu Merkle Batches',
+              dedupKey: 'integrity-fetch-error',
+              action: { label: 'Thử lại', onClick: () => fetchData(false) },
+            });
           }
-        } else {
-          setIsStale(true);
-          setStaleError(err instanceof Error ? err.message : 'Lỗi kết nối khi polling nền');
+        } else if (notifyManual) {
+          if (msg) {
+            toast.error(msg, { title: 'Lỗi làm mới Merkle Batches' });
+          }
+        } else if (!wasStaleRef.current) {
+          wasStaleRef.current = true;
+          toast.warning(
+            'Đồng bộ Merkle Batches tự động tạm thời gián đoạn. Đang hiển thị dữ liệu gần nhất.',
+            {
+              title: 'Chưa cập nhật dữ liệu mới',
+              dedupKey: 'integrity-polling-error',
+              action: { label: 'Thử lại', onClick: () => fetchData(true, true) },
+            }
+          );
         }
       }
     } finally {
@@ -139,8 +148,6 @@ export const DataIntegrityPage: React.FC = () => {
     setIsVerifyingLoading(true);
     setIsVerifyModalOpen(true);
     setVerificationResult(null);
-    setVerifyError(null);
-
 
     try {
       const result = await verifyBatch(batchId);
@@ -193,13 +200,17 @@ export const DataIntegrityPage: React.FC = () => {
       }
     } catch (err: unknown) {
       if (isMountedRef.current) {
-        const errorMsg =
-          err instanceof Error
-            ? err.message
-            : 'Lỗi kết nối hoặc quyền truy cập khi gửi yêu cầu xác minh tới Backend';
-        setVerifyError(errorMsg);
-        toast.error(errorMsg, { title: 'Lỗi xác minh Merkle' });
+        setIsVerifyModalOpen(false);
         // CRITICAL: Do NOT fabricate DATA_INTEGRITY_FAILED on API/network errors!
+        if (!isRequestCancelled(err)) {
+          const errorMsg = formatApiErrorMessage(
+            err,
+            'Không thể gửi yêu cầu xác minh tới Backend. Trạng thái toàn vẹn của batch được giữ nguyên.'
+          );
+          if (errorMsg) {
+            toast.error(errorMsg, { title: 'Lỗi xác minh Merkle' });
+          }
+        }
       }
     } finally {
       if (isMountedRef.current) {
@@ -214,30 +225,23 @@ export const DataIntegrityPage: React.FC = () => {
     setIsDetailModalOpen(true);
   };
 
-  const isEffectiveColdStart =
-    isColdStart || backendConnectionState === 'COLD_START';
-
   if (loading && batches.length === 0) {
     return <LoadingState fullPage message="Đang nạp danh sách Merkle Batches và trạng thái neo Blockchain..." />;
   }
 
-  if (error && batches.length === 0) {
+  if (loadFailed && batches.length === 0) {
     return (
       <div>
         <PageHeader
           title="Toàn vẹn Dữ liệu & Merkle Batches"
           description="Quản lý tính toàn vẹn dữ liệu cảm biến và kiểm tra Merkle root neo on-chain."
         />
-        <BackendStatusAlert
-          isColdStart={isEffectiveColdStart}
-          errorMessage={error}
-          onRetry={() => fetchData(false)}
-          retrying={refreshing}
-        />
-        <ErrorState
-          title="Không thể tải dữ liệu Merkle Batches"
-          message={error}
-          onRetry={() => fetchData(false)}
+        <EmptyState
+          title="Chưa thể tải dữ liệu Merkle Batches"
+          description="Vui lòng kiểm tra kết nối máy chủ Backend và thử tải lại."
+          actionText="Thử lại"
+          onAction={() => fetchData(false)}
+          icon={<Layers size={24} />}
         />
       </div>
     );
@@ -307,10 +311,7 @@ export const DataIntegrityPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => {
-              fetchData(true);
-              toast.info('Đang làm mới dữ liệu Merkle Batches...', { title: 'Làm mới', duration: 2500 });
-            }}
+            onClick={() => fetchData(true, true)}
             loading={refreshing}
             disabled={loading || refreshing}
             icon={<RefreshCw size={14} />}
@@ -323,39 +324,6 @@ export const DataIntegrityPage: React.FC = () => {
       <PageHeader
         title="Toàn vẹn Dữ liệu & Merkle Batches"
       />
-
-      {/* Backend connection banner if degraded */}
-      <BackendStatusAlert
-        isColdStart={isEffectiveColdStart}
-        errorMessage={error}
-        onRetry={() => fetchData(true)}
-        retrying={refreshing}
-      />
-
-      {/* Stale Polling Warning Banner */}
-      {isStale && (
-        <div
-          style={{
-            padding: 'var(--space-2) var(--space-4)',
-            backgroundColor: '#FFFBEB',
-            border: '1px solid #FCD34D',
-            borderRadius: 'var(--radius-md)',
-            color: '#92400E',
-            fontSize: 'var(--text-xs)',
-            marginBottom: 'var(--space-4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <span>
-            ⚠️ <strong>Dữ liệu chưa cập nhật:</strong> Quá trình polling nền gặp sự cố ({staleError}). Đang hiển thị dữ liệu từ lần tải gần nhất.
-          </span>
-          <Button size="sm" variant="secondary" onClick={() => fetchData(false)}>
-            Thử lại ngay
-          </Button>
-        </div>
-      )}
 
       {/* 5 KPI Metric Cards */}
       <div
@@ -433,12 +401,8 @@ export const DataIntegrityPage: React.FC = () => {
       {/* Modals */}
       <BatchVerificationModal
         isOpen={isVerifyModalOpen}
-        onClose={() => {
-          setIsVerifyModalOpen(false);
-          setVerifyError(null);
-        }}
+        onClose={() => setIsVerifyModalOpen(false)}
         result={verificationResult}
-        error={verifyError}
         batch={batches.find((b) => b.batch_id === verifyingBatchId) || selectedBatch}
         loading={isVerifyingLoading}
       />

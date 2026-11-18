@@ -6,6 +6,8 @@ import { ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { LoadingState } from '../feedback/LoadingState';
+import { EmptyState } from '../feedback/EmptyState';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../feedback/Toast';
 import {
   ShieldCheck,
   X,
@@ -13,9 +15,6 @@ import {
   Cpu,
   KeyRound,
   Layers,
-  AlertCircle,
-  Clock,
-  CheckCircle2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -30,41 +29,48 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const { toast } = useToast();
   const requestId = useRef(0);
   const [deviceDetail, setDeviceDetail] = useState<AdminDeviceViewOut | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
-  const fetchDetails = useCallback(async () => {
+  const fetchDetails = useCallback(async (isManualRefresh = false) => {
     if (!deviceId) return;
     const id = ++requestId.current;
 
     setLoading(true);
-    setError(null);
+    setLoadFailed(false);
     try {
       const data = await getAdminDeviceDetails(deviceId);
-      if (id === requestId.current) setDeviceDetail(data);
-    } catch (err: unknown) {
-      if (id !== requestId.current) return;
-      if (err instanceof ApiError) {
-        if (err.status === 401 || err.code === 'UNAUTHORIZED') {
-          setError('Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.');
-        } else {
-          setError(err.message || 'Lỗi khi tải chi tiết quản trị thiết bị.');
+      if (id === requestId.current) {
+        setDeviceDetail(data);
+        if (isManualRefresh) {
+          toast.success(`Đã làm mới chi tiết thiết bị ${deviceId}.`, { title: 'Làm mới thành công' });
         }
+      }
+    } catch (err: unknown) {
+      if (id !== requestId.current || isRequestCancelled(err)) return;
+      setLoadFailed(true);
+      let msg = '';
+      if (err instanceof ApiError && (err.status === 401 || err.code === 'UNAUTHORIZED')) {
+        msg = 'Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.';
       } else {
-        setError(err instanceof Error ? err.message : 'Lỗi không xác định.');
+        msg = formatApiErrorMessage(err, 'Lỗi khi tải chi tiết quản trị thiết bị.');
+      }
+      if (msg) {
+        toast.error(msg, { title: 'Lỗi tải chi tiết thiết bị' });
       }
     } finally {
       if (id === requestId.current) setLoading(false);
     }
-  }, [deviceId]);
+  }, [deviceId, toast]);
 
   useEffect(() => {
     if (isOpen && deviceId) {
       setDeviceDetail(null);
-      setError(null);
-      fetchDetails();
+      setLoadFailed(false);
+      fetchDetails(false);
     }
     return () => { requestId.current += 1; };
   }, [isOpen, deviceId, fetchDetails]);
@@ -202,7 +208,7 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
             <Button
               size="sm"
               variant="secondary"
-              onClick={() => fetchDetails()}
+              onClick={() => fetchDetails(true)}
               loading={loading}
               disabled={loading}
               icon={<RefreshCw size={14} />}
@@ -211,28 +217,17 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
             </Button>
           </div>
 
-          {error && (
-            <div
-              style={{
-                marginBottom: 'var(--space-4)',
-                padding: 'var(--space-3) var(--space-4)',
-                backgroundColor: 'var(--color-danger-soft)',
-                border: '1px solid var(--color-danger)',
-                borderRadius: 'var(--radius-md)',
-                color: 'var(--color-danger)',
-                fontSize: 'var(--text-xs)',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8,
-              }}
-            >
-              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-              <div>{error}</div>
-            </div>
+          {loading && !deviceDetail && (
+            <LoadingState message="Đang nạp chi tiết thiết bị..." minHeight="200px" />
           )}
 
-          {loading && !deviceDetail && !error && (
-            <LoadingState message="Đang nạp chi tiết thiết bị..." minHeight="200px" />
+          {loadFailed && !loading && !deviceDetail && (
+            <EmptyState
+              title="Chưa thể nạp chi tiết thiết bị"
+              description="Vui lòng kiểm tra kết nối máy chủ Backend và thử tải lại."
+              actionText="Thử lại"
+              onAction={() => fetchDetails(true)}
+            />
           )}
 
           {deviceDetail && (

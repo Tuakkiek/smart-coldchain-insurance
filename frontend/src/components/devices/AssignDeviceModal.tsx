@@ -5,17 +5,11 @@ import { assignDevice, getDevices } from '../../api/devices';
 import { getShipments } from '../../api/shipments';
 import { ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
-import { Badge } from '../ui/Badge';
-import { useToast } from '../feedback/Toast';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../feedback/Toast';
 import {
   Link2,
   Unlink,
   X,
-  Cpu,
-  Package,
-  AlertCircle,
-  CheckCircle2,
-  AlertTriangle,
 } from 'lucide-react';
 
 interface AssignDeviceModalProps {
@@ -40,14 +34,10 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isConflict409, setIsConflict409] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     if (isOpen) {
-      setError(null);
-      setIsConflict409(false);
       setLoading(true);
       setDevices([]);
       setShipments([]);
@@ -65,15 +55,18 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
           setSelectedShipmentId(shipmentsRes.items[0]?.id ?? '');
         })
         .catch((err) => {
-          if (cancelled) return;
-          setError(err instanceof Error ? err.message : 'Lỗi tải danh mục thiết bị và chuyến hàng');
+          if (cancelled || isRequestCancelled(err)) return;
+          const msg = formatApiErrorMessage(err, 'Lỗi tải danh mục thiết bị và chuyến hàng.');
+          if (msg) {
+            toast.error(msg, { title: 'Lỗi tải danh mục' });
+          }
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
         });
     }
     return () => { cancelled = true; };
-  }, [isOpen, initialDeviceId]);
+  }, [isOpen, initialDeviceId, toast]);
 
   // Lock background scroll when modal is open
   useEffect(() => {
@@ -110,21 +103,15 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
     e.preventDefault();
     if (loading || submitting) return;
     if (!selectedDeviceId) {
-      const msg = 'Vui lòng chọn thiết bị';
-      setError(msg);
-      toast.warning(msg, { title: 'Thông tin chưa đầy đủ' });
+      toast.warning('Vui lòng chọn thiết bị.', { title: 'Thông tin chưa đầy đủ' });
       return;
     }
     if (!selectedShipmentId) {
-      const msg = 'Vui lòng chọn chuyến hàng';
-      setError(msg);
-      toast.warning(msg, { title: 'Thông tin chưa đầy đủ' });
+      toast.warning('Vui lòng chọn chuyến hàng.', { title: 'Thông tin chưa đầy đủ' });
       return;
     }
 
     setSubmitting(true);
-    setError(null);
-    setIsConflict409(false);
 
     try {
       const result = await assignDevice(
@@ -139,22 +126,23 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
       onSuccess(result, `Đã liên kết thành công thiết bị ${selectedDeviceId} với chuyến hàng ${shipLabel}!`);
       onClose();
     } catch (err: unknown) {
+      if (isRequestCancelled(err)) return;
       let msg = '';
       if (err instanceof ApiError) {
         if (err.status === 409 || err.code === 'DEVICE_ALREADY_ASSIGNED') {
-          setIsConflict409(true);
           msg = err.message ||
-            `Thiết bị '${selectedDeviceId}' đã có liên kết kích hoạt với chuyến hàng khác (${currentAssignedShipmentCode || currentAssignedShipmentId}). Mỗi thiết bị chỉ được có 1 liên kết active. Vui lòng bấm 'Bỏ liên kết cũ' trước khi gán mới!`;
+            `Thiết bị '${selectedDeviceId}' đang liên kết với chuyến hàng khác (${currentAssignedShipmentCode || currentAssignedShipmentId}). Hãy bỏ liên kết chuyến hàng cũ trước khi gán mới.`;
         } else if (err.status === 401 || err.code === 'UNAUTHORIZED') {
           msg = 'Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.';
         } else {
-          msg = err.message || 'Lỗi khi gán thiết bị vào chuyến hàng';
+          msg = formatApiErrorMessage(err, 'Lỗi khi gán thiết bị vào chuyến hàng.');
         }
       } else {
-        msg = err instanceof Error ? err.message : 'Lỗi không xác định khi liên kết thiết bị';
+        msg = formatApiErrorMessage(err, 'Lỗi không xác định khi liên kết thiết bị.');
       }
-      setError(msg);
-      toast.error(msg, { title: 'Lỗi liên kết thiết bị' });
+      if (msg) {
+        toast.error(msg, { title: 'Lỗi liên kết thiết bị' });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -163,8 +151,6 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
   const handleUnassignOld = async () => {
     if (loading || submitting || !selectedDeviceId || !currentAssignedShipmentId) return;
     setSubmitting(true);
-    setError(null);
-    setIsConflict409(false);
 
     try {
       const result = await assignDevice(
@@ -184,17 +170,15 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
         )
       );
 
-      setError(null);
-      setIsConflict409(false);
       onSuccess(
         result,
         `Đã bỏ liên kết chuyến hàng cũ (${currentAssignedShipmentCode || currentAssignedShipmentId}) cho thiết bị ${selectedDeviceId}. Bây giờ bạn có thể gán chuyến mới!`
       );
     } catch (err: unknown) {
-      if (err instanceof ApiError) {
-        setError(err.message || 'Lỗi khi hủy liên kết chuyến hàng cũ');
-      } else {
-        setError(err instanceof Error ? err.message : 'Lỗi không xác định khi hủy liên kết');
+      if (isRequestCancelled(err)) return;
+      const msg = formatApiErrorMessage(err, 'Lỗi khi hủy liên kết chuyến hàng cũ.');
+      if (msg) {
+        toast.error(msg, { title: 'Lỗi bỏ liên kết thiết bị' });
       }
     } finally {
       setSubmitting(false);
@@ -327,26 +311,6 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
               padding: 'var(--space-5)',
             }}
           >
-          {error && (
-            <div
-              style={{
-                marginBottom: 'var(--space-4)',
-                padding: 'var(--space-3) var(--space-4)',
-                backgroundColor: 'var(--color-danger-soft)',
-                border: '1px solid var(--color-danger)',
-                borderRadius: 'var(--radius-md)',
-                color: 'var(--color-danger)',
-                fontSize: 'var(--text-xs)',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8,
-              }}
-            >
-              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-              <div style={{ flex: 1 }}>{error}</div>
-            </div>
-          )}
-
           {/* Device Selection Dropdown */}
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <label
@@ -362,11 +326,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
             </label>
             <select
               value={selectedDeviceId}
-              onChange={(e) => {
-                setSelectedDeviceId(e.target.value);
-                setError(null);
-                setIsConflict409(false);
-              }}
+              onChange={(e) => setSelectedDeviceId(e.target.value)}
               disabled={loading || submitting}
               style={{
                 width: '100%',
@@ -481,39 +441,6 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
               Backend quản lý chuyến bằng ID UUID v4 chữ thường. Dropdown hiển thị mã dễ đọc (VD: SHIP-001) nhưng gửi UUID chuẩn vào request.
             </div>
           </div>
-
-          {/* Conflict 409 Resolution Box */}
-          {isConflict409 && currentAssignedShipmentId && (
-            <div
-              style={{
-                marginBottom: 'var(--space-4)',
-                padding: 'var(--space-3) var(--space-4)',
-                backgroundColor: 'var(--color-warning-soft)',
-                border: '1px solid var(--color-warning)',
-                borderRadius: 'var(--radius-md)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
-              }}
-            >
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-primary)' }}>
-                <strong>Xử lý lỗi 409 DEVICE_ALREADY_ASSIGNED:</strong>
-                <p style={{ margin: '2px 0 0 0', color: 'var(--color-text-secondary)' }}>
-                  Thiết bị cần được hủy gán chuyến cũ trước khi gán chuyến mới.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                onClick={handleUnassignOld}
-                disabled={submitting}
-              >
-                Bỏ gán chuyến cũ ngay
-              </Button>
-            </div>
-          )}
 
           </div>
 

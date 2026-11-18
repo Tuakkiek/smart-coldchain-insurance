@@ -6,9 +6,8 @@ import { ShipmentStatusBadge, InsuranceStatusBadge } from '../components/data-di
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { LoadingState } from '../components/feedback/LoadingState';
-import { ErrorState } from '../components/feedback/ErrorState';
 import { EmptyState } from '../components/feedback/EmptyState';
-import { useToast } from '../components/feedback/Toast';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 import { getShipments } from '../api/shipments';
 import { getAllEvents } from '../api/events';
 import { getDevices } from '../api/devices';
@@ -37,15 +36,15 @@ export const OverviewPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
-  const fetchData = async (isBackground = false) => {
+  const fetchData = async (isBackground = false, notifyManual = false) => {
     if (!isBackground && !hasLoadedOnce) {
       setLoading(true);
     } else {
       setRefreshing(true);
     }
-    setError(null);
+    setLoadFailed(false);
     try {
       const [shipmentsRes, eventsRes, devicesRes] = await Promise.all([
         getShipments(),
@@ -56,9 +55,24 @@ export const OverviewPage: React.FC = () => {
       setRecentEvents(eventsRes.items.slice(0, 5));
       setDevices(devicesRes.items);
       setHasLoadedOnce(true);
+      if (notifyManual) {
+        toast.success('Đã cập nhật dữ liệu bảng điều khiển.', { title: 'Làm mới thành công' });
+      }
     } catch (err: unknown) {
-      if (!isBackground && !hasLoadedOnce) {
-        setError(err instanceof Error ? err.message : 'Lỗi không xác định khi tải dữ liệu');
+      if (isRequestCancelled(err)) return;
+      const msg = formatApiErrorMessage(err, 'Không thể tải dữ liệu bảng điều khiển. Vui lòng thử lại.');
+      if (!hasLoadedOnce) {
+        setLoadFailed(true);
+      }
+      if (msg && (!isBackground || notifyManual)) {
+        toast.error(msg, {
+          title: 'Không thể tải tổng quan',
+          dedupKey: 'overview-fetch-error',
+          action: {
+            label: 'Thử lại',
+            onClick: () => fetchData(false),
+          },
+        });
       }
     } finally {
       setLoading(false);
@@ -74,13 +88,17 @@ export const OverviewPage: React.FC = () => {
     return <LoadingState fullPage message="Đang nạp dữ liệu bảng điều khiển..." />;
   }
 
-  if (error && !hasLoadedOnce) {
+  if (loadFailed && !hasLoadedOnce) {
     return (
-      <ErrorState
-        title="Không thể tải tổng quan"
-        message={error}
-        onRetry={() => fetchData(false)}
-      />
+      <div>
+        <PageHeader title="Bảng điều khiển Giám sát" />
+        <EmptyState
+          title="Chưa thể nạp dữ liệu tổng quan"
+          description="Vui lòng kiểm tra kết nối máy chủ Backend và thử tải lại."
+          actionText="Thử lại"
+          onAction={() => fetchData(false)}
+        />
+      </div>
     );
   }
 
@@ -103,10 +121,7 @@ export const OverviewPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => {
-              fetchData(true);
-              toast.info('Đang làm mới dữ liệu tổng quan...', { title: 'Làm mới', duration: 2500 });
-            }}
+            onClick={() => fetchData(true, true)}
             loading={refreshing}
             disabled={loading || refreshing}
             icon={<RefreshCw size={14} />}

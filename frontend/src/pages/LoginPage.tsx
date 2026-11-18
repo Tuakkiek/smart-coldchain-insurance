@@ -6,7 +6,7 @@ import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../components/ui/Button';
 import { PasswordInput } from '../components/ui/PasswordInput';
-import { useToast } from '../components/feedback/Toast';
+import { formatApiErrorMessage, useToast } from '../components/feedback/Toast';
 import '../styles/auth.css';
 
 export const LoginPage: React.FC = () => {
@@ -16,14 +16,35 @@ export const LoginPage: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [retryUntil, setRetryUntil] = useState(0);
   const [now, setNow] = useState(Date.now());
   const request = useRef<AbortController | null>(null);
   const busy = useRef(false);
+  const notifiedReasonRef = useRef<string | null>(null);
   const retrySeconds = Math.max(0, Math.ceil((retryUntil - now) / 1000));
 
   useEffect(() => () => request.current?.abort(), []);
+
+  useEffect(() => {
+    if (!reason || session) {
+      notifiedReasonRef.current = null;
+      return;
+    }
+    if (notifiedReasonRef.current === reason) return;
+    notifiedReasonRef.current = reason;
+
+    if (reason === 'expired') {
+      toast.warning('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', {
+        title: 'Phiên đăng nhập hết hạn',
+        dedupKey: 'auth-reason-expired',
+      });
+    } else {
+      toast.warning('Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.', {
+        title: 'Phiên đăng nhập không hợp lệ',
+        dedupKey: 'auth-reason-unauthorized',
+      });
+    }
+  }, [reason, session, toast]);
 
   useEffect(() => {
     if (!retryUntil) return;
@@ -44,15 +65,13 @@ export const LoginPage: React.FC = () => {
     event.preventDefault();
     if (busy.current || Date.now() < retryUntil) return;
     if (!username.trim() || !password.trim()) {
-      setError('Vui lòng nhập tên đăng nhập và mật khẩu.');
-      toast.warning('Vui lòng điền đầy đủ tên đăng nhập và mật khẩu.', {
+      toast.warning('Vui lòng nhập tên đăng nhập và mật khẩu.', {
         title: 'Thông tin chưa đầy đủ',
       });
       return;
     }
     busy.current = true;
     setSubmitting(true);
-    setError(null);
     const controller = new AbortController();
     request.current = controller;
     // Keep whitespace exactly as entered; never persist or log the password.
@@ -64,21 +83,21 @@ export const LoginPage: React.FC = () => {
     } catch (err: unknown) {
       if (controller.signal.aborted) return;
       if (err instanceof ApiError && err.status === 401) {
-        setError('Tên đăng nhập hoặc mật khẩu không chính xác.');
-        toast.error('Đăng nhập không thành công. Vui lòng kiểm tra lại tài khoản hoặc mật khẩu.', {
+        toast.error('Tên đăng nhập hoặc mật khẩu không chính xác.', {
           title: 'Đăng nhập thất bại',
         });
       } else if (err instanceof ApiError && err.status === 429) {
         const time = Date.now();
         setNow(time);
         setRetryUntil(time + Math.max(1, err.retryAfterSeconds ?? 60) * 1000);
-        setError('Bạn đã thử đăng nhập quá nhiều lần. Vui lòng đợi trước khi thử lại.');
-      } else {
-        const msg = err instanceof Error ? err.message : 'Không thể đăng nhập. Vui lòng thử lại.';
-        setError(msg);
-        toast.error('Không thể kết nối đến máy chủ. Vui lòng thử lại.', {
-          title: 'Đăng nhập thất bại',
+        toast.error('Bạn đã thử đăng nhập quá nhiều lần. Vui lòng đợi trước khi thử lại.', {
+          title: 'Quá nhiều yêu cầu',
         });
+      } else {
+        const msg = formatApiErrorMessage(err, 'Không thể kết nối đến máy chủ. Vui lòng thử lại.');
+        if (msg) {
+          toast.error(msg, { title: 'Đăng nhập thất bại' });
+        }
       }
     } finally {
       busy.current = false;
@@ -96,12 +115,6 @@ export const LoginPage: React.FC = () => {
         <div className="auth-card-icon"><LockKeyhole size={24} aria-hidden="true" /></div>
         <h1 id="login-title">Đăng nhập quản trị</h1>
         <p className="auth-description">Chào mừng trở lại. Đăng nhập để quản lý và giám sát các chuyến hàng.</p>
-        {reason && !error && (
-          <p className="auth-notice" role="status">
-            {reason === 'expired' ? 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.' :
-              'Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.'}
-          </p>
-        )}
         <form onSubmit={handleSubmit} className="auth-form" aria-busy={submitting}>
           <div>
             <label htmlFor="login-username">Tên đăng nhập</label>
@@ -128,10 +141,9 @@ export const LoginPage: React.FC = () => {
               leftIcon={<LockKeyhole size={18} aria-hidden="true" />}
             />
           </div>
-          {error && <div id="login-error" className="auth-error" role="alert">{error}</div>}
           {retrySeconds > 0 && <p className="auth-retry" role="status">Thử lại sau {retrySeconds} giây.</p>}
           <Button type="submit" variant="primary" size="lg" loading={submitting}
-            disabled={retrySeconds > 0} className="auth-submit" aria-describedby={error ? 'login-error' : undefined}>
+            disabled={retrySeconds > 0} className="auth-submit">
             {submitting ? 'Đang đăng nhập…' : 'Đăng nhập'}
             {!submitting && <ArrowRight size={18} aria-hidden="true" />}
           </Button>

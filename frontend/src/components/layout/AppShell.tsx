@@ -1,24 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { Menu } from 'lucide-react';
 import { Sidebar } from './Sidebar';
+import { AccountMenu } from './AccountMenu';
 
 export const AppShell: React.FC = () => {
-  const [refreshKey, setRefreshKey] = useState(0);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const location = useLocation();
 
-  const handleRefresh = () => {
-    setIsNavigating(true);
-    setRefreshKey((prev) => prev + 1);
-  };
-
   useEffect(() => {
+    setIsMobileSidebarOpen(false);
     setIsNavigating(true);
     const timer = setTimeout(() => {
       setIsNavigating(false);
     }, 600);
     return () => clearTimeout(timer);
-  }, [location.pathname, refreshKey]);
+  }, [location.pathname]);
 
   return (
     <div className="app-container">
@@ -28,13 +26,27 @@ export const AppShell: React.FC = () => {
         </div>
       )}
       <Sidebar
-        onRefresh={handleRefresh}
-        isRefreshing={isNavigating}
+        isOpen={isMobileSidebarOpen}
+        onClose={() => setIsMobileSidebarOpen(false)}
       />
       <div className="main-wrapper">
+        <header className="app-topbar">
+          <button
+            type="button"
+            className="mobile-menu-btn"
+            onClick={() => setIsMobileSidebarOpen(true)}
+            aria-label="Mở thanh điều hướng"
+          >
+            <Menu size={20} aria-hidden="true" />
+          </button>
+          <div className="app-topbar-right">
+            <AccountMenu />
+          </div>
+        </header>
+
         <main className="content-container">
           <div
-            key={`${location.pathname}-${refreshKey}`}
+            key={location.pathname}
             className="page-transition"
           >
             <Outlet />
