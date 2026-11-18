@@ -206,8 +206,20 @@ def _mysql_url() -> URL:
         if key.lower() not in {"ssl-mode", "sslmode"}
     }
     query.setdefault("charset", "utf8mb4")
-    if ca_path := os.getenv("MYSQL_SSL_CA"):
-        query["ssl_ca"] = ca_path
+    ca_path = os.getenv("MYSQL_SSL_CA", "").strip() or query.get("ssl_ca")
+    if ca_path:
+        if not isinstance(ca_path, str):
+            raise ValueError("MYSQL_SSL_CA must specify a single CA file")
+        ca_file = Path(ca_path)
+        if not ca_file.is_absolute():
+            ca_file = BACKEND_DIR / ca_file
+        if not ca_file.is_file():
+            raise ValueError(
+                "MySQL CA file is missing. Set MYSQL_SSL_CA to an existing file on this server "
+                "(Render: /etc/secrets/mysql-ca.pem or certs/aiven-ca.crt). "
+                "Local Windows paths cannot be used on Render."
+            )
+        query["ssl_ca"] = str(ca_file.resolve())
     return url.set(query=query)
 
 
