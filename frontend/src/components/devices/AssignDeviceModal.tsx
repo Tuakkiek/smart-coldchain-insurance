@@ -136,7 +136,9 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
       if (isRequestCancelled(err)) return;
       let msg = '';
       if (err instanceof ApiError) {
-        if (err.status === 409 || err.code === 'DEVICE_ALREADY_ASSIGNED') {
+        if (err.code === 'SHIPMENT_COMPLETED') {
+          msg = 'Lô hàng đã hoàn tất giao hàng nên không thể gán thêm thiết bị.';
+        } else if (err.status === 409 || err.code === 'DEVICE_ALREADY_ASSIGNED') {
           msg = err.message ||
             `Thiết bị '${selectedDeviceId}' đang liên kết với chuyến hàng khác (${currentAssignedShipmentName || currentAssignedShipmentId}). Hãy bỏ liên kết chuyến hàng cũ trước khi gán mới.`;
         } else if (err.status === 401 || err.code === 'UNAUTHORIZED') {
@@ -459,8 +461,8 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
             >
               {shipments.length > 0 && <option value="" disabled>Chọn lô hàng</option>}
               {shipments.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.cargo_type}) — UUID: {s.id.slice(0, 8)}...{s.id.slice(-4)}
+                <option key={s.id} value={s.id} disabled={s.status === 'delivered'}>
+                  {s.name} ({s.cargo_type}){s.status === 'delivered' ? ' [Đã giao hàng]' : ''} — UUID: {s.id.slice(0, 8)}...{s.id.slice(-4)}
                 </option>
               ))}
             </select>

@@ -389,6 +389,8 @@ class ShipmentOut(BaseModel):
     refund_status: Literal["NOT_APPLICABLE", "PENDING", "WAITING_EXPIRY", "CONFIRMED", "FAILED"] | None = None
     refund_transaction_hash: str | None = None
     refunded_amount_wei: str | None = None
+    refunded_amount: str | None = None
+    currency: Literal["SepoliaETH", "VND"] | None = None
     refund_recipient_address: str | None = None
     created_at: datetime
 
@@ -436,7 +438,7 @@ class EventOut(BaseModel):
     shipment_id: str
     type: Literal[
         "TEMPERATURE_BREACH_STARTED", "TEMPERATURE_BREACH_ENDED", "INSURANCE_TRIGGERED",
-        "SENSOR_DATA_GAP", "DEVICE_OFFLINE", "INTEGRITY_MISMATCH"
+        "SENSOR_DATA_GAP", "DEVICE_OFFLINE", "INTEGRITY_MISMATCH", "SHIPMENT_DELIVERED"
     ]
     occurred_at: datetime
     details: dict[str, Any]

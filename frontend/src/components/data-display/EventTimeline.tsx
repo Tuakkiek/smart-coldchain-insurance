@@ -1,6 +1,6 @@
 import React from 'react';
 import { EventOut, EventType } from '../../types/api';
-import { AlertTriangle, ShieldAlert, WifiOff, Clock } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, WifiOff, Clock, CheckCircle2 } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 
 interface EventTimelineProps {
@@ -53,6 +53,12 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({ events }) => {
             {details.last_received_at ? new Date(details.last_received_at).toLocaleTimeString('vi-VN') : 'không rõ'}).
           </div>
         );
+      case 'SHIPMENT_DELIVERED':
+        return (
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+            Chuyến hàng đã được Admin xác nhận hoàn tất tại điểm đích (tiến độ {details.progress_pct ?? 100}%).
+          </div>
+        );
       default:
         return (
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
@@ -67,17 +73,22 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({ events }) => {
       {events.map((evt, idx) => {
         const isTriggered = evt.type === 'INSURANCE_TRIGGERED';
         const isBreach = evt.type === 'TEMPERATURE_BREACH_STARTED';
+        const isDelivered = evt.type === 'SHIPMENT_DELIVERED';
 
         const borderColor = isTriggered
           ? 'var(--color-danger)'
           : isBreach
           ? 'var(--color-warning)'
+          : isDelivered
+          ? 'var(--color-success)'
           : 'var(--color-border)';
 
         const icon = isTriggered ? (
           <ShieldAlert size={18} style={{ color: 'var(--color-danger)' }} />
         ) : isBreach ? (
           <AlertTriangle size={18} style={{ color: 'var(--color-warning)' }} />
+        ) : isDelivered ? (
+          <CheckCircle2 size={18} style={{ color: 'var(--color-success)' }} />
         ) : (
           <WifiOff size={18} style={{ color: 'var(--color-neutral)' }} />
         );
@@ -86,6 +97,8 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({ events }) => {
           <Badge variant="danger">KÍCH HOẠT BẢO HIỂM</Badge>
         ) : isBreach ? (
           <Badge variant="warning">VI PHẠM NHIỆT ĐỘ</Badge>
+        ) : isDelivered ? (
+          <Badge variant="success">ĐÃ GIAO HÀNG</Badge>
         ) : (
           <Badge variant="neutral">MẤT DỮ LIỆU CẢM BIẾN</Badge>
         );

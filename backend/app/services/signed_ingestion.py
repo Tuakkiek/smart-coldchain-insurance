@@ -230,7 +230,7 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
             session, payload, "SHIPMENT_ID_NOT_ALLOWED", 422,
             "payload_version 2 must not contain shipment_id", shipment_id=shipment_id,
         )
-    shipments.get_shipment(session, shipment_id)
+    shipment = shipments.get_shipment(session, shipment_id)
     device = session.scalar(
         select(Device).where(Device.id == payload.device_id).with_for_update()
         .execution_options(populate_existing=True)
@@ -266,6 +266,11 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
             _reject(session, payload, "SEQUENCE_CONFLICT", 409, "Sequence already has different content", shipment_id=shipment_id)
         sample = session.scalar(select(Telemetry).where(Telemetry.id == existing.telemetry_id).with_for_update())
         return _response(sample, existing, True)
+    if shipment.status == "delivered":
+        session.rollback()
+        raise shipments.ShipmentStateConflict(
+            "SHIPMENT_COMPLETED", "Shipment is completed and no longer accepts telemetry",
+        )
     if payload.sequence_number <= device.last_sequence_number:
         _reject(session, payload, "SEQUENCE_REPLAY", 409, "Sequence is older than last accepted sequence", shipment_id=shipment_id)
     now = shipments.ensure_utc(clock.now())

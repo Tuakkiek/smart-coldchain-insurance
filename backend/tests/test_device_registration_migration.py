@@ -75,6 +75,9 @@ def legacy_database(engine, *, conflicting=False):
         "blockchain_chain_id", "buyer_wallet_address",
         "policy_contract_address", "policy_transaction_hash",
         "policy_status", "policy_last_error", "policy_expiry",
+        "delivered_at", "delivery_source", "delivery_result", "delivery_result_reason",
+        "refund_status", "refund_transaction_hash", "refunded_amount_wei",
+        "refund_recipient_address",
     )
     existing_ship_cols = {c["name"] for c in sa.inspect(engine).get_columns("shipments")}
     with engine.begin() as connection:

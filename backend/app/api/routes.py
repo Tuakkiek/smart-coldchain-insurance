@@ -321,6 +321,21 @@ def list_shipments(request: Request, session: AdminSession):
             else:
                 synced_items.append(item)
         raw_items = synced_items
+    settlement = getattr(request.app.state, "delivery_settlement", None)
+    if settlement is not None:
+        reconciled_items = []
+        for item in raw_items:
+            if item.status == "delivered" and item.refund_status == "PENDING":
+                reconciled_items.append(delivery_service.reconcile_completed(
+                    session, item.id, clock=request.app.state.clock, settlement=settlement,
+                    integrity_blockchain=getattr(request.app.state, "integrity_blockchain", None),
+                    policy_blockchain=coordinator,
+                    evidence_coordinator=getattr(request.app.state, "insurance_evidence", None),
+                    insurance_blockchain=getattr(request.app.state, "blockchain", None),
+                ))
+            else:
+                reconciled_items.append(item)
+        raw_items = reconciled_items
     items = [
         shipments.shipment_dict(session, item, request.app.state.clock, request.app.state.settings.sensor_gap_minutes)
         for item in raw_items
@@ -336,7 +351,12 @@ def get_shipment(shipment_id: UUID4, request: Request, session: AdminSession):
         shipment = coordinator.sync_submitted_policy(session, shipment.id) or shipment
     if shipment.status == "delivered":
         shipment = delivery_service.reconcile_completed(
-            session, shipment.id, settlement=getattr(request.app.state, "delivery_settlement", None),
+            session, shipment.id, clock=request.app.state.clock,
+            settlement=getattr(request.app.state, "delivery_settlement", None),
+            integrity_blockchain=getattr(request.app.state, "integrity_blockchain", None),
+            policy_blockchain=coordinator,
+            evidence_coordinator=getattr(request.app.state, "insurance_evidence", None),
+            insurance_blockchain=getattr(request.app.state, "blockchain", None),
         )
     return shipments.shipment_dict(session, shipment, request.app.state.clock, request.app.state.settings.sensor_gap_minutes)
 
@@ -352,6 +372,24 @@ def complete_shipment(shipment_id: UUID4, request: Request, session: AdminSessio
         session, str(shipment_id), clock=request.app.state.clock,
         batch_max_records=settings.integrity_batch_max_records,
         batch_max_age_minutes=settings.integrity_batch_max_age_minutes,
+        settlement=getattr(request.app.state, "delivery_settlement", None),
+        integrity_blockchain=getattr(request.app.state, "integrity_blockchain", None),
+        policy_blockchain=getattr(request.app.state, "policy_blockchain", None),
+        evidence_coordinator=getattr(request.app.state, "insurance_evidence", None),
+        insurance_blockchain=getattr(request.app.state, "blockchain", None),
+    )
+    return shipments.shipment_dict(session, shipment, request.app.state.clock, settings.sensor_gap_minutes)
+
+
+@router.post(
+    "/shipments/{shipment_id}/refund/retry",
+    response_model=ShipmentOut,
+    response_model_exclude_unset=True,
+)
+def retry_shipment_refund(shipment_id: UUID4, request: Request, session: AdminSession):
+    settings = request.app.state.settings
+    shipment = delivery_service.retry_refund(
+        session, str(shipment_id),
         settlement=getattr(request.app.state, "delivery_settlement", None),
     )
     return shipments.shipment_dict(session, shipment, request.app.state.clock, settings.sensor_gap_minutes)

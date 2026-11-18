@@ -1,4 +1,4 @@
-import { getAddress, isAddress, parseEther } from 'ethers';
+import { formatEther, getAddress, isAddress, parseEther } from 'ethers';
 import { InsuranceOut } from '../types/api';
 
 export const SEPOLIA_CHAIN_ID = 11155111;
@@ -158,6 +158,16 @@ export function validateBuyerWalletAddress(raw: string): WalletValidationResult 
 export function shortenAddress(address: string, head = 6, tail = 4): string {
   if (!address || address.length <= head + tail + 3) return address;
   return `${address.slice(0, head)}...${address.slice(-tail)}`;
+}
+
+export function formatWeiToEth(wei: string | null | undefined): string | null {
+  if (!wei) return null;
+  try {
+    const formatted = formatEther(BigInt(wei));
+    return formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
+  } catch {
+    return null;
+  }
 }
 
 export function formatInsuranceCoverage(insurance: InsuranceOut): {

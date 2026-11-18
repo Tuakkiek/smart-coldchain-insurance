@@ -16,7 +16,7 @@ from app.services.route_simulator import location_for_sample
 from app.services.clock import Clock, SYSTEM_CLOCK
 from app.services.temperature_policy import evaluate, utc
 from app.services.blockchain_outbox import BlockchainCoordinator, RAW_TRANSACTION_KEY
-from app.services.eth_units import SEPOLIA_CHAIN_ID, SEPOLIA_CURRENCY
+from app.services.eth_units import SEPOLIA_CHAIN_ID, SEPOLIA_CURRENCY, format_wei_to_eth
 from app.services.policy_blockchain import PolicyCoordinator
 
 
@@ -444,6 +444,8 @@ def shipment_dict(
         "refund_status": shipment.refund_status,
         "refund_transaction_hash": shipment.refund_transaction_hash,
         "refunded_amount_wei": shipment.refunded_amount_wei,
+        "refunded_amount": format_wei_to_eth(shipment.refunded_amount_wei),
+        "currency": shipment.insurance_currency if shipment.status == "delivered" and shipment.refunded_amount_wei else None,
         "refund_recipient_address": shipment.refund_recipient_address,
     }
     if shipment.buyer_wallet_address is not None:

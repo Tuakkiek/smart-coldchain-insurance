@@ -198,6 +198,9 @@ class InsuranceEvidenceCoordinator:
         if shipment is None or event is None:
             session.rollback()
             return "NOT_TRIGGERED"
+        if shipment.refund_status == "CONFIRMED":
+            session.rollback()
+            return "REFUND_ALREADY_CONFIRMED"
         if shipment.payout_status == "paid":
             details = dict(event.details)
             if details.get("evidence_status") != "PAYOUT_CONFIRMED":
