@@ -33,7 +33,6 @@ import { MerkleBatchTable } from '../components/integrity/MerkleBatchTable';
 import { IntegrityViolationAlert } from '../components/integrity/IntegrityViolationAlert';
 import { BatchVerificationModal } from '../components/integrity/BatchVerificationModal';
 import { BatchDetailModal } from '../components/integrity/BatchDetailModal';
-import { SendTelemetryModal } from '../components/shipments/SendTelemetryModal';
 import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 import { formatInsuranceCoverage, shortenAddress } from '../utils/ethereum';
@@ -55,7 +54,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   ShieldCheck,
-  Radio,
 } from 'lucide-react';
 
 export const ShipmentDetailPage: React.FC = () => {
@@ -75,8 +73,6 @@ export const ShipmentDetailPage: React.FC = () => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  // Send Telemetry Modal
-  const [isSendTelemetryOpen, setIsSendTelemetryOpen] = useState(false);
   const [isAssignDeviceOpen, setIsAssignDeviceOpen] = useState(false);
 
   // Batch Verification & Detail Modals
@@ -366,14 +362,6 @@ export const ShipmentDetailPage: React.FC = () => {
             Làm mới
           </Button>
 
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setIsSendTelemetryOpen(true)}
-            icon={<Radio size={14} />}
-          >
-            Gửi Telemetry
-          </Button>
           <Button variant="secondary" size="sm" icon={<Cpu size={14} />}
             onClick={() => setIsAssignDeviceOpen(true)}>
             Gán / tháo thiết bị
@@ -1309,33 +1297,12 @@ export const ShipmentDetailPage: React.FC = () => {
         isVerifying={verifyingBatchId === selectedBatch?.batch_id}
       />
 
-      {/* Modal Gửi Dữ Liệu Đo Cảm Biến */}
       <AssignDeviceModal
         isOpen={isAssignDeviceOpen}
         initialShipmentId={shipment.id}
         onClose={() => setIsAssignDeviceOpen(false)}
         onSuccess={(_device, message) => {
           toast.success(message, { title: 'Thiết bị lô hàng' });
-          fetchData(true);
-        }}
-      />
-      <SendTelemetryModal
-        isOpen={isSendTelemetryOpen}
-        onClose={() => setIsSendTelemetryOpen(false)}
-        shipmentId={shipment.id}
-        shipmentName={shipment.name}
-        tempMin={shipment.temp_min_c}
-        tempMax={shipment.temp_max_c}
-        assignedDevices={
-          shipmentDevices.length > 0
-            ? shipmentDevices.map((d) => d.device_id)
-            : shipment.latest_telemetry
-            ? [shipment.latest_telemetry.device_id]
-            : ['ESP32-01']
-        }
-        onSuccess={(sample) => {
-          const msg = `Đã gửi thành công dữ liệu đo cảm biến: ${sample.temperature_c}°C, độ ẩm ${sample.humidity_pct}% từ thiết bị ${sample.device_id}.`;
-          toast.success(msg, { title: 'Gửi Telemetry thành công' });
           fetchData(true);
         }}
       />

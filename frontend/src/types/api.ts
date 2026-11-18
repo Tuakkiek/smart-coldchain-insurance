@@ -247,13 +247,6 @@ export interface TelemetryListOut {
   items: TelemetryOut[];
 }
 
-export interface TelemetryCreatePayload {
-  device_id: string;
-  temperature_c: number;
-  humidity_pct: number;
-  recorded_at?: string | null;
-}
-
 export type InsuranceStatus = 'active' | 'triggered';
 export type PayoutStatus =
   | 'not_requested'

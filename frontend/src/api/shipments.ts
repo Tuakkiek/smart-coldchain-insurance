@@ -6,8 +6,6 @@ import {
   ShipmentCreatePayload,
   ShipmentDeleteOut,
   TelemetryListOut,
-  TelemetryCreatePayload,
-  TelemetryOut,
   HealthOut,
 } from '../types/api';
 
@@ -37,13 +35,6 @@ export async function deleteShipment(shipmentId: string): Promise<ShipmentDelete
 
 export async function getShipmentTelemetry(shipmentId: string): Promise<TelemetryListOut> {
   return apiClient.get<TelemetryListOut>(`/api/v1/shipments/${shipmentId}/telemetry`);
-}
-
-export async function postShipmentTelemetry(
-  shipmentId: string,
-  payload: TelemetryCreatePayload
-): Promise<TelemetryOut> {
-  return apiClient.post<TelemetryOut>(`/api/v1/shipments/${shipmentId}/telemetry`, payload, undefined, false);
 }
 
 export async function getBlockchainPublicConfig(): Promise<BlockchainPublicConfigOut> {
