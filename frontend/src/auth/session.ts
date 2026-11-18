@@ -1,6 +1,7 @@
 export interface AdminSession {
   readonly accessToken: string;
   readonly username: string;
+  readonly role?: string;
   readonly expiresAt: number;
 }
 
@@ -27,7 +28,11 @@ function readSession(accessToken: string): AdminSession | null {
     if (typeof claims.sub !== 'string' || !claims.sub.trim() ||
         typeof claims.exp !== 'number' || !Number.isSafeInteger(claims.exp) ||
         claims.exp <= 0 || claims.exp > Number.MAX_SAFE_INTEGER / 1000) return null;
-    return { accessToken, username: claims.sub, expiresAt: claims.exp * 1000 };
+    const role =
+      'role' in claims && typeof claims.role === 'string' && claims.role.trim()
+        ? claims.role.trim()
+        : undefined;
+    return { accessToken, username: claims.sub, role, expiresAt: claims.exp * 1000 };
   } catch {
     return null;
   }

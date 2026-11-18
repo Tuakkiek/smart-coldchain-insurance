@@ -9,6 +9,7 @@ import {
   Database,
   X,
 } from 'lucide-react';
+import { AccountMenu } from './AccountMenu';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -94,6 +95,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
         <nav
           style={{
             flex: 1,
+            minHeight: 0,
             padding: 'var(--space-4) var(--space-3)',
             display: 'flex',
             flexDirection: 'column',
@@ -125,7 +127,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
             </NavLink>
           ))}
         </nav>
+
+        {/* Reserved sidebar footer container aligned with the fixed bottom-left Avatar */}
+        <div className="sidebar-account-footer" aria-hidden="true" />
       </aside>
+
+      {/* Bottom-left Avatar anchor rendered outside the transformed sidebar so it stays visible across all viewports */}
+      <div className="account-floating-anchor">
+        <AccountMenu placement="up-left" />
+      </div>
     </>
   );
 };

@@ -1,13 +1,16 @@
 @import './tokens.css';
 
 /* CSS Reset & Foundations */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   font-family: var(--font-sans);
   font-size: var(--text-md);
@@ -42,7 +45,9 @@ button {
   outline: none;
 }
 
-input, select, textarea {
+input,
+select,
+textarea {
   font-family: inherit;
   font-size: inherit;
   outline: none;
@@ -90,7 +95,7 @@ input, select, textarea {
   }
 }
 
-/* Sidebar & Minimalist Topbar */
+/* Sidebar & Responsive Mobile Topbar */
 .app-sidebar {
   width: var(--sidebar-width);
   background-color: var(--color-surface);
@@ -98,11 +103,34 @@ input, select, textarea {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   position: sticky;
   top: 0;
+  align-self: flex-start;
   z-index: 45;
   flex-shrink: 0;
   transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sidebar-account-footer {
+  height: 71px;
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-border-subtle);
+  background-color: var(--color-surface-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+}
+
+.account-floating-anchor {
+  position: fixed;
+  left: var(--space-3);
+  bottom: var(--space-2);
+  width: calc(var(--sidebar-width) - 24px);
+  z-index: 60;
+  display: flex;
+  align-items: center;
 }
 
 .app-sidebar-overlay {
@@ -125,15 +153,15 @@ input, select, textarea {
   color: var(--color-text-primary);
 }
 
-.app-topbar {
+.app-mobile-topbar {
+  display: none;
   position: sticky;
   top: 0;
   z-index: 35;
   height: var(--topbar-height);
-  padding: 0 var(--space-8);
-  display: flex;
+  padding: 0 var(--space-4);
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-3);
   background-color: rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -141,20 +169,44 @@ input, select, textarea {
   flex-shrink: 0;
 }
 
-.app-topbar-right {
-  margin-left: auto;
+.app-mobile-brand {
   display: flex;
   align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.app-mobile-brand-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-accent-soft);
+  color: var(--color-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.app-mobile-brand-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mobile-menu-btn {
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 36px;
   height: 36px;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
+  flex-shrink: 0;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
@@ -163,18 +215,13 @@ input, select, textarea {
   color: var(--color-text-primary);
 }
 
-@media (max-width: 1024px) {
-  .app-topbar {
-    padding: 0 var(--space-6);
-  }
-}
-
 @media (max-width: 768px) {
   .app-sidebar {
     position: fixed;
     left: 0;
     top: 0;
     bottom: 0;
+    height: auto;
     transform: translateX(-100%);
     box-shadow: var(--shadow-popover);
   }
@@ -192,13 +239,29 @@ input, select, textarea {
     z-index: 40;
   }
 
-  .mobile-menu-btn,
+  .app-mobile-topbar {
+    display: flex;
+  }
+
   .mobile-sidebar-close {
     display: inline-flex;
   }
 
-  .app-topbar {
-    padding: 0 var(--space-4);
+  .content-container {
+    padding-bottom: 76px;
+  }
+
+  .account-floating-anchor {
+    width: auto;
+    max-width: calc(100vw - 24px);
+  }
+
+  .account-floating-anchor .account-avatar-btn {
+    background-color: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-color: var(--color-border-subtle);
+    box-shadow: var(--shadow-card);
   }
 }
 
@@ -207,35 +270,38 @@ input, select, textarea {
   position: relative;
   display: inline-flex;
   align-items: center;
+  max-width: 100%;
+}
+
+.account-floating-anchor .account-menu-root {
+  width: 100%;
 }
 
 .account-avatar-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  display: inline-flex;
+  display: flex;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  background-color: var(--color-accent-soft);
-  color: var(--color-accent);
-  border: 1.5px solid rgba(0, 122, 255, 0.18);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  background-color: transparent;
+  border: 1px solid transparent;
+  text-align: left;
   user-select: none;
-  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
+  transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .account-avatar-btn:hover {
-  background-color: #dcecff;
-  border-color: rgba(0, 122, 255, 0.38);
-  box-shadow: 0 2px 10px rgba(0, 122, 255, 0.14);
-  transform: translateY(-0.5px);
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-border-subtle);
 }
 
 .account-avatar-btn.is-open {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-soft);
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 
 .account-avatar-btn:focus-visible {
@@ -243,11 +309,74 @@ input, select, textarea {
   outline-offset: 2px;
 }
 
+.account-avatar-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background-color: #E85D4A;
+  color: #FFFFFF;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+.account-trigger-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.account-trigger-name {
+  width: 100%;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--color-text-primary);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-trigger-role {
+  width: 100%;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.25;
+  color: var(--color-text-secondary);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @keyframes accountMenuIn {
   from {
     opacity: 0;
     transform: translateY(-6px) scale(0.97);
   }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes accountMenuInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -270,6 +399,19 @@ input, select, textarea {
   animation: accountMenuIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+.account-menu-root--up .account-dropdown {
+  top: auto;
+  bottom: calc(100% + 10px);
+  left: 0;
+  right: auto;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 84px);
+  max-height: calc(100dvh - 84px);
+  overflow-y: auto;
+  transform-origin: bottom left;
+  animation-name: accountMenuInUp;
+}
+
 .account-dropdown-header {
   display: flex;
   align-items: center;
@@ -284,12 +426,11 @@ input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--color-accent-soft);
-  color: var(--color-accent);
+  background-color: #E85D4A;
+  color: #FFFFFF;
   font-size: var(--text-md);
   font-weight: 600;
   flex-shrink: 0;
-  border: 1px solid rgba(0, 122, 255, 0.16);
 }
 
 .account-dropdown-identity {
@@ -453,12 +594,29 @@ input, select, textarea {
   justify-content: space-between;
 }
 
-.gap-1 { gap: var(--space-1); }
-.gap-2 { gap: var(--space-2); }
-.gap-3 { gap: var(--space-3); }
-.gap-4 { gap: var(--space-4); }
-.gap-5 { gap: var(--space-5); }
-.gap-6 { gap: var(--space-6); }
+.gap-1 {
+  gap: var(--space-1);
+}
+
+.gap-2 {
+  gap: var(--space-2);
+}
+
+.gap-3 {
+  gap: var(--space-3);
+}
+
+.gap-4 {
+  gap: var(--space-4);
+}
+
+.gap-5 {
+  gap: var(--space-5);
+}
+
+.gap-6 {
+  gap: var(--space-6);
+}
 
 /* Grid for Metrics */
 .metrics-grid {
@@ -489,6 +647,7 @@ input, select, textarea {
   0% {
     transform: rotate(0deg);
   }
+
   100% {
     transform: rotate(360deg);
   }
@@ -523,13 +682,16 @@ svg.animate-spin {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
 }
 
 @keyframes ping {
-  75%, 100% {
+
+  75%,
+  100% {
     transform: scale(2);
     opacity: 0;
   }
@@ -541,6 +703,7 @@ svg.animate-spin {
     opacity: 0;
     transform: translateY(8px);
   }
+
   100% {
     opacity: 1;
     transform: translateY(0);
@@ -554,9 +717,12 @@ svg.animate-spin {
 
 /* 4. Pulse Glow (Opacity only - prevents text reflow / layout thrashing) */
 @keyframes pulseGlow {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.55;
   }
@@ -572,10 +738,12 @@ svg.animate-spin {
     left: 0;
     width: 0%;
   }
+
   50% {
     left: 20%;
     width: 60%;
   }
+
   100% {
     left: 100%;
     width: 0%;
@@ -608,18 +776,17 @@ svg.animate-spin {
   0% {
     background-position: -200% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
 }
 
 .skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface-hover) 25%,
-    var(--color-border-subtle) 37%,
-    var(--color-surface-hover) 63%
-  );
+  background: linear-gradient(90deg,
+      var(--color-surface-hover) 25%,
+      var(--color-border-subtle) 37%,
+      var(--color-surface-hover) 63%);
   background-size: 400% 100%;
   animation: shimmer 1.4s ease infinite;
 }
@@ -631,6 +798,7 @@ svg.animate-spin {
 
 /* Accessibility: respect reduced motion preferences */
 @media (prefers-reduced-motion: reduce) {
+
   /* IMPORTANT: Functional status indicators like .animate-spin are preserved
      so users know the application is actively waiting for network I/O.
      Only non-essential decorative animations are reduced. */
@@ -644,4 +812,3 @@ svg.animate-spin {
     transition-duration: 0.01ms !important;
   }
 }
-

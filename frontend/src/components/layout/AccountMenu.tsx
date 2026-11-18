@@ -11,6 +11,7 @@ import { useToast } from '../feedback/Toast';
 
 export interface AccountMenuProps {
   avatarUrl?: string | null;
+  placement?: 'down-right' | 'up-left';
 }
 
 const STATUS_META: Record<
@@ -48,7 +49,10 @@ const STATUS_META: Record<
   },
 };
 
-export const AccountMenu: React.FC<AccountMenuProps> = ({ avatarUrl }) => {
+export const AccountMenu: React.FC<AccountMenuProps> = ({
+  avatarUrl,
+  placement = 'down-right',
+}) => {
   const { session } = useAuth();
   const { toast } = useToast();
   const location = useLocation();
@@ -60,13 +64,21 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({ avatarUrl }) => {
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const username = session?.username?.trim() || '';
+  const displayName = username || 'Tài khoản';
+  const role = session?.role?.trim() || 'Quản trị viên';
   const initial = username ? username.charAt(0).toUpperCase() : '';
   const showImage = Boolean(avatarUrl) && !imgError;
 
-  // Close dropdown automatically when route changes
+  const routeKey = `${location.pathname}${location.search}${location.hash}`;
+  const prevRouteKeyRef = useRef(routeKey);
+
+  // Close dropdown automatically when route changes (not on initial mount)
   useEffect(() => {
-    setIsOpen(false);
-  }, [location.pathname, location.search, location.hash]);
+    if (prevRouteKeyRef.current !== routeKey) {
+      prevRouteKeyRef.current = routeKey;
+      setIsOpen(false);
+    }
+  }, [routeKey]);
 
   // Close dropdown on outside click or Escape key
   useEffect(() => {
@@ -146,7 +158,10 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({ avatarUrl }) => {
   };
 
   return (
-    <div ref={containerRef} className="account-menu-root">
+    <div
+      ref={containerRef}
+      className={`account-menu-root${placement === 'up-left' ? ' account-menu-root--up' : ''}`}
+    >
       <button
         ref={triggerRef}
         type="button"
@@ -156,7 +171,17 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({ avatarUrl }) => {
         aria-expanded={isOpen}
         onClick={() => setIsOpen((prev) => !prev)}
       >
-        {renderAvatarContent(18)}
+        <span className="account-avatar-circle" aria-hidden="true">
+          {renderAvatarContent(16)}
+        </span>
+        <span className="account-trigger-info">
+          <span className="account-trigger-name" title={displayName}>
+            {displayName}
+          </span>
+          <span className="account-trigger-role" title={role}>
+            {role}
+          </span>
+        </span>
       </button>
 
       {isOpen && (
@@ -171,10 +196,10 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({ avatarUrl }) => {
               {renderAvatarContent(20)}
             </div>
             <div className="account-dropdown-identity">
-              <div className="account-dropdown-name" title={username || undefined}>
-                {username || 'Tài khoản'}
+              <div className="account-dropdown-name" title={displayName}>
+                {displayName}
               </div>
-              <div className="account-dropdown-role">Quản trị viên</div>
+              <div className="account-dropdown-role">{role}</div>
             </div>
           </div>
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { apiClient } from '../src/api/client';
@@ -41,7 +41,7 @@ beforeEach(() => {
 afterEach(() => { endSession(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('Admin Login and guarded routes', () => {
-  it.each(['/','/devices','/shipments','/shipments/example','/integrity','/events'])(
+  it.each(['/', '/devices', '/shipments', '/shipments/example', '/integrity', '/events'])(
     'requires login for %s and never mounts private pages first', (path) => {
       window.history.replaceState({}, '', path);
       render(<App />);
@@ -61,12 +61,15 @@ describe('Admin Login and guarded routes', () => {
     await screen.findByRole('heading', { name: 'Danh sách thiết bị' });
     expect(window.location.pathname + window.location.search).toBe('/devices?filter=active');
     expect(getActiveSession()?.accessToken).toBe(token);
-    // Default UI shows only the Avatar trigger; account details and Logout live inside the dropdown menu.
-    expect(screen.queryByText('admin')).toBeNull();
+    // Bottom-left account trigger shows avatar, username, and role; status and Logout live inside the dropdown menu.
+    const accountTrigger = screen.getByRole('button', { name: 'Mở menu tài khoản' });
+    expect(within(accountTrigger).getByText('admin')).not.toBeNull();
+    expect(within(accountTrigger).getByText('Quản trị viên')).not.toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Đăng xuất' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Mở menu tài khoản' }));
-    expect(screen.getByText('admin')).not.toBeNull();
-    expect(screen.getByText('Backend Online')).not.toBeNull();
+    fireEvent.click(accountTrigger);
+    const accountMenu = screen.getByRole('menu', { name: 'Thông tin tài khoản' });
+    expect(within(accountMenu).getByText('admin')).not.toBeNull();
+    expect(within(accountMenu).getByText('Backend Online')).not.toBeNull();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Đăng xuất' }));
     await screen.findByRole('heading', { name: 'Đăng nhập quản trị' });
     expect(screen.queryByRole('heading', { name: 'Danh sách thiết bị' })).toBeNull();
