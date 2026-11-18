@@ -29,12 +29,11 @@ Backend và Frontend sử dụng các file ABI được đóng gói từ Remix (
 1. **Wrapped ABI cho Backend (`blockchain_adapter.py` đọc `json.load(...)["abi"]`)**:
    - `blockchain/deployments/abi/ColdChainDataIntegrity.json`
    - `blockchain/deployments/abi/ColdChainInsurance.json`
-   - `blockchain/deployments/abi/MockInsuranceToken.json`
 2. **Pure ABI Files (mảng `[...]` thuần) & Metadata**:
    - `blockchain/deployments/abi/ColdChainDataIntegrity.abi.json`
    - `blockchain/deployments/abi/ColdChainInsurance.abi.json`
-   - `blockchain/deployments/abi/MockInsuranceToken.abi.json`
    - Bảng tổng hợp signature: `blockchain/deployments/abi/contract-interfaces.json`
+   - *(Ghi chú: `MockInsuranceToken` là artifact legacy; bản hiện tại dùng trực tiếp native `SepoliaETH` cho ký quỹ & chi trả.)*
 3. **Deployment & Compiler Metadata**:
    - `blockchain/deployments/sepolia.json` (chứa addresses thật, `deployTxHash`, `deployBlockNumber`, và các roles public — không chứa secret).
    - `blockchain/compiler-settings.json` (khóa compiler, optimizer, `osaka`, SHA-256 checksum source).
@@ -162,16 +161,20 @@ event AnchorerUpdated(
 
 ### 4.1. Function Signatures
 
-#### `createPolicy`
+#### `createPolicy` (`payable` — Ký quỹ trực tiếp bằng `SepoliaETH`)
 ```solidity
 function createPolicy(
     bytes32 _shipmentKey,
     address _beneficiary,
     uint256 _payoutAmount,
     uint256 _expiry
-) external;
+) external payable;
 ```
-- Khóa token ký quỹ (`SafeERC20`) từ insurer (`msg.sender`) vào contract.
+- Người gọi gửi kèm `msg.value` (`SepoliaETH` tính theo `wei`), không cần ERC-20 `approve`. Có thể truyền `_payoutAmount == msg.value`, hoặc truyền `_payoutAmount = 0` để hợp đồng lấy trực tiếp `msg.value`.
+- **Quy đổi mức ký quỹ gợi ý (với ví test có `2 – 10 SepoliaETH`):**
+  - `5,000,000 VND` $\rightarrow$ `0.005 SepoliaETH` (`5000000000000000` wei)
+  - **`10,000,000 VND` (Mặc định demo)** $\rightarrow$ **`0.01 SepoliaETH`** (**`10000000000000000` wei** = `10 Finney`)
+  - `20,000,000 VND` $\rightarrow$ `0.02 SepoliaETH` (`20000000000000000` wei)
 - Phát event `PolicyCreated(shipmentKey, insurer, beneficiary, payoutAmount, expiry)`.
 
 #### `reportViolation`
@@ -183,15 +186,15 @@ function reportViolation(
 ) external;
 ```
 - **Người gọi**: Chỉ địa chỉ `oracle` được cấp quyền.
-- Kiểm tra: Policy Active, `block.timestamp <= expiry`, contract đủ số dư.
-- Cập nhật trạng thái `PaidOut` (2) trước khi chuyển token cho beneficiary (`SafeERC20`).
+- Kiểm tra: Policy Active, `block.timestamp <= expiry`, contract đủ số dư ETH (`address(this).balance >= policy.payoutAmount`).
+- Cập nhật trạng thái `PaidOut` (2) **trước** khi chuyển thẳng `SepoliaETH` cho `beneficiary`.
 - Phát event `InsurancePaid`.
 
 #### `refundExpiredPolicy`
 ```solidity
 function refundExpiredPolicy(bytes32 _shipmentKey) external;
 ```
-- Cho phép `insurer` (hoặc `owner`) rút lại token ký quỹ khi policy đã hết hạn an toàn (`block.timestamp > expiry`) mà không có vi phạm nào.
+- Cho phép `insurer` (hoặc `owner`) rút lại `SepoliaETH` đã khóa khi policy đã hết hạn an toàn (`block.timestamp > expiry`) mà không có vi phạm nào.
 - Trạng thái chuyển sang `Refunded` (3), phát event `PolicyRefunded`.
 
 #### `getPolicy`
@@ -223,7 +226,9 @@ function getContractBalance() external view returns (uint256);
 | `ColdChain__PolicyNotActive(bytes32, uint8)` | Policy không ở trạng thái Active (đã PaidOut hoặc đã Refunded). |
 | `ColdChain__PolicyExpired(uint256, uint256)` | Policy đã hết hạn tại thời điểm báo cáo vi phạm. |
 | `ColdChain__PolicyNotExpired(uint256, uint256)` | Policy chưa đến hạn hết hiệu lực nên chưa thể hoàn tiền. |
-| `ColdChain__ContractInsufficientBalance(uint256, uint256)` | Số dư quỹ contract không đủ chi trả. |
+| `ColdChain__ContractInsufficientBalance(uint256, uint256)` | Số dư SepoliaETH của contract không đủ chi trả. |
+| `ColdChain__IncorrectETHDeposit(uint256, uint256)` | `msg.value` gửi kèm `createPolicy` không khớp `_payoutAmount`. |
+| `ColdChain__ETHTransferFailed()` | Lệnh chuyển native `SepoliaETH` cho `beneficiary` hoặc `insurer` thất bại. |
 
 ---
 
