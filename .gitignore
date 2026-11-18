@@ -31,3 +31,6 @@ blockchain/coverage/
 blockchain/coverage.json
 
 python-blockchain-demo
+
+#esp32 private key
+backend/private_key.json
