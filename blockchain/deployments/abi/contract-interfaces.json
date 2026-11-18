@@ -27,7 +27,7 @@
   },
   "ColdChainInsurance": {
     "functions": [
-      "createPolicy(bytes32 _shipmentKey, address _beneficiary, uint256 _payoutAmount, uint256 _expiry) -> ()",
+      "createPolicy(bytes32 _shipmentKey, address _beneficiary, uint256 _payoutAmount, uint256 _expiry) -> () [payable]",
       "getContractBalance() -> (uint256)",
       "getPolicy(bytes32 _shipmentKey) -> (address, address, uint256, uint256, uint8, bytes32, uint256)",
       "isPolicyActive(bytes32 _shipmentKey) -> (bool)",
@@ -59,35 +59,6 @@
       "error ColdChain__PolicyNotExpired(uint256 expiry, uint256 currentTimestamp)",
       "error ColdChain__ZeroAddress()",
       "error ReentrancyGuardReentrantCall()"
-    ]
-  },
-  "MockInsuranceToken": {
-    "functions": [
-      "allowance(address owner, address spender) -> (uint256)",
-      "approve(address spender, uint256 value) -> (bool)",
-      "balanceOf(address account) -> (uint256)",
-      "decimals() -> (uint8)",
-      "mint(address to, uint256 amount) -> ()",
-      "name() -> (string)",
-      "owner() -> (address)",
-      "symbol() -> (string)",
-      "totalSupply() -> (uint256)",
-      "transfer(address to, uint256 value) -> (bool)",
-      "transferFrom(address from, address to, uint256 value) -> (bool)"
-    ],
-    "events": [
-      "event Approval(address indexed owner, address indexed spender, uint256 value)",
-      "event Transfer(address indexed from, address indexed to, uint256 value)"
-    ],
-    "errors": [
-      "error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)",
-      "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
-      "error ERC20InvalidApprover(address approver)",
-      "error ERC20InvalidReceiver(address receiver)",
-      "error ERC20InvalidSender(address sender)",
-      "error ERC20InvalidSpender(address spender)",
-      "error MockToken__CallerNotOwner()",
-      "error MockToken__ZeroAddress()"
     ]
   }
 }

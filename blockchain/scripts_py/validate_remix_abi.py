@@ -41,7 +41,7 @@ def main() -> int:
     parser.add_argument(
         "--contract",
         required=True,
-        choices=["ColdChainDataIntegrity", "ColdChainInsurance", "MockInsuranceToken"],
+        choices=["ColdChainDataIntegrity", "ColdChainInsurance"],
     )
     parser.add_argument("--input", required=True, type=Path, help="Path to Remix-exported ABI JSON file.")
     parser.add_argument(

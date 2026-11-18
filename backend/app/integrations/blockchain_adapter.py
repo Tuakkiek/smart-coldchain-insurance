@@ -407,11 +407,7 @@ class Web3PolicyAdapter:
             raise BlockchainError("INVALID_CONTRACT_ADDRESS") from exc
         if not web3.eth.get_code(address):
             raise BlockchainError("CONTRACT_NOT_DEPLOYED")
-        try:
-            with settings.blockchain_abi_path.open(encoding="utf-8") as artifact_file:
-                abi = json.load(artifact_file)["abi"]
-        except (OSError, ValueError, KeyError) as exc:
-            raise BlockchainError("ABI_UNAVAILABLE") from exc
+        abi = _load_abi(settings.blockchain_abi_path, "ABI_UNAVAILABLE")
         return web3, web3.eth.contract(address=address, abi=abi), address
 
     @staticmethod
@@ -452,9 +448,11 @@ class Web3PolicyAdapter:
                 and int(existing[2]) == amount_wei
             )
             if matches:
-                logs = contract.events.PolicyCreated().get_logs(
-                    from_block=self.settings.blockchain_deploy_block,
-                    argument_filters={"shipmentKey": shipment_key},
+                logs = _find_event_logs(
+                    web3,
+                    contract.events.PolicyCreated,
+                    {"shipmentKey": shipment_key},
+                    self.settings.blockchain_start_block or self.settings.blockchain_deploy_block,
                 )
                 tx_hash = Web3.to_hex(logs[-1]["transactionHash"]) if logs else ""
                 return PolicySubmission(
@@ -465,13 +463,14 @@ class Web3PolicyAdapter:
             raise BlockchainError("POLICY_ALREADY_EXISTS_MISMATCH")
 
         gas_limit = 300000
-        gas_price = web3.eth.gas_price
-        balance = web3.eth.get_balance(insurer_account.address)
-        if balance < amount_wei + gas_limit * gas_price:
+        fee_fields = _tx_fee_fields(web3)
+        max_gas_price = fee_fields.get("maxFeePerGas") or fee_fields.get("gasPrice", 0)
+        eth_balance = int(web3.eth.get_balance(insurer_account.address))
+        if eth_balance < amount_wei + gas_limit * max_gas_price:
             raise BlockchainError("INSURER_INSUFFICIENT_ETH_BALANCE")
-        nonce = web3.eth.get_transaction_count(insurer_account.address, "pending")
 
-        # Native SepoliaETH is escrowed by payable createPolicy(msg.value).
+        nonce = web3.eth.get_transaction_count(insurer_account.address, "pending")
+        # ColdChainInsurance.createPolicy is payable and escrows native SepoliaETH via msg.value.
         policy_tx = contract.functions.createPolicy(
             shipment_key,
             checksum_buyer,
@@ -483,7 +482,7 @@ class Web3PolicyAdapter:
             "nonce": nonce,
             "chainId": self.settings.blockchain_chain_id,
             "gas": gas_limit,
-            "gasPrice": gas_price,
+            **fee_fields,
         })
         signed_policy = insurer_account.sign_transaction(policy_tx)
         web3.eth.send_raw_transaction(signed_policy.raw_transaction)
