@@ -33,6 +33,7 @@ import { IntegrityViolationAlert } from '../components/integrity/IntegrityViolat
 import { BatchVerificationModal } from '../components/integrity/BatchVerificationModal';
 import { BatchDetailModal } from '../components/integrity/BatchDetailModal';
 import { SendTelemetryModal } from '../components/shipments/SendTelemetryModal';
+import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 import { formatInsuranceCoverage, shortenAddress } from '../utils/ethereum';
 import {
@@ -75,6 +76,7 @@ export const ShipmentDetailPage: React.FC = () => {
 
   // Send Telemetry Modal
   const [isSendTelemetryOpen, setIsSendTelemetryOpen] = useState(false);
+  const [isAssignDeviceOpen, setIsAssignDeviceOpen] = useState(false);
 
   // Batch Verification & Detail Modals
   const [verifyingBatchId, setVerifyingBatchId] = useState<string | null>(null);
@@ -369,6 +371,10 @@ export const ShipmentDetailPage: React.FC = () => {
             icon={<Radio size={14} />}
           >
             Gửi Telemetry
+          </Button>
+          <Button variant="secondary" size="sm" icon={<Cpu size={14} />}
+            onClick={() => setIsAssignDeviceOpen(true)}>
+            Gán / tháo thiết bị
           </Button>
         </div>
       </div>
@@ -1259,6 +1265,15 @@ export const ShipmentDetailPage: React.FC = () => {
       />
 
       {/* Modal Gửi Dữ Liệu Đo Cảm Biến */}
+      <AssignDeviceModal
+        isOpen={isAssignDeviceOpen}
+        initialShipmentId={shipment.id}
+        onClose={() => setIsAssignDeviceOpen(false)}
+        onSuccess={(_device, message) => {
+          toast.success(message, { title: 'Thiết bị lô hàng' });
+          fetchData(true);
+        }}
+      />
       <SendTelemetryModal
         isOpen={isSendTelemetryOpen}
         onClose={() => setIsSendTelemetryOpen(false)}
