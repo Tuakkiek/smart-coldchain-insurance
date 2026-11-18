@@ -30,12 +30,8 @@ from app.schemas.api import (
     TelemetryOut,
     SignedTelemetryCreate,
     SignedTelemetryOut,
-    DeviceRegister,
-    DeviceRegistrationOut,
     DeviceOut,
     DevicesOut,
-    DeviceDeleteOut,
-    DeviceKeyRegister,
     DeviceStateUpdate,
     AssignmentUpdate,
     DeviceHealthListOut,
@@ -368,28 +364,11 @@ def add_telemetry(shipment_id: UUID4, payload: SignedTelemetryCreate | Telemetry
     return shipments.telemetry_dict(sample)
 
 
-@router.post(
-    "/devices",
-    response_model=DeviceRegistrationOut,
-    response_model_exclude_unset=True,
-    status_code=201,
-)
-def register_device(payload: DeviceRegister, request: Request, session: AdminSession):
-    if request.app.state.settings.device_provisioning_mode == "local":
-        device, key_id = request.app.state.device_provisioner.provision(
-            session,
-            payload.device_id,
-            payload.device_name,
-        )
-        result = signed_ingestion.device_view(session, device)
-        result.update({"key_id": key_id, "provisioning_status": "ready"})
-        return result
-
-    # Hosted backends cannot modify config.h on the Admin's personal computer.
-    # Manual mode preserves the existing authenticated public-key API without
-    # claiming that a local firmware file was updated.
-    device = signed_ingestion.register_device(session, payload.device_id, payload.device_name)
-    return signed_ingestion.device_view(session, device)
+@router.post("/devices", status_code=403)
+def register_device(session: AdminSession):
+    raise signed_ingestion.IngestionError(
+        403, "FIXED_DEVICE_REGISTRY", "Only ESP32-01 through ESP32-10 are available; device creation is disabled",
+    )
 
 
 @router.get("/devices", response_model=DevicesOut)
@@ -402,16 +381,18 @@ def get_device(device_id: str, session: AdminSession):
     return signed_ingestion.device_view(session, signed_ingestion.get_device(session, device_id))
 
 
-@router.delete("/devices/{device_id}", response_model=DeviceDeleteOut)
+@router.delete("/devices/{device_id}", status_code=403)
 def delete_device(device_id: str, session: AdminSession):
-    signed_ingestion.delete_device(session, device_id)
-    return {"device_id": device_id, "deleted": True}
+    raise signed_ingestion.IngestionError(
+        403, "FIXED_DEVICE_REGISTRY", "Fixed devices cannot be deleted; unassign or revoke the device instead",
+    )
 
 
-@router.post("/devices/{device_id}/keys", response_model=DeviceOut, status_code=201)
-def add_device_key(device_id: str, payload: DeviceKeyRegister, session: AdminSession):
-    signed_ingestion.add_key(session, device_id, payload.key_id, payload.public_key_pem)
-    return signed_ingestion.device_view(session, signed_ingestion.get_device(session, device_id))
+@router.post("/devices/{device_id}/keys", status_code=403)
+def add_device_key(device_id: str, session: AdminSession):
+    raise signed_ingestion.IngestionError(
+        403, "FIXED_DEVICE_REGISTRY", "The ten public keys are provisioned locally once; adding keys is disabled",
+    )
 
 
 @router.patch("/devices/{device_id}", response_model=DeviceOut)

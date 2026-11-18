@@ -364,7 +364,7 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({
                 <Truck size={13} /> Lô hàng (Shipment):
               </div>
               <div style={{ fontWeight: 600, marginTop: '2px', color: 'var(--color-text-primary)' }}>
-                {batch.shipment_code || batch.shipment_id}
+                {batch.shipment_name || batch.shipment_id}
               </div>
             </div>
 

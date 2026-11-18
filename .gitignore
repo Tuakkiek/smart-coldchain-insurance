@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 device/cold_chain_device/config.h
+backend/.local/
 *.pem
 *.key
 

@@ -62,7 +62,7 @@ def test_signed_batch_is_anchored_and_read_back_on_local_chain(tmp_path):
     try:
         with TestClient(app) as client:
             shipment = client.post("/api/v1/shipments", headers=ADMIN, json={
-                "code": "CHAIN-INTEGRITY",
+                "name": "CHAIN-INTEGRITY",
                 "cargo_type": "vaccine",
                 "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
                 "destination": {"name": "B", "latitude": 11.0, "longitude": 106.0},
@@ -72,18 +72,12 @@ def test_signed_batch_is_anchored_and_read_back_on_local_chain(tmp_path):
                 "insured_amount_vnd": 1000,
             }).json()
             shipment_id = shipment["id"]
-            assert client.post("/api/v1/devices", headers=ADMIN, json={
-                "device_id": "CHAIN-DEVICE",
-                "device_name": "Local chain sensor",
-            }).status_code == 201
-            assert client.post("/api/v1/devices/CHAIN-DEVICE/assignments", headers=ADMIN,
-                               json={"shipment_id": shipment_id, "active": True}).status_code == 200
-            assert client.post("/api/v1/devices/CHAIN-DEVICE/keys", headers=ADMIN,
-                               json={"key_id": "key-v1", "public_key_pem": public_key}).status_code == 201
+            from test_signed_ingestion import register
+            assert register(client, public_key, shipment_id).status_code == 201
             payload = {
                 "payload_version": 1,
                 "shipment_id": shipment_id,
-                "device_id": "CHAIN-DEVICE",
+                "device_id": "ESP32-01",
                 "key_id": "key-v1",
                 "sequence_number": 1,
                 "temperature_c": 5.0,

@@ -462,8 +462,11 @@ class Web3PolicyAdapter:
                 )
             raise BlockchainError("POLICY_ALREADY_EXISTS_MISMATCH")
 
+        gas_limit = 300000
+        fee_fields = _tx_fee_fields(web3)
+        max_gas_price = fee_fields.get("maxFeePerGas") or fee_fields.get("gasPrice", 0)
         eth_balance = int(web3.eth.get_balance(insurer_account.address))
-        if eth_balance < amount_wei:
+        if eth_balance < amount_wei + gas_limit * max_gas_price:
             raise BlockchainError("INSURER_INSUFFICIENT_ETH_BALANCE")
 
         nonce = web3.eth.get_transaction_count(insurer_account.address, "pending")
@@ -478,8 +481,8 @@ class Web3PolicyAdapter:
             "value": amount_wei,
             "nonce": nonce,
             "chainId": self.settings.blockchain_chain_id,
-            "gas": 300000,
-            **_tx_fee_fields(web3),
+            "gas": gas_limit,
+            **fee_fields,
         })
         signed_policy = insurer_account.sign_transaction(policy_tx)
         web3.eth.send_raw_transaction(signed_policy.raw_transaction)

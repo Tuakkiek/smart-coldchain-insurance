@@ -17,6 +17,7 @@ interface AssignDeviceModalProps {
   onClose: () => void;
   onSuccess: (result: AdminDeviceViewOut, message: string) => void;
   initialDeviceId?: string | null;
+  initialShipmentId?: string | null;
 }
 
 export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
@@ -24,6 +25,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
   onClose,
   onSuccess,
   initialDeviceId,
+  initialShipmentId,
 }) => {
   const { toast } = useToast();
   const [devices, setDevices] = useState<DeviceItemOut[]>([]);
@@ -50,9 +52,13 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
           setDevices(devicesRes.items);
           setShipments(shipmentsRes.items);
 
-          const initialDevice = devicesRes.items.find((device) => device.device_id === initialDeviceId);
+          const initialDevice = devicesRes.items.find((device) => device.device_id === initialDeviceId)
+            ?? (initialShipmentId ? devicesRes.items.find((device) => device.assigned_shipment_id === initialShipmentId)
+              ?? devicesRes.items.find((device) => !device.assigned_shipment_id) : undefined);
           setSelectedDeviceId(initialDevice?.device_id ?? devicesRes.items[0]?.device_id ?? '');
-          setSelectedShipmentId(shipmentsRes.items[0]?.id ?? '');
+          const targetId = initialShipmentId ?? initialDevice?.assigned_shipment_id;
+          setSelectedShipmentId(shipmentsRes.items.find((shipment) => shipment.id === targetId)?.id
+            ?? (initialShipmentId ? '' : shipmentsRes.items[0]?.id ?? ''));
         })
         .catch((err) => {
           if (cancelled || isRequestCancelled(err)) return;
@@ -66,7 +72,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
         });
     }
     return () => { cancelled = true; };
-  }, [isOpen, initialDeviceId, toast]);
+  }, [isOpen, initialDeviceId, initialShipmentId, toast]);
 
   // Lock background scroll when modal is open
   useEffect(() => {
@@ -96,8 +102,8 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
 
   const currentDevice = devices.find((d) => d.device_id === selectedDeviceId);
   const currentAssignedShipmentId = currentDevice?.assigned_shipment_id;
-  const currentAssignedShipmentCode = currentDevice?.assigned_shipment_code
-    || shipments.find((shipment) => shipment.id === currentAssignedShipmentId)?.code;
+  const currentAssignedShipmentName = currentDevice?.assigned_shipment_name
+    || shipments.find((shipment) => shipment.id === currentAssignedShipmentId)?.name;
 
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +128,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
         }
       );
       const chosenShipment = shipments.find((s) => s.id === selectedShipmentId);
-      const shipLabel = chosenShipment?.code || selectedShipmentId.slice(0, 8);
+      const shipLabel = chosenShipment?.name || selectedShipmentId.slice(0, 8);
       onSuccess(result, `Đã liên kết thành công thiết bị ${selectedDeviceId} với chuyến hàng ${shipLabel}!`);
       onClose();
     } catch (err: unknown) {
@@ -131,7 +137,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
       if (err instanceof ApiError) {
         if (err.status === 409 || err.code === 'DEVICE_ALREADY_ASSIGNED') {
           msg = err.message ||
-            `Thiết bị '${selectedDeviceId}' đang liên kết với chuyến hàng khác (${currentAssignedShipmentCode || currentAssignedShipmentId}). Hãy bỏ liên kết chuyến hàng cũ trước khi gán mới.`;
+            `Thiết bị '${selectedDeviceId}' đang liên kết với chuyến hàng khác (${currentAssignedShipmentName || currentAssignedShipmentId}). Hãy bỏ liên kết chuyến hàng cũ trước khi gán mới.`;
         } else if (err.status === 401 || err.code === 'UNAUTHORIZED') {
           msg = 'Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.';
         } else {
@@ -165,14 +171,14 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
       setDevices((prev) =>
         prev.map((d) =>
           d.device_id === selectedDeviceId
-            ? { ...d, assigned_shipment_id: null, assigned_shipment_code: null }
+            ? { ...d, assigned_shipment_id: null, assigned_shipment_name: null }
             : d
         )
       );
 
       onSuccess(
         result,
-        `Đã bỏ liên kết chuyến hàng cũ (${currentAssignedShipmentCode || currentAssignedShipmentId}) cho thiết bị ${selectedDeviceId}. Bây giờ bạn có thể gán chuyến mới!`
+        `Đã bỏ liên kết chuyến hàng cũ (${currentAssignedShipmentName || currentAssignedShipmentId}) cho thiết bị ${selectedDeviceId}. Bây giờ bạn có thể gán chuyến mới!`
       );
     } catch (err: unknown) {
       if (isRequestCancelled(err)) return;
@@ -260,7 +266,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
                   margin: 0,
                 }}
               >
-                Liên Kết Thiết Bị Với Chuyến Hàng
+                Gán / tháo thiết bị
               </h3>
               <p
                 style={{
@@ -269,12 +275,13 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
                   margin: 0,
                 }}
               >
-                Mỗi thiết bị chỉ có 1 assignment active • Nhiều thiết bị có thể cùng chuyến
+                Một thiết bị chỉ gán vào một lô hàng tại một thời điểm. Có thể tháo để chuyển sang lô khác.
               </p>
             </div>
           </div>
           <button
             type="button"
+            aria-label="Đóng hộp thoại"
             onClick={onClose}
             disabled={submitting}
             style={{
@@ -314,6 +321,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
           {/* Device Selection Dropdown */}
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <label
+              htmlFor="assign-device-select"
               style={{
                 display: 'block',
                 fontSize: 'var(--text-xs)',
@@ -322,9 +330,10 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
                 marginBottom: 6,
               }}
             >
-              Chọn Thiết Bị ESP32 (Device) *
+              Chọn thiết bị ESP32 *
             </label>
             <select
+              id="assign-device-select"
               value={selectedDeviceId}
               onChange={(e) => setSelectedDeviceId(e.target.value)}
               disabled={loading || submitting}
@@ -340,7 +349,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
               {devices.map((d) => (
                 <option key={d.device_id} value={d.device_id}>
                   {d.device_id} — {d.device_name || 'Cold Chain Sensor'} {d.assigned_shipment_id
-                    ? `[Đang gán: ${d.assigned_shipment_code || shipments.find((s) => s.id === d.assigned_shipment_id)?.code || d.assigned_shipment_id}]`
+                    ? `[Đang gán: ${d.assigned_shipment_name || shipments.find((s) => s.id === d.assigned_shipment_id)?.name || d.assigned_shipment_id}]`
                     : '[Chưa gán]'}
                 </option>
               ))}
@@ -376,7 +385,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
                   {currentAssignedShipmentId ? (
                     <span>
                       Đang liên kết với chuyến hàng:{' '}
-                      <strong>{currentAssignedShipmentCode || currentAssignedShipmentId}</strong>
+                      <strong>{currentAssignedShipmentName || currentAssignedShipmentId}</strong>
                     </span>
                   ) : (
                     <span>Chưa liên kết với chuyến hàng nào (Sẵn sàng gán).</span>
@@ -393,7 +402,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
                   disabled={submitting}
                   icon={<Unlink size={13} />}
                 >
-                  Bỏ liên kết chuyến hàng
+                  Tháo thiết bị
                 </Button>
               )}
             </div>
@@ -402,6 +411,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
           {/* Shipment Selection Dropdown */}
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <label
+              htmlFor="assign-shipment-select"
               style={{
                 display: 'block',
                 fontSize: 'var(--text-xs)',
@@ -410,9 +420,10 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
                 marginBottom: 6,
               }}
             >
-              Chọn Chuyến Hàng (Shipment Code & UUID v4) *
+              Chọn lô hàng *
             </label>
             <select
+              id="assign-shipment-select"
               value={selectedShipmentId}
               onChange={(e) => setSelectedShipmentId(e.target.value)}
               disabled={loading || submitting}
@@ -425,9 +436,10 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
                 backgroundColor: 'var(--color-surface)',
               }}
             >
+              {shipments.length > 0 && <option value="" disabled>Chọn lô hàng</option>}
               {shipments.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.code} ({s.cargo_type}) — UUID: {s.id.slice(0, 8)}...{s.id.slice(-4)}
+                  {s.name} ({s.cargo_type}) — UUID: {s.id.slice(0, 8)}...{s.id.slice(-4)}
                 </option>
               ))}
             </select>
@@ -438,7 +450,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
                 marginTop: 4,
               }}
             >
-              Backend quản lý chuyến bằng ID UUID v4 chữ thường. Dropdown hiển thị mã dễ đọc (VD: SHIP-001) nhưng gửi UUID chuẩn vào request.
+              Chọn lô hàng theo tên. Nếu thiết bị đang gán vào lô khác, hãy tháo trước khi gán lại.
             </div>
           </div>
 
@@ -466,7 +478,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
               loading={submitting}
               disabled={loading || submitting || !selectedDeviceId || !selectedShipmentId}
             >
-              {submitting ? 'Đang xử lý...' : 'Liên Kết Chuyến Hàng'}
+              {submitting ? 'Đang xử lý...' : 'Gán thiết bị'}
             </Button>
           </div>
         </form>

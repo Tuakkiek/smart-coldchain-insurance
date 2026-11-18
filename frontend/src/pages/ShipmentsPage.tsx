@@ -10,8 +10,9 @@ import { ConfirmModal } from '../components/feedback/ConfirmModal';
 import { deleteShipment, getShipments } from '../api/shipments';
 import { ApiError } from '../api/client';
 import { ShipmentOut, ShipmentStatus } from '../types/api';
-import { Search, MapPin, Thermometer, Shield, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { Search, MapPin, Thermometer, Shield, Plus, Trash2, RefreshCw, Link2 } from 'lucide-react';
 import { CreateShipmentModal } from '../components/shipments/CreateShipmentModal';
+import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 import { formatInsuranceCoverage, shortenAddress } from '../utils/ethereum';
 
@@ -25,6 +26,7 @@ export const ShipmentsPage: React.FC = () => {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [assignmentShipmentId, setAssignmentShipmentId] = useState<string | null>(null);
   const [shipmentToDelete, setShipmentToDelete] = useState<ShipmentOut | null>(null);
   const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
 
@@ -70,11 +72,11 @@ export const ShipmentsPage: React.FC = () => {
 
   const handleShipmentCreated = (newShipment: ShipmentOut) => {
     setShipments((prev) => [newShipment, ...prev]);
-    toast.success(`Đã tạo thành công lô hàng mới: ${newShipment.code}`, {
+    toast.success(`Đã tạo ${newShipment.name}. Shipment ID: ${newShipment.shipment_id}`, {
       title: 'Tạo lô hàng thành công',
       action: {
-        label: 'Xem chi tiết',
-        onClick: () => navigate(`/shipments/${newShipment.id}`),
+        label: 'Gán thiết bị',
+        onClick: () => setAssignmentShipmentId(newShipment.id),
       },
     });
   };
@@ -92,7 +94,7 @@ export const ShipmentsPage: React.FC = () => {
       await deleteShipment(shipment.id);
       setShipments((current) => current.filter((item) => item.id !== shipment.id));
       setShipmentToDelete(null);
-      toast.success(`Đã xóa lô hàng ${shipment.code} thành công.`, {
+      toast.success(`Đã xóa lô hàng ${shipment.name} thành công.`, {
         title: 'Xóa lô hàng thành công',
       });
     } catch (err: unknown) {
@@ -100,14 +102,19 @@ export const ShipmentsPage: React.FC = () => {
       if (isRequestCancelled(err)) return;
       let msg = '';
       if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_ASSIGNED_DEVICES') {
-        msg = `Không thể xóa ${shipment.code}: vẫn còn thiết bị đang liên kết. Hãy bỏ liên kết trong trang Thiết bị trước.`;
+        msg = `Không thể xóa ${shipment.name}: vẫn còn thiết bị đang liên kết. Hãy bỏ liên kết trong trang Thiết bị trước.`;
       } else if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_DATA') {
-        msg = `Không thể xóa ${shipment.code} vì đã có dữ liệu vận hành hoặc lịch sử đối soát.`;
+        msg = `Không thể xóa ${shipment.name} vì đã có dữ liệu vận hành hoặc lịch sử đối soát.`;
       } else {
         msg = formatApiErrorMessage(err, 'Không thể xóa lô hàng. Vui lòng thử lại.');
       }
       if (msg) {
-        toast.error(msg, { title: 'Lỗi xóa lô hàng' });
+        toast.error(msg, {
+          title: 'Lỗi xóa lô hàng',
+          ...(err instanceof ApiError && err.code === 'SHIPMENT_HAS_ASSIGNED_DEVICES'
+            ? { action: { label: 'Tháo thiết bị', onClick: () => setAssignmentShipmentId(shipment.id) } }
+            : {}),
+        });
       }
     } finally {
       setDeletingShipmentId(null);
@@ -125,7 +132,7 @@ export const ShipmentsPage: React.FC = () => {
       const term = searchTerm.toLowerCase();
       result = result.filter(
         (s) =>
-          s.code.toLowerCase().includes(term) ||
+          s.name.toLowerCase().includes(term) ||
           s.cargo_type.toLowerCase().includes(term) ||
           s.origin.name.toLowerCase().includes(term) ||
           s.destination.name.toLowerCase().includes(term)
@@ -206,7 +213,7 @@ export const ShipmentsPage: React.FC = () => {
             <Search size={16} style={{ color: 'var(--color-text-tertiary)' }} />
             <input
               type="text"
-              placeholder="Tìm theo mã lô hàng, loại hàng, địa điểm..."
+              placeholder="Tìm theo tên lô hàng, loại hàng, địa điểm..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
@@ -284,7 +291,7 @@ export const ShipmentsPage: React.FC = () => {
                         color: 'var(--color-text-primary)',
                       }}
                     >
-                      {shipment.code}
+                      {shipment.name}
                     </span>
                     <ShipmentStatusBadge status={shipment.status} />
                     <InsuranceStatusBadge
@@ -297,6 +304,17 @@ export const ShipmentsPage: React.FC = () => {
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
                       Tạo lúc: {new Date(shipment.created_at).toLocaleDateString('vi-VN')}
                     </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<Link2 size={13} />}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setAssignmentShipmentId(shipment.id);
+                      }}
+                    >
+                      Gán / tháo thiết bị
+                    </Button>
                     <Button
                       variant="danger"
                       size="sm"
@@ -409,6 +427,12 @@ export const ShipmentsPage: React.FC = () => {
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={handleShipmentCreated}
       />
+      <AssignDeviceModal
+        isOpen={assignmentShipmentId !== null}
+        initialShipmentId={assignmentShipmentId}
+        onClose={() => setAssignmentShipmentId(null)}
+        onSuccess={(_device, message) => toast.success(message, { title: 'Thiết bị lô hàng' })}
+      />
 
       {/* Modal Xác Nhận Xóa Lô Hàng */}
       <ConfirmModal
@@ -418,7 +442,7 @@ export const ShipmentsPage: React.FC = () => {
           shipmentToDelete ? (
             <>
               Bạn có chắc chắn muốn xóa lô hàng{' '}
-              <strong className="font-mono">{shipmentToDelete.code}</strong> không?
+              <strong className="font-mono">{shipmentToDelete.name}</strong> không?
             </>
           ) : null
         }

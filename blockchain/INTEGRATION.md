@@ -354,3 +354,11 @@ Hiện tại `backend/app/services/batch_service.py` tạo sẵn `IntegrationOut
 - **ABI Parity (`validate_remix_abi.py`):** Cả `ColdChainDataIntegrity` (5 chữ ký Backend, 18 entries) và `ColdChainInsurance` bản native `SepoliaETH` (4 chữ ký Backend, 28 entries) đã được đối chiếu khớp 100% với `backend/app/integrations/abi/*.json`.
 - **On-chain Preflight (`preflight_sepolia.py`):** Đã xác minh bytecode và roles (`Anchorer = 0xd2D6...`, `Oracle = 0x7747...`) trực tiếp trên Sepolia tại `deployments/sepolia.json`, cùng kiểm tra kết nối thành công từ `Web3IntegrityAdapter` và `Web3BlockchainAdapter` của Backend.
 - **Hướng dẫn Demo E2E thủ công trên Remix + MetaMask:** Xem [REMIX_TEST_SCENARIOS.md](REMIX_TEST_SCENARIOS.md).
+
+---
+
+## 7. Tên lô hàng và bộ thiết bị cố định
+
+- Backend tạo lô hàng bằng `name`, trả `shipment_id` UUID (`id` cùng giá trị). Luôn hash UUID `shipment_id` cho `shipmentKey`, không hash `name` vì tên có thể trùng.
+- Bộ thiết bị cố định dùng `ESP32-01` đến `ESP32-10`; `deviceKey` hash đúng chuỗi `device_id` này. Public key P-256 lưu ở MySQL, private key chỉ ở file local/ESP32, không đăng ký khóa ESP32 lên chain.
+- ABI/adapter hiện dùng native `SepoliaETH` (`constructor` chỉ nhận `Oracle`; `createPolicy` là `payable`, gửi `value=amount_wei`, không approve ERC-20). Xem thêm [hướng dẫn local](../docs/local-devices.md).

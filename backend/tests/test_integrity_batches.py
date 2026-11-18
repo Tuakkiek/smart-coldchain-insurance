@@ -28,7 +28,7 @@ from app.services.auth import create_access_token
 ADMIN_TOKEN = create_access_token("admin", "test-jwt-secret-key-at-least-32-chars-long!")
 ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 SHIPMENT = {
-    "code": "INTEGRITY-TEST",
+    "name": "INTEGRITY-TEST",
     "cargo_type": "vaccine",
     "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
     "destination": {"name": "B", "latitude": 11.0, "longitude": 106.0},
@@ -43,7 +43,7 @@ def signed(key, shipment_id: str, sequence: int, temperature: float = 5.0) -> di
     payload = {
         "payload_version": 1,
         "shipment_id": shipment_id,
-        "device_id": "ESP32-INTEGRITY",
+        "device_id": "ESP32-01",
         "key_id": "key-v1",
         "sequence_number": sequence,
         "temperature_c": temperature,
@@ -77,15 +77,8 @@ def integrity_api(tmp_path):
     ).decode("ascii")
     with TestClient(app, headers=ADMIN) as client:
         shipment_id = client.post("/api/v1/shipments", json=SHIPMENT).json()["id"]
-        registered = client.post("/api/v1/devices", json={
-            "device_id": "ESP32-INTEGRITY",
-            "device_name": "Integrity sensor",
-        })
-        assert registered.status_code == 201
-        assert client.post("/api/v1/devices/ESP32-INTEGRITY/assignments",
-                           json={"shipment_id": shipment_id, "active": True}).status_code == 200
-        assert client.post("/api/v1/devices/ESP32-INTEGRITY/keys",
-                           json={"key_id": "key-v1", "public_key_pem": pem}).status_code == 201
+        from test_signed_ingestion import register
+        assert register(client, pem, shipment_id).status_code == 201
         yield client, app, key, shipment_id
     app.state.engine.dispose()
 
@@ -145,7 +138,7 @@ def test_membership_is_immutable_and_tamper_creates_one_alert(integrity_api):
     sealed = client.post(
         f"/api/v1/shipments/{shipment_id}/batches/seal",
         headers=ADMIN,
-        json={"device_id": "ESP32-INTEGRITY", "force": True},
+        json={"device_id": "ESP32-01", "force": True},
     )
     assert sealed.status_code == 201
     assert sealed.json()["record_count"] == 1
@@ -178,7 +171,7 @@ def test_membership_is_immutable_and_tamper_creates_one_alert(integrity_api):
     empty = client.post(
         f"/api/v1/shipments/{shipment_id}/batches/seal",
         headers=ADMIN,
-        json={"device_id": "ESP32-INTEGRITY", "force": True},
+        json={"device_id": "ESP32-01", "force": True},
     )
     assert empty.status_code == 409
     assert empty.json()["error"]["code"] == "NO_ELIGIBLE_TELEMETRY"
@@ -229,7 +222,7 @@ def test_admin_auth_and_verify_contract(integrity_api):
     client, _app, key, shipment_id = integrity_api
     # 1. createShipment requires Bearer JWT auth
     no_auth_shipment = client.post("/api/v1/shipments", headers={"Authorization": ""}, json={
-        "code": "SHIP-NO-AUTH",
+        "name": "SHIP-NO-AUTH",
         "cargo_type": "vaccine",
         "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
         "destination": {"name": "B", "latitude": 11.0, "longitude": 106.0},
@@ -245,7 +238,7 @@ def test_admin_auth_and_verify_contract(integrity_api):
         "/api/v1/shipments",
         headers={"Authorization": "", "X-Admin-Key": "integrity-test-admin"},
         json={
-            "code": "SHIP-OLD-KEY",
+            "name": "SHIP-OLD-KEY",
             "cargo_type": "vaccine",
             "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
             "destination": {"name": "B", "latitude": 11.0, "longitude": 106.0},
@@ -287,7 +280,7 @@ def test_unsigned_telemetry_does_not_display_valid_signature(integrity_api):
     # Post legacy/unsigned telemetry
     res = client.post(
         f"/api/v1/shipments/{shipment_id}/telemetry",
-        json={"device_id": "ESP32-INTEGRITY", "temperature_c": 4.5, "humidity_pct": 60.0},
+        json={"device_id": "ESP32-01", "temperature_c": 4.5, "humidity_pct": 60.0},
     )
     assert res.status_code == 201
     # Unsigned telemetry should NOT have signature_status = "VALID"

@@ -10,14 +10,15 @@ from uuid import UUID, uuid4
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (Device, DeviceAssignment, DeviceKey, IngestionAudit,
-                        IntegrityBatch, SignedTelemetryReceipt, Telemetry)
+                        SignedTelemetryReceipt, Telemetry)
 from app.schemas.api import SignedTelemetryCreate, TelemetryCreate
 from app.services import shipments
+from app.services.device_registry import DEFAULT_KEY_ID, DEVICE_IDS
 from app.services.telemetry_protocol import canonical_signed_bytes, verify_signature
 
 
@@ -59,6 +60,8 @@ def _shipment_id(value: str) -> str:
 def prepare_device(session: Session, device_id: str, device_name: str) -> Device:
     """Validate and stage a new device without committing the transaction."""
     _identity(device_id, "device_id")
+    if device_id not in DEVICE_IDS:
+        raise IngestionError(403, "FIXED_DEVICE_REGISTRY", "Device must be ESP32-01 through ESP32-10")
     device_name = device_name.strip()
     if not 1 <= len(device_name) <= 100:
         raise IngestionError(422, "VALIDATION_ERROR", "Device name must contain 1-100 characters")
@@ -70,7 +73,7 @@ def prepare_device(session: Session, device_id: str, device_name: str) -> Device
 
 
 def register_device(session: Session, device_id: str, device_name: str) -> Device:
-    """Register without local key provisioning (used by the manual/cloud mode)."""
+    """Internal setup helper for a fixed identity; unavailable through HTTP."""
     device = prepare_device(session, device_id, device_name)
     try:
         session.commit()
@@ -81,6 +84,8 @@ def register_device(session: Session, device_id: str, device_name: str) -> Devic
 
 
 def get_device(session: Session, device_id: str, *, lock: bool = False) -> Device:
+    if device_id not in DEVICE_IDS:
+        raise IngestionError(404, "DEVICE_NOT_FOUND", "Device is not in the fixed ESP32 registry")
     device = (
         session.scalar(select(Device).where(Device.id == device_id).with_for_update()
                        .execution_options(populate_existing=True))
@@ -102,10 +107,15 @@ def device_view(session: Session, device: Device) -> dict:
     active_shipments = [item.shipment_id for item in assignments if item.active]
     if len(active_shipments) > 1:
         raise IngestionError(409, "DEVICE_ALREADY_ASSIGNED", "Device has conflicting active assignments")
+    current_shipment = shipments.get_shipment(session, active_shipments[0]) if active_shipments else None
     return {
         "device_id": device.id, "device_name": device.device_name, "status": device.status,
-        "has_public_key": any(key.status == "active" for key in keys),
+        "has_public_key": any(
+            (device.id not in DEVICE_IDS or key.key_id == DEFAULT_KEY_ID) and key.status == "active"
+            for key in keys
+        ),
         "current_shipment_id": active_shipments[0] if active_shipments else None,
+        "current_shipment_name": current_shipment.name if current_shipment is not None else None,
         "last_sequence_number": device.last_sequence_number,
         "last_seen_at": shipments.ensure_utc(device.last_seen_at),
         "keys": [{"key_id": key.key_id, "status": key.status} for key in keys],
@@ -115,46 +125,10 @@ def device_view(session: Session, device: Device) -> dict:
 
 
 def list_devices(session: Session) -> dict:
-    items = [device_view(session, device) for device in session.scalars(select(Device).order_by(Device.id))]
+    items = [device_view(session, device) for device in session.scalars(
+        select(Device).where(Device.id.in_(DEVICE_IDS)).order_by(Device.id)
+    )]
     return {"items": items, "total": len(items)}
-
-
-def delete_device(session: Session, device_id: str) -> None:
-    """Delete an unused device while preserving shipment evidence."""
-    device = get_device(session, device_id, lock=True)
-
-    active_assignment = session.scalar(select(DeviceAssignment).where(
-        DeviceAssignment.device_id == device.id,
-        DeviceAssignment.active.is_(True),
-    ).with_for_update())
-    if active_assignment is not None:
-        raise IngestionError(
-            409,
-            "DEVICE_ASSIGNED",
-            "Unassign the device from its current shipment before deleting it",
-        )
-
-    # Signed receipts and integrity batches are evidence for an existing shipment.
-    # Deleting them together with a device would make the audit trail incomplete.
-    has_receipt = session.scalar(select(SignedTelemetryReceipt.telemetry_id).where(
-        SignedTelemetryReceipt.device_id == device.id,
-    ).limit(1)) is not None
-    has_batch = session.scalar(select(IntegrityBatch.id).where(
-        IntegrityBatch.device_id == device.id,
-    ).limit(1)) is not None
-    if has_receipt or has_batch:
-        raise IngestionError(
-            409,
-            "DEVICE_HAS_DATA",
-            "Device has telemetry history and cannot be deleted; revoke it instead",
-        )
-
-    # Inactive assignments are only setup history. They can be removed together
-    # with a device that has never produced shipment evidence.
-    session.execute(delete(DeviceAssignment).where(DeviceAssignment.device_id == device.id))
-    session.execute(delete(DeviceKey).where(DeviceKey.device_id == device.id))
-    session.delete(device)
-    session.commit()
 
 
 def add_key(session: Session, device_id: str, key_id: str, public_key_pem: str) -> None:
@@ -246,7 +220,7 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
         select(Device).where(Device.id == payload.device_id).with_for_update()
         .execution_options(populate_existing=True)
     )
-    if device is None or device.status != "active":
+    if device is None or payload.device_id not in DEVICE_IDS or device.status != "active":
         _reject(session, payload, "DEVICE_NOT_ACTIVE", 403, "Device is not active")
     # Locking reads see current committed rows on MySQL REPEATABLE READ even if
     # the earlier shipment lookup established an older consistent snapshot.
@@ -258,7 +232,7 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
     key = session.scalar(select(DeviceKey).where(
         DeviceKey.device_id == device.id, DeviceKey.key_id == payload.key_id,
     ).with_for_update().execution_options(populate_existing=True))
-    if key is None or key.status != "active":
+    if key is None or payload.key_id != DEFAULT_KEY_ID or key.status != "active":
         _reject(session, payload, "UNKNOWN_KEY", 401, "Key is unknown or revoked")
     value = payload.model_dump()
     try:

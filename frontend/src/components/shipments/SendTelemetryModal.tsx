@@ -20,7 +20,7 @@ interface SendTelemetryModalProps {
   isOpen: boolean;
   onClose: () => void;
   shipmentId: string;
-  shipmentCode: string;
+  shipmentName: string;
   tempMin: number;
   tempMax: number;
   assignedDevices: string[];
@@ -31,7 +31,7 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
   isOpen,
   onClose,
   shipmentId,
-  shipmentCode,
+  shipmentName,
   tempMin,
   tempMax,
   assignedDevices,
@@ -222,7 +222,7 @@ export const SendTelemetryModal: React.FC<SendTelemetryModalProps> = ({
                   margin: 0,
                 }}
               >
-                Mô phỏng gửi Telemetry (POST /api/v1/shipments/:id/telemetry) cho {shipmentCode}
+                Mô phỏng gửi Telemetry (POST /api/v1/shipments/:id/telemetry) cho {shipmentName}
               </p>
             </div>
           </div>

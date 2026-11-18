@@ -9,6 +9,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from cryptography.hazmat.primitives import serialization
 
 from sqlalchemy import select
 from sqlalchemy.engine import URL, make_url
@@ -16,7 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import load_settings
 from app.core.database import Base, make_engine, make_session_factory
-from app.models import IntegrityBatch, IntegrationOutbox, Shipment, ShipmentEvent, Telemetry
+from app.models import DeviceAssignment, IntegrityBatch, IntegrationOutbox, Shipment, ShipmentEvent, Telemetry
 from app.schemas.api import ShipmentCreate, TelemetryCreate
 from app.services.shipments import add_telemetry, create_shipment
 from app.services.blockchain_outbox import configured_coordinator
@@ -24,11 +25,15 @@ from app.services.integrity_anchor_service import configured_integrity_coordinat
 from app.services.insurance_evidence import configured_evidence_coordinator
 from app.services.batch_service import verify_batch
 from app.services.auth import initialize_admin
+from app.services.device_registry import DEFAULT_KEY_ID, DEVICE_IDS
+from app.services.device_provisioning import (
+    FirmwareConfigWriter, ProvisioningError, initialize_fixed_devices, load_device_keys,
+)
 
 
 DEMO_SHIPMENTS = [
     {
-        "code": "SHIP-DEMO-001",
+        "name": "SHIP-DEMO-001",
         "cargo_type": "vaccine",
         "origin": {"name": "Kho Cần Thơ", "latitude": 10.03, "longitude": 105.77},
         "destination": {"name": "Bệnh viện A", "latitude": 10.05, "longitude": 105.81},
@@ -37,7 +42,7 @@ DEMO_SHIPMENTS = [
         "insured_amount_vnd": 10000000,
     },
     {
-        "code": "SHIP-DEMO-002",
+        "name": "SHIP-DEMO-002",
         "cargo_type": "fresh_food",
         "origin": {"name": "Kho Long An", "latitude": 10.54, "longitude": 106.41},
         "destination": {"name": "Siêu thị B", "latitude": 10.77, "longitude": 106.69},
@@ -46,7 +51,7 @@ DEMO_SHIPMENTS = [
         "insured_amount_vnd": 5000000,
     },
     {
-        "code": "SHIP-DEMO-003",
+        "name": "SHIP-DEMO-003",
         "cargo_type": "medicine",
         "origin": {"name": "Kho HCM", "latitude": 10.82, "longitude": 106.63},
         "destination": {"name": "Nhà thuốc C", "latitude": 10.75, "longitude": 106.70},
@@ -60,9 +65,9 @@ DEMO_SHIPMENTS = [
 def seed_demo(session_factory) -> None:
     with session_factory() as session:
         for index, data in enumerate(DEMO_SHIPMENTS):
-            existing = session.scalar(select(Shipment).where(Shipment.code == data["code"]))
+            existing = session.scalar(select(Shipment).where(Shipment.name == data["name"]))
             if existing is not None:
-                print(f"Exists: {existing.code} ({existing.id})")
+                print(f"Exists: {existing.name} ({existing.id})")
                 continue
             shipment = create_shipment(session, ShipmentCreate.model_validate(data))
             if index == 1:
@@ -77,7 +82,7 @@ def seed_demo(session_factory) -> None:
                     shipment.id,
                     TelemetryCreate(device_id="SIM-DEMO-03", temperature_c=9.2, humidity_pct=72.5),
                 )
-            print(f"Created: {shipment.code} ({shipment.id})")
+            print(f"Created: {shipment.name} ({shipment.id})")
 
 
 def create_database(database_url: str | URL) -> None:
@@ -124,12 +129,18 @@ def main() -> None:
         "command",
         choices=(
             "create-db", "init-db", "upgrade-db", "seed-demo", "retry-blockchain", "retry-integrity",
+            "init-devices", "configure-device",
         ),
     )
     parser.add_argument("--shipment-id", help="retry one shipment; default retries all pending/failed reports")
     parser.add_argument("--batch-id", help="retry one integrity batch; default retries all pending/failed anchors")
+    parser.add_argument("--device-id", choices=DEVICE_IDS, help="fixed ESP32 identity to write to config.h")
     args = parser.parse_args()
     settings = load_settings()
+    if args.command == "configure-device" and (not args.device_id or not args.shipment_id):
+        parser.error("configure-device requires --device-id and --shipment-id")
+    if args.command in {"init-devices", "configure-device"} and settings.device_provisioning_mode != "local":
+        parser.error("Use DEVICE_PROVISIONING_MODE=local on your local computer")
     try:
         if args.command == "create-db":
             create_database(settings.database_url)
@@ -142,6 +153,24 @@ def main() -> None:
                 with make_session_factory(engine)() as session:
                     initialize_admin(session, settings)
                 print("Single Admin account ready (existing credentials preserved).")
+                if settings.device_provisioning_mode == "local":
+                    with make_session_factory(engine)() as session:
+                        initialize_fixed_devices(session, settings.device_keys_path)
+                    print("ESP32-01 through ESP32-10 ready; existing local keys preserved.")
+            if args.command == "configure-device":
+                with make_session_factory(engine)() as session:
+                    assignment = session.get(DeviceAssignment, (args.device_id, args.shipment_id))
+                    if assignment is None or not assignment.active:
+                        parser.exit(2, "Assign this device to the shipment on the Frontend first.\n")
+                key = load_device_keys(settings.device_keys_path)[args.device_id]
+                pem = key.private_bytes(
+                    serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                    serialization.NoEncryption(),
+                ).decode("ascii")
+                FirmwareConfigWriter(settings.device_config_path).update(
+                    args.device_id, DEFAULT_KEY_ID, pem, shipment_id=args.shipment_id,
+                )
+                print(f"Updated config.h for {args.device_id}, shipment_id={args.shipment_id}")
             if args.command == "seed-demo":
                 seed_demo(make_session_factory(engine))
             if args.command == "retry-blockchain":
@@ -196,7 +225,7 @@ def main() -> None:
                         )
         finally:
             engine.dispose()
-    except ValueError as exc:
+    except (ValueError, ProvisioningError) as exc:
         parser.exit(2, f"Configuration error: {exc}\n")
     except SQLAlchemyError as exc:
         code = exc.orig.args[0] if hasattr(exc, "orig") and exc.orig.args else "unknown"

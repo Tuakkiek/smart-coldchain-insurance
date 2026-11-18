@@ -21,7 +21,7 @@ ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
 SHIPMENT = {
-    "code": "SHIP-CHAIN-001", "cargo_type": "vaccine",
+    "name": "SHIP-CHAIN-001", "cargo_type": "vaccine",
     "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
     "destination": {"name": "B", "latitude": 11.0, "longitude": 106.0},
     "temp_min_c": 2.0, "temp_max_c": 8.0,

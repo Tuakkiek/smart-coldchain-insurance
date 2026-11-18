@@ -161,6 +161,43 @@ Tiếp tục kiểm tra:
 - Transaction pending giữ nguyên signed raw transaction/idempotency; không xóa outbox hoặc tự sửa `transaction_hash` trong DB.
 - Chỉ log request ID, shipment/device/batch/evidence ID và mã lỗi đã chuẩn hóa; không log connection string, private key, password, JWT hoặc raw transaction.
 
+### Login trả 500 và health báo database unavailable
+
+Nếu log dừng tại `ssl.create_default_context(cafile=ca, ...)` với
+`FileNotFoundError: [Errno 2] No such file or directory`, kiểm tra `MYSQL_SSL_CA`.
+Đây là lỗi backend không tìm thấy CA của MySQL, xảy ra trước bước xác thực Admin.
+`/api/v1/health` có thể vẫn trả HTTP 200 nhưng `database="unavailable"`;
+`/api/v1/ready` trả 503. Kiểm tra CORS hoặc rebuild frontend không khắc phục lỗi CA.
+
+Với service hiện tại dùng CA đã commit trong repository:
+
+```dotenv
+MYSQL_SSL_CA=/opt/render/project/src/backend/certs/aiven-ca.crt
+```
+
+Hoặc upload đúng CA qua Render Secret File và dùng `/etc/secrets/mysql-ca.pem`.
+Đường dẫn Windows và file chỉ có trên máy cá nhân không dùng được trong container Render.
+Backend mới resolve đường dẫn tương đối từ `backend/` và từ chối khởi động nếu CA không tồn tại;
+không bỏ CA hay tắt xác minh TLS để né lỗi. Sau khi sửa Environment, deploy để áp dụng
+cấu hình, rồi kiểm tra `/ready`, login, refresh và API có Bearer token.
+
+### Shipments trả 503 sau khi đã đăng nhập được
+
+Nếu log báo MySQL `1054 Unknown column 'shipments.origin_formatted_address'`,
+database chưa chạy migration `20261118_07` trong khi backend đã dùng model mới.
+Sao lưu `shipments` và revision hiện tại, rồi chạy `python -m app.cli upgrade-db`
+từ `backend/` với cấu hình của đúng database đang deploy. Revision này bổ sung
+metadata địa điểm, ví và policy; giữ dữ liệu VND cũ. Không xóa bảng hoặc seed demo.
+Sau đó kiểm tra revision Alembic và gọi lại `/api/v1/shipments` với Bearer token.
+
+Service tạo thủ công cần đặt **Start Command** giống Blueprint:
+
+```text
+python -m app.cli upgrade-db && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Chỉ chạy `uvicorn` không tự áp dụng migration trong repository khi deploy mã mới.
+
 ### Login trả 404 trên Render
 
 `404 /api/v1/auth/login` là lỗi route/deployment/URL; sai username/password ở API JWT trả `401`. Kiểm tra `/openapi.json` trên đúng origin Frontend đang gọi. Nếu không có route login thì bản đang phục vụ chưa có endpoint đó, hoặc URL trỏ nhầm service; nhập/sửa dữ liệu Admin trong MySQL không giải quyết được.

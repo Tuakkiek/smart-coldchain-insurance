@@ -33,6 +33,7 @@ import { IntegrityViolationAlert } from '../components/integrity/IntegrityViolat
 import { BatchVerificationModal } from '../components/integrity/BatchVerificationModal';
 import { BatchDetailModal } from '../components/integrity/BatchDetailModal';
 import { SendTelemetryModal } from '../components/shipments/SendTelemetryModal';
+import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 import { formatInsuranceCoverage, shortenAddress } from '../utils/ethereum';
 import {
@@ -75,6 +76,7 @@ export const ShipmentDetailPage: React.FC = () => {
 
   // Send Telemetry Modal
   const [isSendTelemetryOpen, setIsSendTelemetryOpen] = useState(false);
+  const [isAssignDeviceOpen, setIsAssignDeviceOpen] = useState(false);
 
   // Batch Verification & Detail Modals
   const [verifyingBatchId, setVerifyingBatchId] = useState<string | null>(null);
@@ -370,11 +372,15 @@ export const ShipmentDetailPage: React.FC = () => {
           >
             Gửi Telemetry
           </Button>
+          <Button variant="secondary" size="sm" icon={<Cpu size={14} />}
+            onClick={() => setIsAssignDeviceOpen(true)}>
+            Gán / tháo thiết bị
+          </Button>
         </div>
       </div>
 
       <PageHeader
-        title={`Lô hàng: ${shipment.code}`}
+        title={`Lô hàng: ${shipment.name}`}
         description={`${shipment.cargo_type} • ID: ${shipment.id}`}
         action={
           <div className="flex-row items-center gap-2">
@@ -1259,11 +1265,20 @@ export const ShipmentDetailPage: React.FC = () => {
       />
 
       {/* Modal Gửi Dữ Liệu Đo Cảm Biến */}
+      <AssignDeviceModal
+        isOpen={isAssignDeviceOpen}
+        initialShipmentId={shipment.id}
+        onClose={() => setIsAssignDeviceOpen(false)}
+        onSuccess={(_device, message) => {
+          toast.success(message, { title: 'Thiết bị lô hàng' });
+          fetchData(true);
+        }}
+      />
       <SendTelemetryModal
         isOpen={isSendTelemetryOpen}
         onClose={() => setIsSendTelemetryOpen(false)}
         shipmentId={shipment.id}
-        shipmentCode={shipment.code}
+        shipmentName={shipment.name}
         tempMin={shipment.temp_min_c}
         tempMax={shipment.temp_max_c}
         assignedDevices={

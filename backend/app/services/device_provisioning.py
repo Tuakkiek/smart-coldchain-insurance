@@ -1,29 +1,20 @@
-"""Local-only ESP32 key provisioning during Admin device registration.
-
-The private key exists only in memory until this service writes it to the one
-configured firmware file.  It is never stored in MySQL and never returned by
-an API response.
-"""
+"""Create ten fixed ESP32 key pairs once, keeping private keys in a local file."""
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import tempfile
-import threading
-from dataclasses import dataclass
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Device, DeviceKey
-from app.services import signed_ingestion
-
-
-DEFAULT_KEY_ID = "key-v1"
+from app.services.device_registry import DEFAULT_KEY_ID, DEVICE_IDS
 
 
 class ProvisioningError(Exception):
@@ -32,12 +23,6 @@ class ProvisioningError(Exception):
     def __init__(self, status_code: int, code: str, message: str):
         self.status_code, self.code, self.message = status_code, code, message
         super().__init__(message)
-
-
-@dataclass(frozen=True)
-class ConfigSnapshot:
-    content: bytes | None
-    mode: int | None
 
 
 class FirmwareConfigWriter:
@@ -97,11 +82,12 @@ class FirmwareConfigWriter:
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
 
-    def update(self, device_id: str, key_id: str, private_key_pem: str) -> ConfigSnapshot:
+    def update(
+        self, device_id: str, key_id: str, private_key_pem: str, *, shipment_id: str | None = None,
+    ) -> None:
         try:
             if self.config_path.exists():
                 original = self.config_path.read_bytes()
-                mode = self.config_path.stat().st_mode
             else:
                 if not self.template_path.is_file():
                     raise ProvisioningError(
@@ -110,7 +96,6 @@ class FirmwareConfigWriter:
                         f"Firmware config template not found: {self.template_path}",
                     )
                 original = None
-                mode = self.template_path.stat().st_mode
 
             source = original if original is not None else self.template_path.read_bytes()
             content = source.decode("utf-8")
@@ -125,6 +110,8 @@ class FirmwareConfigWriter:
 
         content = self._replace_define(content, "DEVICE_ID", device_id)
         content = self._replace_define(content, "KEY_ID", key_id)
+        if shipment_id is not None:
+            content = self._replace_define(content, "SHIPMENT_ID", shipment_id)
 
         newline = "\r\n" if "\r\n" in content else "\n"
         normalized_pem = private_key_pem.replace("\r\n", "\n").rstrip("\n")
@@ -152,102 +139,110 @@ class FirmwareConfigWriter:
                 "Duplicate DEVICE_PRIVATE_KEY_PEM declaration",
             )
 
-        snapshot = ConfigSnapshot(content=original, mode=mode)
         try:
-            self._atomic_write(self.config_path, content.encode("utf-8"), mode)
+            self._atomic_write(self.config_path, content.encode("utf-8"), 0o600)
         except OSError as exc:
             raise ProvisioningError(
                 500,
                 "CONFIG_WRITE_FAILED",
                 f"Cannot write firmware config: {self.config_path}",
             ) from exc
-        return snapshot
-
-    def restore(self, snapshot: ConfigSnapshot) -> None:
-        """Restore config.h after a database commit failure."""
-        if snapshot.content is None:
-            self.config_path.unlink(missing_ok=True)
-            return
-        self._atomic_write(self.config_path, snapshot.content, snapshot.mode)
 
 
-class DeviceProvisioner:
-    """Coordinate MySQL persistence and local config.h replacement."""
+def load_device_keys(path: Path) -> dict[str, ec.EllipticCurvePrivateKey]:
+    """Read the existing registry. Never regenerate a damaged or missing file."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data["version"] != 1 or data["key_id"] != DEFAULT_KEY_ID:
+            raise ValueError
+        if set(data["devices"]) != set(DEVICE_IDS):
+            raise ValueError
+        keys = {}
+        for device_id, pem in data["devices"].items():
+            key = serialization.load_pem_private_key(pem.encode("ascii"), password=None)
+            if not isinstance(key, ec.EllipticCurvePrivateKey) or not isinstance(key.curve, ec.SECP256R1):
+                raise ValueError
+            keys[device_id] = key
+        if len({key.private_numbers().private_value for key in keys.values()}) != len(DEVICE_IDS):
+            raise ValueError
+        return keys
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        raise ProvisioningError(
+            500, "DEVICE_KEYS_INVALID",
+            "Cannot read the ten local P-256 keys; restore the original ESP32 key file",
+        ) from exc
 
-    def __init__(self, config_path: Path):
-        self.config_writer = FirmwareConfigWriter(config_path)
-        # A shared config.h represents one USB flashing target. Serializing the
-        # full write/commit window also makes rollback safe for concurrent calls.
-        self._lock = threading.Lock()
 
-    def provision(self, session: Session, device_id: str, device_name: str):
-        with self._lock:
-            device = signed_ingestion.prepare_device(session, device_id, device_name)
+def _create_key_file(path: Path) -> None:
+    """Publish a complete file atomically without overwriting an existing one."""
+    keys = {
+        device_id: ec.generate_private_key(ec.SECP256R1()).private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.NoEncryption(),
+        ).decode("ascii")
+        for device_id in DEVICE_IDS
+    }
+    content = json.dumps({"version": 1, "key_id": DEFAULT_KEY_ID, "devices": keys}, indent=2) + "\n"
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(dir=path.parent, prefix=".esp32-keys-", suffix=".tmp")
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temp_path, 0o600)
+        try:
+            # A concurrent startup may win. Reuse its file and keys in that case.
+            os.link(temp_path, path)
+        except FileExistsError:
+            pass
+    finally:
+        temp_path.unlink(missing_ok=True)
 
-            try:
-                private_key = ec.generate_private_key(ec.SECP256R1())
-                private_key_pem = private_key.private_bytes(
-                    serialization.Encoding.PEM,
-                    serialization.PrivateFormat.TraditionalOpenSSL,
-                    serialization.NoEncryption(),
-                ).decode("ascii")
-                public_key_pem = private_key.public_key().public_bytes(
-                    serialization.Encoding.PEM,
-                    serialization.PublicFormat.SubjectPublicKeyInfo,
-                ).decode("ascii")
-            except Exception as exc:
-                session.rollback()
+
+def initialize_fixed_devices(session: Session, key_path: Path) -> None:
+    """Reuse local keys and insert missing public keys in one DB transaction."""
+    key_path = key_path.expanduser().resolve()
+    try:
+        if not key_path.exists():
+            existing = session.scalar(select(DeviceKey.device_id).where(
+                DeviceKey.device_id.in_(DEVICE_IDS),
+            ).limit(1))
+            if existing is not None:
                 raise ProvisioningError(
-                    500,
-                    "KEY_GENERATION_FAILED",
-                    "Could not generate the device ECDSA P-256 key pair",
-                ) from exc
-
-            session.add(DeviceKey(
-                device_id=device_id,
-                key_id=DEFAULT_KEY_ID,
-                public_key_pem=public_key_pem,
-                status="active",
-            ))
-            try:
-                # Flush first so database constraint/public-key failures happen
-                # before the private key changes the firmware file.
-                session.flush()
-            except IntegrityError as exc:
-                session.rollback()
-                # A concurrent registration can win after prepare_device's
-                # initial lookup. Other integrity failures must remain database
-                # failures instead of being mislabeled as a duplicate request.
-                if session.get(Device, device_id) is not None:
-                    raise signed_ingestion.IngestionError(
-                        409,
-                        "DEVICE_EXISTS",
-                        "Device already exists",
-                    ) from exc
-                raise
-
-            try:
-                snapshot = self.config_writer.update(
-                    device_id,
-                    DEFAULT_KEY_ID,
-                    private_key_pem,
+                    500, "DEVICE_KEYS_MISSING",
+                    "ESP32 public keys already exist; restore the original local key file instead of generating new keys",
                 )
-            except Exception:
-                session.rollback()
-                raise
-
-            try:
-                session.commit()
-            except Exception as commit_error:
-                session.rollback()
-                try:
-                    self.config_writer.restore(snapshot)
-                except OSError as restore_error:
-                    raise ProvisioningError(
-                        500,
-                        "PROVISIONING_ROLLBACK_FAILED",
-                        "Database save failed and firmware config could not be restored",
-                    ) from restore_error
-                raise commit_error
-
-            return device, DEFAULT_KEY_ID
+            _create_key_file(key_path)
+        keys = load_device_keys(key_path)
+        devices = {device.id: device for device in session.scalars(select(Device).where(Device.id.in_(DEVICE_IDS)))}
+        stored_keys = {key.device_id: key for key in session.scalars(select(DeviceKey).where(
+            DeviceKey.device_id.in_(DEVICE_IDS), DeviceKey.key_id == DEFAULT_KEY_ID,
+        ))}
+        public_keys = {}
+        for device_id in DEVICE_IDS:
+            public_pem = keys[device_id].public_key().public_bytes(
+                serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
+            ).decode("ascii")
+            public_keys[device_id] = public_pem
+            existing_key = stored_keys.get(device_id)
+            if existing_key is not None and existing_key.public_key_pem != public_pem:
+                raise ProvisioningError(
+                    409, "DEVICE_KEY_MISMATCH",
+                    f"Local key for {device_id} does not match its database public key",
+                )
+            if device_id not in devices:
+                session.add(Device(id=device_id, device_name=device_id, status="active", last_sequence_number=0))
+        session.flush()
+        for device_id in DEVICE_IDS:
+            if device_id not in stored_keys:
+                session.add(DeviceKey(
+                    device_id=device_id, key_id=DEFAULT_KEY_ID,
+                    public_key_pem=public_keys[device_id], status="active",
+                ))
+        session.commit()
+    except Exception:
+        session.rollback()
+        # Keep the key file if MySQL fails: the next startup must reuse it.
+        raise

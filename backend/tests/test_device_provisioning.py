@@ -1,252 +1,167 @@
-"""Local key provisioning keeps private material out of MySQL and HTTP."""
+"""Fixed device keys persist locally and never enter HTTP responses or MySQL."""
 
-from __future__ import annotations
-
-import base64
-import re
-from uuid import uuid4
+import json
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.database import Base
 from app.main import create_app
 from app.models import Device, DeviceKey
-from app.services.telemetry_protocol import canonical_signed_bytes, verify_signature
-from test_signed_ingestion import ADMIN
+from app.services.device_provisioning import (
+    FirmwareConfigWriter, ProvisioningError, initialize_fixed_devices, load_device_keys,
+)
+from app.services.device_registry import DEFAULT_KEY_ID, DEVICE_IDS
+from test_signed_ingestion import ADMIN, SHIPMENT, signed
 
 
-CONFIG_TEMPLATE = """#pragma once
-#define API_BASE_URL "https://api.example.test"
-#define WIFI_SSID "demo-wifi"
-#define WIFI_PASSWORD "keep-this-value"
-#define SHIPMENT_ID "11111111-1111-4111-8111-111111111111"
-#define DEVICE_ID "YOUR_DEVICE_ID"
-#define KEY_ID "YOUR_KEY_ID"
-
-static const char DEVICE_PRIVATE_KEY_PEM[] = R"PEM(-----BEGIN EC PRIVATE KEY-----
-GENERATED_BY_LOCAL_BACKEND
------END EC PRIVATE KEY-----
-)PEM";
-
-static const char TLS_ROOT_CA_PEM[] = R"PEM(-----BEGIN CERTIFICATE-----
-KEEP_THIS_CA
------END CERTIFICATE-----
-)PEM";
-"""
-
-
-def _make_app(tmp_path, config_path):
+@pytest.fixture
+def local_api(tmp_path):
     app = create_app(Settings(
-        database_url=f"sqlite:///{(tmp_path / 'provisioning.db').as_posix()}",
+        database_url=f"sqlite:///{(tmp_path / 'devices.db').as_posix()}",
         admin_username="admin",
         admin_password="test-admin-password-12345",
         jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
         device_provisioning_mode="local",
-        device_config_path=config_path,
+        device_keys_path=tmp_path / ".local/esp32-private-keys.txt",
     ))
     Base.metadata.create_all(app.state.engine)
-    return app
-
-
-@pytest.fixture
-def local_provisioning_api(tmp_path):
-    firmware_dir = tmp_path / "firmware"
-    firmware_dir.mkdir()
-    config_path = firmware_dir / "config.h"
-    (firmware_dir / "config.example.h").write_text(CONFIG_TEMPLATE, encoding="utf-8")
-    app = _make_app(tmp_path, config_path)
-    with TestClient(app) as client:
-        yield client, app, config_path
+    with TestClient(app, headers=ADMIN) as client:
+        yield client, app, app.state.settings.device_keys_path
     app.state.engine.dispose()
 
 
-def _register(client, device_id):
-    return client.post(
-        "/api/v1/devices",
-        headers=ADMIN,
-        json={"device_id": device_id, "device_name": f"Sensor {device_id}"},
-    )
-
-
-def _private_key_from_config(config_path):
-    content = config_path.read_text(encoding="utf-8")
-    match = re.search(
-        r'R"PEM\((-----BEGIN EC PRIVATE KEY-----.*?-----END EC PRIVATE KEY-----\r?\n)\)PEM";',
-        content,
-        re.DOTALL,
-    )
-    assert match is not None
-    return serialization.load_pem_private_key(match.group(1).encode("ascii"), password=None)
-
-
-def _public_pem(private_key):
-    return private_key.public_key().public_bytes(
-        serialization.Encoding.PEM,
-        serialization.PublicFormat.SubjectPublicKeyInfo,
+def public_pem(key):
+    return key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("ascii")
 
 
-def test_local_registration_provisions_matching_keys_without_http_key_material(
-    local_provisioning_api,
-    monkeypatch,
-):
-    client, app, config_path = local_provisioning_api
-
-    first = _register(client, "ESP32-001")
-    assert first.status_code == 201, first.text
-    assert first.json()["key_id"] == "key-v1"
-    assert first.json()["provisioning_status"] == "ready"
-    assert first.json()["has_public_key"] is True
-    assert first.json()["keys"] == [{"key_id": "key-v1", "status": "active"}]
-    assert "PRIVATE KEY" not in first.text
-    assert "PUBLIC KEY" not in first.text
-
-    generated = config_path.read_text(encoding="utf-8")
-    assert '#define DEVICE_ID "ESP32-001"' in generated
-    assert '#define KEY_ID "key-v1"' in generated
-    assert '#define WIFI_SSID "demo-wifi"' in generated
-    assert '#define WIFI_PASSWORD "keep-this-value"' in generated
-    assert '#define API_BASE_URL "https://api.example.test"' in generated
-    assert "KEEP_THIS_CA" in generated
-    assert generated.count("#define DEVICE_ID") == 1
-    assert generated.count("#define KEY_ID") == 1
-    assert generated.count("DEVICE_PRIVATE_KEY_PEM[]") == 1
-
-    first_private_key = _private_key_from_config(config_path)
+def test_startup_creates_exactly_ten_matching_keys_without_exposing_private_material(local_api):
+    client, app, path = local_api
+    keys = load_device_keys(path)
+    response = client.get("/api/v1/devices")
+    assert response.status_code == 200
+    assert response.json()["total"] == 10
+    assert [item["device_id"] for item in response.json()["items"]] == list(DEVICE_IDS)
+    assert len({public_pem(key) for key in keys.values()}) == 10
     with app.state.session_factory() as session:
-        first_database_pem = session.get(DeviceKey, ("ESP32-001", "key-v1")).public_key_pem
-        assert session.scalar(select(func.count(DeviceKey.device_id))) == 1
-    assert first_database_pem == _public_pem(first_private_key)
+        assert session.scalar(select(func.count(Device.id))) == 10
+        assert session.scalar(select(func.count(DeviceKey.device_id))) == 10
+        for device_id in DEVICE_IDS:
+            stored = session.get(DeviceKey, (device_id, DEFAULT_KEY_ID))
+            assert stored.public_key_pem == public_pem(keys[device_id])
+            assert "PRIVATE KEY" not in stored.public_key_pem
+            detail = client.get(f"/api/v1/devices/{device_id}")
+            assert detail.json()["has_public_key"] is True
+            assert "PRIVATE KEY" not in detail.text
+            assert "PUBLIC KEY" not in detail.text
+    assert "PRIVATE KEY" not in response.text
 
-    payload = {
-        "device_id": "ESP32-001",
-        "firmware_version": "esp32-1.0",
-        "humidity_milli_pct": 65000,
-        "key_id": "key-v1",
-        "payload_version": 1,
-        "recorded_at": "2026-11-17T10:00:00Z",
-        "sequence_number": 1,
-        "shipment_id": str(uuid4()),
-        "temperature_milli_c": 5000,
-    }
-    signature = first_private_key.sign(
-        canonical_signed_bytes(payload),
-        ec.ECDSA(hashes.SHA256()),
-    )
-    payload["signature"] = base64.b64encode(signature).decode("ascii")
-    assert verify_signature(payload, first_database_pem.encode("ascii")) is True
 
-    before_duplicate = config_path.read_bytes()
-    with monkeypatch.context() as duplicate_context:
-        def must_not_generate_key(_curve):
-            raise AssertionError("duplicate registration must not regenerate a key")
+def test_restart_reuses_file_and_preserves_revocation_assignments_and_sequence(local_api, monkeypatch):
+    client, app, path = local_api
+    shipment_id = client.post("/api/v1/shipments", json=SHIPMENT).json()["shipment_id"]
+    client.post("/api/v1/devices/ESP32-01/assignments", json={"shipment_id": shipment_id, "active": True})
+    key = load_device_keys(path)["ESP32-01"]
+    accepted = client.post(f"/api/v1/shipments/{shipment_id}/telemetry", json=signed(key, shipment_id, 1))
+    assert accepted.status_code == 201, accepted.text
+    client.patch("/api/v1/devices/ESP32-01/keys/key-v1", json={"status": "revoked"})
+    before, modified = path.read_bytes(), path.stat().st_mtime_ns
+    monkeypatch.setattr(ec, "generate_private_key", lambda *_: pytest.fail("Restart regenerated a key"))
+    with TestClient(app, headers=ADMIN) as restarted:
+        detail = restarted.get("/api/v1/devices/ESP32-01").json()
+        assert detail["current_shipment_id"] == shipment_id
+        assert detail["last_sequence_number"] == 1
+        assert detail["has_public_key"] is False
+    assert path.read_bytes() == before
+    assert path.stat().st_mtime_ns == modified
 
-        duplicate_context.setattr(
-            "app.services.device_provisioning.ec.generate_private_key",
-            must_not_generate_key,
-        )
-        duplicate = _register(client, "ESP32-001")
-    assert duplicate.status_code == 409
-    assert duplicate.json()["error"]["code"] == "DEVICE_EXISTS"
-    assert config_path.read_bytes() == before_duplicate
+
+@pytest.mark.parametrize("damage", ["missing", "invalid_json", "missing_device", "duplicate_key", "wrong_curve"])
+def test_missing_or_invalid_file_never_rotates_existing_keys(local_api, damage):
+    _, app, path = local_api
+    data = json.loads(path.read_text())
+    if damage == "missing":
+        path.unlink()
+    elif damage == "invalid_json":
+        path.write_text("invalid file")
+    else:
+        if damage == "missing_device":
+            del data["devices"]["ESP32-10"]
+        elif damage == "duplicate_key":
+            data["devices"]["ESP32-10"] = data["devices"]["ESP32-01"]
+        else:
+            data["devices"]["ESP32-10"] = ec.generate_private_key(ec.SECP384R1()).private_bytes(
+                serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                serialization.NoEncryption(),
+            ).decode("ascii")
+        path.write_text(json.dumps(data))
     with app.state.session_factory() as session:
-        assert session.scalar(select(func.count(DeviceKey.device_id))) == 1
+        before = list(session.scalars(select(DeviceKey.public_key_pem).order_by(DeviceKey.device_id)))
+        with pytest.raises(ProvisioningError) as error:
+            initialize_fixed_devices(session, path)
+        assert error.value.code == ("DEVICE_KEYS_MISSING" if damage == "missing" else "DEVICE_KEYS_INVALID")
+        assert list(session.scalars(select(DeviceKey.public_key_pem).order_by(DeviceKey.device_id))) == before
 
-    second = _register(client, "ESP32-002")
-    assert second.status_code == 201
-    assert '#define DEVICE_ID "ESP32-002"' in config_path.read_text(encoding="utf-8")
-    second_private_key = _private_key_from_config(config_path)
-    assert _public_pem(second_private_key) != first_database_pem
+
+def test_key_mismatch_fails_without_overwriting_database(local_api):
+    _, app, path = local_api
+    data = json.loads(path.read_text())
+    data["devices"]["ESP32-01"], data["devices"]["ESP32-02"] = data["devices"]["ESP32-02"], data["devices"]["ESP32-01"]
+    path.write_text(json.dumps(data))
     with app.state.session_factory() as session:
-        assert session.get(DeviceKey, ("ESP32-001", "key-v1")).public_key_pem == first_database_pem
-        assert session.get(DeviceKey, ("ESP32-002", "key-v1")).public_key_pem == _public_pem(
-            second_private_key
-        )
+        before = session.get(DeviceKey, ("ESP32-01", DEFAULT_KEY_ID)).public_key_pem
+        with pytest.raises(ProvisioningError, match="does not match"):
+            initialize_fixed_devices(session, path)
+        assert session.get(DeviceKey, ("ESP32-01", DEFAULT_KEY_ID)).public_key_pem == before
 
 
-def test_key_generation_failure_does_not_create_device_or_config(
-    local_provisioning_api,
-    monkeypatch,
-):
-    client, app, config_path = local_provisioning_api
-
-    def fail_key_generation(_curve):
-        raise RuntimeError("simulated key generation failure")
-
-    monkeypatch.setattr(
-        "app.services.device_provisioning.ec.generate_private_key",
-        fail_key_generation,
-    )
-    response = _register(client, "ESP32-KEY-FAIL")
-    assert response.status_code == 500
-    assert response.json()["error"]["code"] == "KEY_GENERATION_FAILED"
-    assert "simulated" not in response.text
-    assert not config_path.exists()
+def test_database_failure_keeps_file_for_retry(local_api, tmp_path, monkeypatch):
+    _, app, _ = local_api
+    # Use a fresh database, so this exercises first-time file generation.
+    Base.metadata.drop_all(app.state.engine)
+    Base.metadata.create_all(app.state.engine)
+    path = tmp_path / "new-local/keys.txt"
     with app.state.session_factory() as session:
-        assert session.get(Device, "ESP32-KEY-FAIL") is None
-        assert session.scalar(select(func.count(DeviceKey.device_id))) == 0
+        with monkeypatch.context() as patch:
+            patch.setattr(session, "commit", lambda: (_ for _ in ()).throw(OperationalError("commit", {}, Exception())))
+            with pytest.raises(OperationalError):
+                initialize_fixed_devices(session, path)
+        before = path.read_bytes()
+        assert session.scalar(select(func.count(Device.id))) == 0
+        initialize_fixed_devices(session, path)
+        assert path.read_bytes() == before
+        assert session.scalar(select(func.count(Device.id))) == 10
 
 
-def test_missing_config_template_rolls_back_database(tmp_path):
-    firmware_dir = tmp_path / "firmware"
-    firmware_dir.mkdir()
-    config_path = firmware_dir / "config.h"
-    app = _make_app(tmp_path, config_path)
-    with TestClient(app) as client:
-        response = _register(client, "ESP32-NO-TEMPLATE")
-        assert response.status_code == 500
-        assert response.json()["error"]["code"] == "CONFIG_TEMPLATE_NOT_FOUND"
-    with app.state.session_factory() as session:
-        assert session.get(Device, "ESP32-NO-TEMPLATE") is None
-        assert session.scalar(select(func.count(DeviceKey.device_id))) == 0
-    app.state.engine.dispose()
+def test_firmware_configuration_uses_existing_key_and_shipment(local_api, tmp_path):
+    _, _, key_path = local_api
+    path = tmp_path / "config.h"
+    template = Path(__file__).resolve().parents[2] / "device/cold_chain_device/config.example.h"
+    path.write_bytes(template.read_bytes())
+    key = load_device_keys(key_path)["ESP32-03"]
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                            serialization.NoEncryption()).decode("ascii")
+    shipment_id = "11111111-1111-4111-8111-111111111111"
+    FirmwareConfigWriter(path).update("ESP32-03", DEFAULT_KEY_ID, pem, shipment_id=shipment_id)
+    content = path.read_text()
+    assert '#define DEVICE_ID "ESP32-03"' in content
+    assert f'#define SHIPMENT_ID "{shipment_id}"' in content
+    assert pem.strip() in content
+    assert content.count("DEVICE_PRIVATE_KEY_PEM[]") == 1
+    assert "#define WIFI_SSID" in content
+    assert '#define API_BASE_URL "https://YOUR-SERVICE.onrender.com"' in content
 
 
-def test_config_permission_failure_rolls_back_database(local_provisioning_api, monkeypatch):
-    client, app, config_path = local_provisioning_api
-
-    def deny_write(_path, _content, _mode):
-        raise PermissionError("simulated access denied")
-
-    monkeypatch.setattr(
-        app.state.device_provisioner.config_writer,
-        "_atomic_write",
-        deny_write,
-    )
-    response = _register(client, "ESP32-NO-WRITE")
-    assert response.status_code == 500
-    assert response.json()["error"]["code"] == "CONFIG_WRITE_FAILED"
-    assert "simulated" not in response.text
-    assert not config_path.exists()
-    with app.state.session_factory() as session:
-        assert session.get(Device, "ESP32-NO-WRITE") is None
-        assert session.scalar(select(func.count(DeviceKey.device_id))) == 0
-
-
-def test_database_commit_failure_restores_previous_config(local_provisioning_api, monkeypatch):
-    client, app, config_path = local_provisioning_api
-    original_commit = Session.commit
-
-    def fail_commit(_session):
-        if config_path.exists():
-            raise OperationalError("COMMIT", {}, RuntimeError("simulated database failure"))
-        return original_commit(_session)
-
-    monkeypatch.setattr(Session, "commit", fail_commit)
-    response = _register(client, "ESP32-DB-FAIL")
-    assert response.status_code == 503
-    assert response.json()["error"]["code"] == "DATABASE_UNAVAILABLE"
-    assert "simulated" not in response.text
-    assert not config_path.exists()
-
-    monkeypatch.setattr(Session, "commit", original_commit)
-    with app.state.session_factory() as session:
-        assert session.get(Device, "ESP32-DB-FAIL") is None
-        assert session.scalar(select(func.count(DeviceKey.device_id))) == 0
+def test_production_cannot_generate_private_keys(local_api):
+    _, app, _ = local_api
+    with pytest.raises(ValueError, match="production"):
+        replace(app.state.settings, app_env="production", refresh_cookie_secure=True)

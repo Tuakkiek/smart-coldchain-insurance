@@ -3,6 +3,8 @@
 Smart Contract quản lý dữ liệu toàn vẹn (**Module A — `ColdChainDataIntegrity`**) và chính sách bảo hiểm chuỗi lạnh bằng native **`SepoliaETH`** (**Module B — `ColdChainInsurance`**) trên mạng **Ethereum Sepolia (`11155111`)**.
 
 > ⚠️ **Demo only** — `SepoliaETH` trong project này chỉ là coin testnet miễn phí, không có giá trị tiền thật. Không kết nối ví/tài khoản có tài sản thật.
+>
+> Luồng hiện tại dùng `shipment_id` UUID và bộ thiết bị cố định `ESP32-01` đến `ESP32-10` (xem [hướng dẫn local](../docs/local-devices.md)). `ColdChainInsurance` dùng native `SepoliaETH` (`constructor` nhận `Oracle`, `createPolicy` gửi kèm `msg.value`).
 
 ---
 

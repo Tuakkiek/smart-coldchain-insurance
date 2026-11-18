@@ -38,7 +38,7 @@ def signed_payload(key, sequence):
     payload = {
         "payload_version": 1,
         "shipment_id": SEEDED_SHIPMENT_ID,
-        "device_id": "PHASE6-HARDHAT",
+        "device_id": "ESP32-01",
         "key_id": "key-v1",
         "sequence_number": sequence,
         "temperature_c": 9.2,
@@ -91,7 +91,7 @@ def test_signed_anchored_violation_pays_once_on_local_chain(tmp_path):
     try:
         with app.state.session_factory() as session:
             shipment = create_shipment(session, ShipmentCreate.model_validate({
-                "code": "SHIP-CHAIN-LIVE", "cargo_type": "vaccine",
+                "name": "SHIP-CHAIN-LIVE", "cargo_type": "vaccine",
                 "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
                 "destination": {"name": "B", "latitude": 11.0, "longitude": 106.0},
                 "temp_min_c": 2.0, "temp_max_c": 8.0,
@@ -101,14 +101,8 @@ def test_signed_anchored_violation_pays_once_on_local_chain(tmp_path):
             session.commit()
 
         with TestClient(app) as client:
-            assert client.post("/api/v1/devices", headers=ADMIN, json={
-                "device_id": "PHASE6-HARDHAT",
-                "device_name": "Hardhat sensor",
-            }).status_code == 201
-            assert client.post("/api/v1/devices/PHASE6-HARDHAT/assignments", headers=ADMIN,
-                               json={"shipment_id": SEEDED_SHIPMENT_ID, "active": True}).status_code == 200
-            assert client.post("/api/v1/devices/PHASE6-HARDHAT/keys", headers=ADMIN,
-                               json={"key_id": "key-v1", "public_key_pem": public_key}).status_code == 201
+            from test_signed_ingestion import register
+            assert register(client, public_key, SEEDED_SHIPMENT_ID).status_code == 201
             route = f"/api/v1/shipments/{SEEDED_SHIPMENT_ID}/telemetry"
             for sequence, minute in enumerate((0, 5, 10, 15), start=1):
                 app.state.clock.current = start + timedelta(minutes=minute)

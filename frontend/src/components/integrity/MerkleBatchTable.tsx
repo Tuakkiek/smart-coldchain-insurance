@@ -57,7 +57,7 @@ export const MerkleBatchTable: React.FC<MerkleBatchTableProps> = ({
       const matchesSearch =
         !term ||
         b.batch_id.toLowerCase().includes(term) ||
-        (b.shipment_code && b.shipment_code.toLowerCase().includes(term)) ||
+        (b.shipment_name && b.shipment_name.toLowerCase().includes(term)) ||
         b.shipment_id.toLowerCase().includes(term) ||
         b.device_id.toLowerCase().includes(term) ||
         b.merkle_root.toLowerCase().includes(term);
@@ -324,7 +324,7 @@ export const MerkleBatchTable: React.FC<MerkleBatchTableProps> = ({
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {batch.shipment_code || batch.shipment_id.slice(0, 8)}
+                          {batch.shipment_name || batch.shipment_id.slice(0, 8)}
                         </Link>
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>

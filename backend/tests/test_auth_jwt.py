@@ -31,7 +31,7 @@ VALID_USERNAME = "admin"
 VALID_PASSWORD = "test-admin-password-12345"
 VALID_SECRET = "test-jwt-secret-key-at-least-32-chars-long!"
 TEST_SHIPMENT = {
-    "code": "AUTH-TEST-SHIP",
+    "name": "AUTH-TEST-SHIP",
     "cargo_type": "vaccine",
     "origin": {"name": "Kho A", "latitude": 10.0, "longitude": 105.0},
     "destination": {"name": "Kho B", "latitude": 11.0, "longitude": 106.0},
@@ -358,13 +358,14 @@ def test_protected_routes_matrix(auth_api):
     assert shipment_resp.status_code == 201
     shipment_id = shipment_resp.json()["id"]
 
-    # 2. Register a device with admin token
+    # 2. Even an Admin cannot create another device.
     dev_resp = client.post(
         "/api/v1/devices",
         json={"device_id": "DEV-AUTH-01", "device_name": "Auth Sensor"},
         headers=admin_auth,
     )
-    assert dev_resp.status_code == 201
+    assert dev_resp.status_code == 403
+    assert dev_resp.json()["error"]["code"] == "FIXED_DEVICE_REGISTRY"
 
     fake_uuid = str(uuid4())
 
@@ -436,20 +437,11 @@ def test_signed_telemetry_does_not_require_jwt_and_jwt_cannot_bypass_ecdsa(auth_
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("ascii")
 
-    client.post("/api/v1/devices", json={"device_id": "SENSOR-ECDSA", "device_name": "Sensor ECDSA"}, headers=admin_auth)
-    client.post(
-        "/api/v1/devices/SENSOR-ECDSA/assignments",
-        json={"shipment_id": shipment_id, "active": True},
-        headers=admin_auth,
-    )
-    client.post(
-        "/api/v1/devices/SENSOR-ECDSA/keys",
-        json={"key_id": "key-1", "public_key_pem": pem},
-        headers=admin_auth,
-    )
+    from test_signed_ingestion import register
+    assert register(client, pem, shipment_id).status_code == 201
 
     # 1. Post signed telemetry WITHOUT JWT -> Must succeed!
-    payload = signed(key, shipment_id, 1, device_id="SENSOR-ECDSA", key_id="key-1")
+    payload = signed(key, shipment_id, 1, device_id="ESP32-01")
     telemetry_resp = client.post(f"/api/v1/shipments/{shipment_id}/telemetry", json=payload)
     assert telemetry_resp.status_code == 201
     assert telemetry_resp.json()["signature_status"] == "VALID"
