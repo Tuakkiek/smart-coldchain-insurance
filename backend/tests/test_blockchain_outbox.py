@@ -186,3 +186,46 @@ def test_rpc_timeout_after_accept_reconciles_receipt(tmp_path):
         assert gateway.broadcasts == ["0xdeadbeef"]
     finally:
         app.state.engine.dispose()
+
+
+def test_sepolia_adapter_helpers_abi_eip1559_and_chunked_logs(tmp_path):
+    from types import SimpleNamespace
+    from web3.exceptions import Web3Exception
+    from app.integrations.blockchain_adapter import _find_event_logs, _load_abi, _tx_fee_fields
+
+    wrapped = tmp_path / "wrapped.json"
+    wrapped.write_text('{"contractName":"Demo","abi":[{"type":"function","name":"f"}]}', encoding="utf-8")
+    raw_list = tmp_path / "raw.json"
+    raw_list.write_text('[{"type":"function","name":"g"}]', encoding="utf-8")
+    assert _load_abi(wrapped, "ABI_UNAVAILABLE") == [{"type": "function", "name": "f"}]
+    assert _load_abi(raw_list, "ABI_UNAVAILABLE") == [{"type": "function", "name": "g"}]
+
+    eip1559_web3 = SimpleNamespace(
+        eth=SimpleNamespace(get_block=lambda _: {"baseFeePerGas": 100}, max_priority_fee=25, gas_price=50)
+    )
+    assert _tx_fee_fields(eip1559_web3) == {"maxPriorityFeePerGas": 25, "maxFeePerGas": 225}
+
+    legacy_web3 = SimpleNamespace(
+        eth=SimpleNamespace(get_block=lambda _: {}, gas_price=100)
+    )
+    assert _tx_fee_fields(legacy_web3) == {"gasPrice": 120}
+
+    seen_ranges = []
+
+    class FakeEvent:
+        def get_logs(self, from_block, to_block, argument_filters):
+            seen_ranges.append((from_block, to_block))
+            if from_block <= 12145351 <= to_block:
+                return [{"transactionHash": b"\x01" * 32}]
+            return []
+
+    chunk_web3 = SimpleNamespace(eth=SimpleNamespace(block_number=12147500))
+    logs = _find_event_logs(chunk_web3, FakeEvent, {"batchKey": b"\x00" * 32}, start_block=12145351, chunk_size=2000)
+    assert len(logs) == 1
+    assert seen_ranges == [(12145501, 12147500), (12145351, 12145500)]
+
+    class FailingEvent:
+        def get_logs(self, **_kwargs):
+            raise Web3Exception("range exceeded")
+
+    assert _find_event_logs(chunk_web3, FailingEvent, {}, start_block=12145351) == []
