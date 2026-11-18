@@ -101,7 +101,12 @@ export function normalizeDeviceItem(item: any): DeviceItemOut {
   }
 
   const activeKey = item.keys?.find((k: any) => k.status === 'active') || item.keys?.[0];
-  const activeAssignment = item.assignments?.find((a: any) => a.active) || item.assignments?.[0];
+  const activeAssignment = item.assignments?.find((a: any) => a.active === true);
+  // Inactive assignments are retained as history after unlinking. An explicit
+  // null from the backend means the device currently has no shipment.
+  const assignedShipmentId = item.current_shipment_id !== undefined
+    ? item.current_shipment_id
+    : activeAssignment?.shipment_id ?? null;
 
   // Signature status:
   // - Do NOT treat has_public_key=true as signature_status=VALID!
@@ -151,8 +156,8 @@ export function normalizeDeviceItem(item: any): DeviceItemOut {
     key_id: activeKey?.key_id || (item.has_public_key ? 'active-key' : 'NO_KEY'),
     has_public_key: item.has_public_key ?? false,
     firmware_version: item.firmware_version || 'v1.0.0',
-    assigned_shipment_id: activeAssignment?.shipment_id || item.current_shipment_id || null,
-    assigned_shipment_code: item.assigned_shipment_code || null,
+    assigned_shipment_id: assignedShipmentId,
+    assigned_shipment_code: assignedShipmentId ? item.assigned_shipment_code || null : null,
     signature_status: signatureStatus,
     completeness_status: completenessStatus,
     health: {

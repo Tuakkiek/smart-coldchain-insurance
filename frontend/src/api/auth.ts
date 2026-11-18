@@ -44,19 +44,24 @@ export async function initializeAdminSession(): Promise<void> {
   // revision=0 identifies a session restored during this page load. Sessions
   // created by an in-page login/refresh have already completed auth setup.
   if (initial.session && initial.revision !== 0) return;
+  // F5 must not require a refresh cookie while the persisted access token is
+  // still usable. The provider refreshes it when it approaches expiry.
+  if (initial.session && initial.session.expiresAt > Date.now() + 60_000) return;
   try {
     await apiClient.refreshAccessToken();
-  } catch {
-    if (initial.session) endSession('unauthorized');
+  } catch (error: unknown) {
+    if (getAuthSnapshot().revision !== initial.revision) return;
+    if (initial.session) apiClient.handleRefreshFailure(error, initial.revision, 'unauthorized');
     else finishSessionInitialization(initial.reason);
   }
 }
 
 export async function refreshAdminSession(): Promise<void> {
+  const revision = getAuthSnapshot().revision;
   try {
     await apiClient.refreshAccessToken();
   } catch (error: unknown) {
-    endSession('expired');
+    apiClient.handleRefreshFailure(error, revision, 'expired');
     throw error;
   }
 }

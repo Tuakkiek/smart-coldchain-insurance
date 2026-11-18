@@ -175,6 +175,16 @@ def test_assignment_idempotency_multiple_devices_and_transfer_preserve_history(r
     assert client.post(f"/api/v1/shipments/{first}/telemetry", json=old_sample).status_code == 201
     old_batches = client.get(f"/api/v1/shipments/{first}/batches", headers=ADMIN).json()
     assert assign(client, "ESP32-001", first, False).json()["current_shipment_id"] is None
+    # A fresh catalog/detail request must expose the inactive record as history,
+    # and repeated unlinking must leave other devices on the shipment intact.
+    assert assign(client, "ESP32-001", first, False).json()["current_shipment_id"] is None
+    detail = client.get("/api/v1/devices/ESP32-001", headers=ADMIN).json()
+    listing = client.get("/api/v1/devices", headers=ADMIN).json()["items"]
+    assert detail["current_shipment_id"] is None
+    assert detail["assignments"] == [{"shipment_id": first, "active": False}]
+    assert next(item for item in listing if item["device_id"] == "ESP32-001") == detail
+    remaining = client.get(f"/api/v1/shipments/{first}/devices", headers=ADMIN).json()["items"]
+    assert [item["device_id"] for item in remaining] == ["ESP32-002"]
     assert assign(client, "ESP32-001", second).json()["current_shipment_id"] == second
     assert client.post(f"/api/v1/shipments/{first}/telemetry", json=old_sample).status_code == 403
     stale = client.post(f"/api/v1/shipments/{second}/telemetry", json=signed(key, second, 1))
