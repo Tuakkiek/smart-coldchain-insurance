@@ -97,7 +97,11 @@ def create_shipment(
     session.commit()
 
     if is_sepolia_eth and policy_coordinator is not None and policy_coordinator.can_submit_server_side:
-        shipment = policy_coordinator.create_or_retry_policy(session, shipment.id)
+        shipment = policy_coordinator.create_or_retry_policy(
+            session,
+            shipment.id,
+            wait_timeout_seconds=min(policy_coordinator.receipt_timeout_seconds, 5),
+        )
     return shipment
 
 

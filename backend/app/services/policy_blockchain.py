@@ -51,7 +51,13 @@ class PolicyCoordinator:
     def can_submit_server_side(self) -> bool:
         return self.gateway.can_submit_server_side
 
-    def create_or_retry_policy(self, session: Session, shipment_id: str) -> Shipment:
+    def create_or_retry_policy(
+        self,
+        session: Session,
+        shipment_id: str,
+        *,
+        wait_timeout_seconds: int | None = None,
+    ) -> Shipment:
         shipment = session.scalars(
             select(Shipment).where(Shipment.id == shipment_id).with_for_update()
         ).one_or_none()
@@ -112,7 +118,53 @@ class PolicyCoordinator:
         else:
             session.commit()
 
-        return self._wait_and_update(session, shipment_id, tx_hash, buyer_wallet, amount_wei)
+        return self._wait_and_update(
+            session,
+            shipment_id,
+            tx_hash,
+            buyer_wallet,
+            amount_wei,
+            wait_timeout_seconds=wait_timeout_seconds,
+        )
+
+    def sync_submitted_policy(self, session: Session, shipment_id: str) -> Shipment | None:
+        """Perform a single non-blocking confirmation check for a SUBMITTED policy."""
+        shipment = session.get(Shipment, shipment_id)
+        if (
+            shipment is None
+            or shipment.policy_status != "SUBMITTED"
+            or not shipment.policy_transaction_hash
+            or not shipment.buyer_wallet_address
+            or not shipment.insurance_amount_wei
+        ):
+            return shipment
+        try:
+            state = self.gateway.check_policy_confirmation(
+                shipment.policy_transaction_hash,
+                shipment_id,
+                shipment.buyer_wallet_address,
+                int(shipment.insurance_amount_wei),
+                self.confirmations,
+            )
+        except Exception as exc:
+            logger.debug("Non-blocking policy sync skipped for %s: %s", shipment_id, exc)
+            return shipment
+        if state not in {"confirmed", "failed"}:
+            return shipment
+        locked = session.scalars(
+            select(Shipment).where(Shipment.id == shipment_id).with_for_update()
+        ).one_or_none()
+        if locked is None or locked.policy_status != "SUBMITTED":
+            session.rollback()
+            return locked
+        if state == "confirmed":
+            locked.policy_status = "CONFIRMED"
+            locked.policy_last_error = None
+        else:
+            locked.policy_status = "FAILED"
+            locked.policy_last_error = "POLICY_TX_REVERTED_OR_MISMATCH"
+        session.commit()
+        return locked
 
     def confirm_external_transaction(
         self, session: Session, shipment_id: str, transaction_hash: str,
@@ -146,8 +198,15 @@ class PolicyCoordinator:
         tx_hash: str,
         buyer_wallet: str,
         amount_wei: int,
+        *,
+        wait_timeout_seconds: int | None = None,
     ) -> Shipment:
-        deadline = time.monotonic() + self.receipt_timeout_seconds
+        timeout = (
+            self.receipt_timeout_seconds
+            if wait_timeout_seconds is None
+            else max(0, wait_timeout_seconds)
+        )
+        deadline = time.monotonic() + timeout
         final_state = "pending"
         last_error: str | None = None
 
@@ -165,7 +224,8 @@ class PolicyCoordinator:
                 break
             if time.monotonic() >= deadline:
                 final_state = "pending"
-                last_error = last_error or "RECEIPT_TIMEOUT"
+                if wait_timeout_seconds is None:
+                    last_error = last_error or "RECEIPT_TIMEOUT"
                 break
             time.sleep(0.25)
 
