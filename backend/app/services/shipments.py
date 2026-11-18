@@ -97,7 +97,11 @@ def create_shipment(
     session.commit()
 
     if is_sepolia_eth and policy_coordinator is not None and policy_coordinator.can_submit_server_side:
-        shipment = policy_coordinator.create_or_retry_policy(session, shipment.id)
+        shipment = policy_coordinator.create_or_retry_policy(
+            session,
+            shipment.id,
+            wait_timeout_seconds=min(policy_coordinator.receipt_timeout_seconds, 5),
+        )
     return shipment
 
 
@@ -147,8 +151,8 @@ def delete_shipment(session: Session, shipment_id: str) -> None:
     has_blockchain_record = (
         shipment.blockchain_network is not None
         or shipment.transaction_hash is not None
-        or shipment.policy_transaction_hash is not None
         or shipment.policy_status in {"SUBMITTED", "CONFIRMED"}
+        or (shipment.policy_transaction_hash is not None and shipment.policy_status != "FAILED")
     )
     if has_telemetry or has_event or has_batch or has_audit or has_blockchain_record:
         raise ShipmentDeleteConflict(

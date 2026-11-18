@@ -16,7 +16,7 @@ import { LoadingState } from '../components/feedback/LoadingState';
 import { EmptyState } from '../components/feedback/EmptyState';
 import { TelemetryChart } from '../components/data-display/TelemetryChart';
 import { EventTimeline } from '../components/data-display/EventTimeline';
-import { getShipmentById, getShipmentTelemetry } from '../api/shipments';
+import { getShipmentById, getShipmentTelemetry, retryShipmentPolicy } from '../api/shipments';
 import { getShipmentDevices } from '../api/devices';
 import { getShipmentEvents } from '../api/events';
 import { getIntegrityBatches, verifyBatch } from '../api/integrity';
@@ -74,6 +74,7 @@ export const ShipmentDetailPage: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const [isAssignDeviceOpen, setIsAssignDeviceOpen] = useState(false);
+  const [retryingPolicy, setRetryingPolicy] = useState(false);
 
   // Batch Verification & Detail Modals
   const [verifyingBatchId, setVerifyingBatchId] = useState<string | null>(null);
@@ -258,6 +259,36 @@ export const ShipmentDetailPage: React.FC = () => {
     setCopiedKey(key);
     toast.info('Đã sao chép vào bộ nhớ tạm.');
     setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const handleRetryPolicy = async () => {
+    if (!id || retryingPolicy) return;
+    setRetryingPolicy(true);
+    try {
+      const updated = await retryShipmentPolicy(id);
+      setShipment(updated);
+      const status = updated.insurance.policy_status;
+      if (status === 'CONFIRMED') {
+        toast.success('Đã xác nhận Policy trên Sepolia thành công.', { title: 'Policy đã xác nhận' });
+      } else if (status === 'SUBMITTED') {
+        toast.info('Đã gửi giao dịch Policy lên Sepolia, đang chờ xác nhận.', { title: 'Đang chờ xác nhận' });
+      } else {
+        toast.warning(
+          updated.insurance.policy_last_error
+            ? `Chưa thể hoàn tất Policy (${updated.insurance.policy_last_error}).`
+            : 'Chưa thể hoàn tất Policy trên Blockchain.',
+          { title: 'Trạng thái Policy' }
+        );
+      }
+    } catch (err: unknown) {
+      if (isRequestCancelled(err)) return;
+      const msg = formatApiErrorMessage(err, 'Không thể thử lại tạo Policy. Vui lòng kiểm tra cấu hình Backend.');
+      if (msg) {
+        toast.error(msg, { title: 'Lỗi thử lại Policy' });
+      }
+    } finally {
+      setRetryingPolicy(false);
+    }
   };
 
   if (loading && !shipment) {
@@ -652,7 +683,7 @@ export const ShipmentDetailPage: React.FC = () => {
               <CopyButton value={shipmentId} iconSize={12} />
             </div>
 
-            <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
               <InsuranceStatusBadge
                 status={shipment.insurance.status}
                 payoutStatus={shipment.insurance.payout_status}
@@ -670,7 +701,35 @@ export const ShipmentDetailPage: React.FC = () => {
                   Policy: {policyStatus}
                 </Badge>
               )}
+              {shipment.insurance.currency === 'SepoliaETH' &&
+                policyStatus &&
+                policyStatus !== 'CONFIRMED' && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleRetryPolicy}
+                    loading={retryingPolicy}
+                    disabled={retryingPolicy}
+                    icon={<RefreshCw size={12} />}
+                    style={{ height: '24px', fontSize: '11px', padding: '0 8px' }}
+                  >
+                    {policyStatus === 'SUBMITTED' ? 'Kiểm tra Policy' : 'Thử lại Policy'}
+                  </Button>
+                )}
             </div>
+
+            {policyStatus === 'FAILED' && shipment.insurance.policy_last_error && (
+              <div
+                className="font-mono"
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--color-danger)',
+                  marginTop: 'var(--space-2)',
+                }}
+              >
+                Lỗi Policy: {shipment.insurance.policy_last_error}
+              </div>
+            )}
 
             {isEvidencePending && (
               <div

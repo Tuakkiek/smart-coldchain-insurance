@@ -138,6 +138,26 @@ def _tx_fee_fields(web3: Web3) -> dict[str, int]:
     return {"gasPrice": max(1, int(web3.eth.gas_price * 1.2))}
 
 
+def _estimate_gas_limit(
+    fn_call,
+    tx_params: dict,
+    *,
+    fallback: int,
+    minimum: int = 300_000,
+    buffer_pct: int = 25,
+) -> int:
+    """Estimate gas via RPC and add a safety buffer; fall back cleanly on mocks/transient RPC errors."""
+    estimate_fn = getattr(fn_call, "estimate_gas", None)
+    if callable(estimate_fn):
+        try:
+            estimated = estimate_fn(tx_params)
+            if type(estimated) is int and estimated > 0:
+                return max(minimum, (estimated * (100 + buffer_pct)) // 100)
+        except (Web3Exception, ValueError, TypeError, AttributeError):
+            pass
+    return fallback
+
+
 def _find_event_logs(
     web3: Web3,
     event_factory,
@@ -225,13 +245,15 @@ class Web3BlockchainAdapter:
             raise PolicyAlreadyPaid(matches, transaction_hash)
         if policy[4] != 1:
             raise BlockchainError("POLICY_NOT_ACTIVE")
-        transaction = contract.functions.reportViolation(
+        report_fn = contract.functions.reportViolation(
             shipment_key, evidence_hash, self._detected_seconds(detected_at)
-        ).build_transaction({
+        )
+        gas_limit = _estimate_gas_limit(report_fn, {"from": account.address}, fallback=800_000)
+        transaction = report_fn.build_transaction({
             "from": account.address,
             "nonce": web3.eth.get_transaction_count(account.address, "pending"),
             "chainId": self.settings.blockchain_chain_id,
-            "gas": 300000,
+            "gas": gas_limit,
             **_tx_fee_fields(web3),
         })
         signed = account.sign_transaction(transaction)
@@ -308,7 +330,7 @@ class Web3IntegrityAdapter:
             raise BatchAlreadyAnchored(
                 self.batch_matches(anchor), self.anchored_transaction_hash(anchor.batch_id),
             )
-        transaction = contract.functions.anchorBatch(
+        anchor_fn = contract.functions.anchorBatch(
             batch_key,
             shipment_key,
             device_key,
@@ -316,11 +338,13 @@ class Web3IntegrityAdapter:
             anchor.first_sequence,
             anchor.last_sequence,
             anchor.record_count,
-        ).build_transaction({
+        )
+        gas_limit = _estimate_gas_limit(anchor_fn, {"from": account.address}, fallback=800_000, minimum=400_000)
+        transaction = anchor_fn.build_transaction({
             "from": account.address,
             "nonce": web3.eth.get_transaction_count(account.address, "pending"),
             "chainId": self.settings.blockchain_chain_id,
-            "gas": 400000,
+            "gas": gas_limit,
             **_tx_fee_fields(web3),
         })
         signed = account.sign_transaction(transaction)
@@ -462,7 +486,17 @@ class Web3PolicyAdapter:
                 )
             raise BlockchainError("POLICY_ALREADY_EXISTS_MISMATCH")
 
-        gas_limit = 300000
+        policy_fn = contract.functions.createPolicy(
+            shipment_key,
+            checksum_buyer,
+            amount_wei,
+            expiry_timestamp,
+        )
+        gas_limit = _estimate_gas_limit(
+            policy_fn,
+            {"from": insurer_account.address, "value": amount_wei},
+            fallback=800_000,
+        )
         fee_fields = _tx_fee_fields(web3)
         max_gas_price = fee_fields.get("maxFeePerGas") or fee_fields.get("gasPrice", 0)
         eth_balance = int(web3.eth.get_balance(insurer_account.address))
@@ -471,12 +505,7 @@ class Web3PolicyAdapter:
 
         nonce = web3.eth.get_transaction_count(insurer_account.address, "pending")
         # ColdChainInsurance.createPolicy is payable and escrows native SepoliaETH via msg.value.
-        policy_tx = contract.functions.createPolicy(
-            shipment_key,
-            checksum_buyer,
-            amount_wei,
-            expiry_timestamp,
-        ).build_transaction({
+        policy_tx = policy_fn.build_transaction({
             "from": insurer_account.address,
             "value": amount_wei,
             "nonce": nonce,

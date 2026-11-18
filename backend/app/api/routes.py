@@ -309,9 +309,20 @@ def confirm_shipment_policy(
 
 @router.get("/shipments", response_model=ShipmentsOut, response_model_exclude_unset=True)
 def list_shipments(request: Request, session: AdminSession):
+    coordinator = getattr(request.app.state, "policy_blockchain", None)
+    raw_items = shipments.list_shipments(session)
+    if coordinator is not None:
+        synced_items = []
+        for item in raw_items:
+            if item.policy_status == "SUBMITTED" and item.policy_transaction_hash:
+                synced = coordinator.sync_submitted_policy(session, item.id)
+                synced_items.append(synced or item)
+            else:
+                synced_items.append(item)
+        raw_items = synced_items
     items = [
         shipments.shipment_dict(session, item, request.app.state.clock, request.app.state.settings.sensor_gap_minutes)
-        for item in shipments.list_shipments(session)
+        for item in raw_items
     ]
     return {"items": items, "total": len(items)}
 
@@ -319,6 +330,9 @@ def list_shipments(request: Request, session: AdminSession):
 @router.get("/shipments/{shipment_id}", response_model=ShipmentOut, response_model_exclude_unset=True)
 def get_shipment(shipment_id: UUID4, request: Request, session: AdminSession):
     shipment = shipments.get_shipment(session, str(shipment_id))
+    coordinator = getattr(request.app.state, "policy_blockchain", None)
+    if coordinator is not None and shipment.policy_status == "SUBMITTED" and shipment.policy_transaction_hash:
+        shipment = coordinator.sync_submitted_policy(session, shipment.id) or shipment
     return shipments.shipment_dict(session, shipment, request.app.state.clock, request.app.state.settings.sensor_gap_minutes)
 
 

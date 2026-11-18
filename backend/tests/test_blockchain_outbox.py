@@ -309,3 +309,94 @@ def test_policy_adapter_uses_native_eth_and_payable_abi():
         raise AssertionError("Expected INSURER_INSUFFICIENT_ETH_BALANCE")
     except BlockchainError as exc:
         assert exc.code == "INSURER_INSUFFICIENT_ETH_BALANCE"
+
+
+def test_adapters_use_estimated_gas_with_buffer_instead_of_300k_cap():
+    from types import SimpleNamespace
+    from eth_account import Account
+    from app.integrations.blockchain_adapter import IntegrityAnchor, Web3IntegrityAdapter, Web3PolicyAdapter
+
+    signer = Account.create()
+    policy_built = []
+    estimate_calls = []
+
+    class FakeCall:
+        def __init__(self, value):
+            self._value = value
+
+        def call(self):
+            return self._value
+
+    class FakeEstimatingFn:
+        def __init__(self, estimated, collector):
+            self._estimated = estimated
+            self._collector = collector
+
+        def estimate_gas(self, tx_params):
+            estimate_calls.append(tx_params)
+            return self._estimated
+
+        def build_transaction(self, tx_dict):
+            self._collector.append(tx_dict)
+            return {**tx_dict, "gasPrice": tx_dict.get("gasPrice", 100)}
+
+    fake_contract = SimpleNamespace(
+        functions=SimpleNamespace(
+            getPolicy=lambda _key: FakeCall(("0x" + "00" * 20, "0x" + "00" * 20, 0, 0, 0, b"\x00" * 32, 0)),
+            createPolicy=lambda *_args: FakeEstimatingFn(599562, policy_built),
+        )
+    )
+    fake_web3 = SimpleNamespace(
+        eth=SimpleNamespace(
+            account=Account,
+            get_balance=lambda _addr: 10**18,
+            get_transaction_count=lambda _addr, _tag="pending": 1,
+            get_block=lambda _tag: {},
+            gas_price=100,
+            send_raw_transaction=lambda _raw: None,
+        )
+    )
+    settings = Settings(
+        database_url="sqlite:///:memory:",
+        admin_username="admin",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
+        blockchain_enabled=True,
+        blockchain_chain_id=11155111,
+        blockchain_contract_address="0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F",
+        data_integrity_contract_address="0xE04F6f1bb80C438D356E0547ec10337F33ecD81f",
+        blockchain_insurer_private_key=signer.key.hex(),
+        blockchain_anchorer_private_key=signer.key.hex(),
+    )
+    policy_adapter = Web3PolicyAdapter(settings)
+    policy_adapter._contract = lambda: (fake_web3, fake_contract, settings.blockchain_contract_address)  # type: ignore[method-assign]
+    policy_adapter.submit_policy(
+        "8b4fb8a2-2996-4da2-90b9-35019517f56f",
+        "0x66077Ef603B524911B9226011A3C17Dd4B623fEF",
+        10**16,
+        1893456000,
+    )
+    assert estimate_calls[0]["value"] == 10**16
+    assert policy_built[0]["gas"] == (599562 * 125) // 100
+
+    anchor_built = []
+    fake_integrity_contract = SimpleNamespace(
+        functions=SimpleNamespace(
+            anchorer=lambda: FakeCall(signer.address),
+            batchExists=lambda _key: FakeCall(False),
+            anchorBatch=lambda *_args: FakeEstimatingFn(581076, anchor_built),
+        )
+    )
+    integrity_adapter = Web3IntegrityAdapter(settings)
+    integrity_adapter._contract = lambda: (fake_web3, fake_integrity_contract)  # type: ignore[method-assign]
+    integrity_adapter.prepare_anchor(
+        IntegrityAnchor(
+            batch_id="b1",
+            shipment_id="8b4fb8a2-2996-4da2-90b9-35019517f56f",
+            device_id="ESP32-01",
+            merkle_root="11" * 32,
+            first_sequence=1,
+            last_sequence=10,
+            record_count=10,
+        )
+    )
+    assert anchor_built[0]["gas"] == (581076 * 125) // 100

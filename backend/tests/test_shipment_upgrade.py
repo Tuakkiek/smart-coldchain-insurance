@@ -626,3 +626,33 @@ def test_policy_adapter_escrows_native_eth_without_erc20_approval(api, enough_ba
         assert submission.transaction_hash == "0x" + "ab" * 32
         web3.eth.send_raw_transaction.assert_called_once_with(b"signed-test")
     contract.functions.payoutToken.assert_not_called()
+
+
+def test_delete_shipment_allows_failed_policy_tx_without_telemetry(api):
+    client, app = api
+    shipment_id = client.post(
+        "/api/v1/shipments", json=_sepolia_shipment_payload(name="Failed Policy")
+    ).json()["id"]
+    with app.state.session_factory() as session:
+        shipment = session.get(Shipment, shipment_id)
+        shipment.policy_status = "FAILED"
+        shipment.policy_transaction_hash = "0x" + "11" * 32
+        shipment.policy_last_error = "POLICY_TX_REVERTED_OR_MISMATCH"
+        session.commit()
+
+    deleted = client.delete(f"/api/v1/shipments/{shipment_id}")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"shipment_id": shipment_id, "deleted": True}
+
+    submitted_id = client.post(
+        "/api/v1/shipments", json=_sepolia_shipment_payload(name="Submitted Policy")
+    ).json()["id"]
+    with app.state.session_factory() as session:
+        shipment = session.get(Shipment, submitted_id)
+        shipment.policy_status = "SUBMITTED"
+        shipment.policy_transaction_hash = "0x" + "22" * 32
+        session.commit()
+
+    blocked = client.delete(f"/api/v1/shipments/{submitted_id}")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "SHIPMENT_HAS_DATA"
