@@ -61,7 +61,7 @@ JWT_REFRESH_TOKEN_EXPIRE_DAYS=30
 REFRESH_COOKIE_NAME=coldchain_refresh
 REFRESH_COOKIE_PATH=/api/v1/auth
 REFRESH_COOKIE_SECURE=true
-REFRESH_COOKIE_SAMESITE=lax
+REFRESH_COOKIE_SAMESITE=none
 # Để trống nhằm dùng host-only cookie; chỉ đặt khi kiến trúc deployment thực sự cần.
 REFRESH_COOKIE_DOMAIN=
 CORS_ORIGINS=https://<actual-frontend-domain>
@@ -69,9 +69,32 @@ PUBLIC_API_BASE_URL=https://<actual-render-service>.onrender.com/api/v1
 LOG_LEVEL=INFO
 ```
 
-Giữ `REFRESH_COOKIE_SAMESITE=lax` khi Frontend/API cùng site. Nếu hai ứng dụng khác site, dùng
+Blueprint dùng `REFRESH_COOKIE_SAMESITE=none` vì hai hostname riêng `*.onrender.com` là khác site
+(`onrender.com` nằm trong [Public Suffix List](https://publicsuffix.org/list/public_suffix_list.dat)).
+Nếu Frontend/API dùng HTTPS trên cùng domain đăng ký, ví dụ `app.example.com` và `api.example.com`,
+có thể dùng `REFRESH_COOKIE_SAMESITE=lax`. Nếu hai ứng dụng khác site, dùng
 `REFRESH_COOKIE_SAMESITE=none` cùng `REFRESH_COOKIE_SECURE=true`; cấu hình `none` bị từ chối khi
 cookie không Secure.
+
+### F5 đưa người dùng về Login trên Render
+
+Frontend khôi phục access token từ `localStorage` và chỉ cần refresh khi token còn tối đa 60 giây
+hoặc đã hết hạn. Lỗi mạng/5xx khi refresh không xóa access token còn hạn; client thử lại sau 15 giây.
+Refresh trả `401` hoặc access token hết hạn mà không refresh được thì phiên kết thúc.
+
+Với hai service khác site, kiểm tra Backend Environment có `REFRESH_COOKIE_SAMESITE=none`,
+`REFRESH_COOKIE_SECURE=true`, `REFRESH_COOKIE_DOMAIN=` và `CORS_ORIGINS` đúng frontend origin.
+Giữ Domain trống để cookie chỉ thuộc backend; không đặt `.onrender.com` hoặc hostname frontend.
+Kiểm tra `VITE_API_BASE_URL` trỏ đúng backend và rebuild frontend sau khi đổi biến Vite.
+Service tạo thủ công phải cập nhật Environment riêng; sửa file Blueprint local không thay đổi service
+đang chạy. Dùng **Save and deploy** để áp dụng cookie config; frontend cần deploy bản build mới.
+
+Sau deploy, đăng nhập lại để nhận cookie mới. Trong DevTools Network, kiểm tra `Set-Cookie` ở login có
+`HttpOnly; Secure; SameSite=None; Path=/api/v1/auth`; không chụp/chia sẻ giá trị token.
+F5 ngay sau login phải giữ phiên; khi access token gần hết hạn, `/api/v1/auth/refresh` phải trả `200`.
+Nếu vẫn thấy `REFRESH_TOKEN_MISSING`, xem lý do browser chặn cookie. `SameSite=None` không vượt qua
+chính sách chặn third-party cookies: khi browser chặn, dùng frontend/backend dưới cùng domain đăng ký
+hoặc proxy API qua origin frontend. Xem [MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie).
 
 `DATABASE_URL` được ưu tiên hơn `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD`. Backend bắt buộc MySQL, tự dùng driver PyMySQL, pool nhỏ (`5 + 2 overflow`), `pool_pre_ping`, recycle và timeout. Nếu provider cấp CA, tạo Render Secret File rồi đặt:
 

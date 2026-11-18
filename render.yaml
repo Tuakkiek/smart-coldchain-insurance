@@ -43,7 +43,9 @@ services:
       - key: REFRESH_COOKIE_SECURE
         value: "true"
       - key: REFRESH_COOKIE_SAMESITE
-        value: lax
+        # Separate onrender.com services are cross-site (public suffix list).
+        # SameSite=None requires Secure=true and an exact credentialed CORS allowlist.
+        value: none
       - key: REFRESH_COOKIE_DOMAIN
         value: ""
       - key: CORS_ORIGINS

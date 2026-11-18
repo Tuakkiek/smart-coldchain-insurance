@@ -193,16 +193,26 @@ class ApiClient {
     this.refreshPromise = null;
   }
 
+  handleRefreshFailure(error: unknown, revision: number, reason: 'expired' | 'unauthorized'): void {
+    const current = getAuthSnapshot();
+    if (current.revision !== revision ||
+        (error instanceof ApiError && error.code === 'REQUEST_CANCELLED')) return;
+    // Network/CORS failures and server outages do not revoke an access token.
+    // A rejected refresh credential or an expired access token ends the session.
+    if ((error instanceof ApiError && error.status === 401) ||
+        !current.session || current.session.expiresAt <= Date.now()) {
+      endSession(reason);
+    }
+  }
+
   private async sessionForProtectedRequest(): Promise<AdminSession> {
-    const current = getAuthSnapshot().session;
+    const { session: current, revision } = getAuthSnapshot();
     // Refresh shortly before expiry so a protected request only needs to be sent once.
     if (current && current.expiresAt > Date.now() + 30_000) return current;
     try {
       return await this.refreshAccessToken();
     } catch (error: unknown) {
-      if (!(error instanceof ApiError && error.code === 'REQUEST_CANCELLED')) {
-        endSession(current ? 'expired' : 'unauthorized');
-      }
+      this.handleRefreshFailure(error, revision, current ? 'expired' : 'unauthorized');
       throw error;
     }
   }

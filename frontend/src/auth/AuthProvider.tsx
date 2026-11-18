@@ -14,15 +14,22 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   useEffect(() => {
     if (!snapshot.session) return;
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
 
     const refreshIfExpired = () => {
+      if (disposed) return;
       if (timeout) clearTimeout(timeout);
       const current = getAuthSnapshot().session;
       if (!current) return;
       const remaining = current.expiresAt - Date.now();
       const refreshAheadMs = 60_000;
       if (remaining <= refreshAheadMs) {
-        void refreshAdminSession().catch(() => undefined);
+        void refreshAdminSession().catch(() => {
+          if (!disposed && getAuthSnapshot().session) {
+            if (timeout) clearTimeout(timeout);
+            timeout = setTimeout(refreshIfExpired, 15_000);
+          }
+        });
         return;
       }
       timeout = setTimeout(refreshIfExpired, Math.min(remaining - refreshAheadMs, 60_000));
@@ -34,6 +41,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     window.addEventListener('pageshow', onResume);
     document.addEventListener('visibilitychange', onResume);
     return () => {
+      disposed = true;
       if (timeout) clearTimeout(timeout);
       window.removeEventListener('focus', onResume);
       window.removeEventListener('pageshow', onResume);

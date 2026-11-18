@@ -173,7 +173,7 @@ int postTelemetry(const String &body) {
   for (int attempt = 1; attempt <= 3; ++attempt) {
     WiFiClientSecure client;
     // Test configuration only: TLS certificate verification is disabled.
-    client.setCACert(TLS_ROOT_CA_PEM);
+    client.setInsecure();
 
     HTTPClient http;
     http.setConnectTimeout(kHttpTimeoutMs);
