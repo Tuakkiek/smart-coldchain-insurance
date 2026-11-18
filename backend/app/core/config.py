@@ -133,12 +133,17 @@ class Settings:
     blockchain_chain_id: int = 31337
     blockchain_contract_address: str = ""
     blockchain_oracle_private_key: str = ""
+    blockchain_insurer_private_key: str = ""
+    blockchain_default_policy_expiry_days: int = 30
+    blockchain_deploy_block: int = 0
     blockchain_abi_path: Path = DEFAULT_ABI_PATH
     data_integrity_contract_address: str = ""
     blockchain_anchorer_private_key: str = ""
     data_integrity_abi_path: Path = DEFAULT_INTEGRITY_ABI_PATH
     blockchain_confirmations: int = 1
     blockchain_receipt_timeout_seconds: int = 15
+    google_maps_api_key: str = ""
+    geocoding_fallback_nominatim: bool = True
     public_api_base_url: str = ""
     device_provisioning_mode: str = "manual"
     device_config_path: Path = DEFAULT_DEVICE_CONFIG_PATH
@@ -268,12 +273,27 @@ def load_settings() -> Settings:
     if enabled_text not in {"true", "false"}:
         raise ValueError("BLOCKCHAIN_ENABLED must be true or false")
     blockchain_enabled = enabled_text == "true"
-    contract_address = os.getenv("BLOCKCHAIN_CONTRACT_ADDRESS", "")
-    oracle_private_key = os.getenv("BLOCKCHAIN_ORACLE_PRIVATE_KEY", "")
+    contract_address = os.getenv("BLOCKCHAIN_CONTRACT_ADDRESS", "").strip()
+    oracle_private_key = os.getenv("BLOCKCHAIN_ORACLE_PRIVATE_KEY", "").strip()
+    insurer_private_key = os.getenv("BLOCKCHAIN_INSURER_PRIVATE_KEY", "").strip()
     if bool(contract_address) != bool(oracle_private_key):
         raise ValueError(
             "BLOCKCHAIN_CONTRACT_ADDRESS and BLOCKCHAIN_ORACLE_PRIVATE_KEY must be set together"
         )
+    if insurer_private_key and not contract_address:
+        raise ValueError(
+            "BLOCKCHAIN_CONTRACT_ADDRESS is required when BLOCKCHAIN_INSURER_PRIVATE_KEY is set"
+        )
+    default_policy_expiry_days = int(os.getenv("BLOCKCHAIN_DEFAULT_POLICY_EXPIRY_DAYS", "30"))
+    if default_policy_expiry_days <= 0:
+        raise ValueError("BLOCKCHAIN_DEFAULT_POLICY_EXPIRY_DAYS must be positive")
+    deploy_block = int(os.getenv("BLOCKCHAIN_DEPLOY_BLOCK", "0"))
+    if deploy_block < 0:
+        raise ValueError("BLOCKCHAIN_DEPLOY_BLOCK must be non-negative")
+    google_maps_api_key = os.getenv("GOOGLE_MAPS_API_KEY", "").strip()
+    nominatim_fallback_text = os.getenv("GEOCODING_FALLBACK_NOMINATIM", "true").strip().lower()
+    if nominatim_fallback_text not in {"true", "false"}:
+        raise ValueError("GEOCODING_FALLBACK_NOMINATIM must be true or false")
     abi_path = Path(os.getenv("BLOCKCHAIN_ABI_PATH", str(DEFAULT_ABI_PATH)))
     if not abi_path.is_absolute():
         abi_path = BACKEND_DIR.parent / abi_path
@@ -358,12 +378,17 @@ def load_settings() -> Settings:
         blockchain_chain_id=int(os.getenv("BLOCKCHAIN_CHAIN_ID", "31337")),
         blockchain_contract_address=contract_address,
         blockchain_oracle_private_key=oracle_private_key,
+        blockchain_insurer_private_key=insurer_private_key,
+        blockchain_default_policy_expiry_days=default_policy_expiry_days,
+        blockchain_deploy_block=deploy_block,
         blockchain_abi_path=abi_path,
         data_integrity_contract_address=integrity_contract_address,
         blockchain_anchorer_private_key=anchorer_private_key,
         data_integrity_abi_path=integrity_abi_path,
         blockchain_confirmations=confirmations,
         blockchain_receipt_timeout_seconds=receipt_timeout,
+        google_maps_api_key=google_maps_api_key,
+        geocoding_fallback_nominatim=nominatim_fallback_text == "true",
         public_api_base_url=os.getenv("PUBLIC_API_BASE_URL", "").strip().rstrip("/"),
         device_provisioning_mode=device_provisioning_mode,
         device_config_path=Path(os.getenv(

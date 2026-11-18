@@ -34,6 +34,7 @@ import { BatchVerificationModal } from '../components/integrity/BatchVerificatio
 import { BatchDetailModal } from '../components/integrity/BatchDetailModal';
 import { SendTelemetryModal } from '../components/shipments/SendTelemetryModal';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
+import { formatInsuranceCoverage, shortenAddress } from '../utils/ethereum';
 import {
   ArrowLeft,
   MapPin,
@@ -305,6 +306,15 @@ export const ShipmentDetailPage: React.FC = () => {
     shipment.blockchain?.transaction_hash ||
     null;
 
+  const coverageDisplay = formatInsuranceCoverage(shipment.insurance);
+  const buyerWallet = shipment.buyer_wallet_address || shipment.insurance.buyer_wallet_address || null;
+  const policyTx = shipment.insurance.policy_transaction_hash || shipment.blockchain?.policy_transaction_hash || null;
+  const policyStatus = shipment.insurance.policy_status || shipment.blockchain?.policy_status || null;
+  const policyContract = shipment.insurance.policy_contract_address || shipment.blockchain?.contract_address || null;
+  const networkDisplay =
+    shipment.blockchain?.network ||
+    (shipment.insurance.chain_id === 11155111 ? 'Sepolia Testnet (Chain ID: 11155111)' : 'Ethereum Localnet / Hardhat');
+
   return (
     <div>
       {/* Top back button & controls */}
@@ -509,10 +519,10 @@ export const ShipmentDetailPage: React.FC = () => {
         <Card title="Hợp đồng bảo hiểm">
           <div style={{ marginTop: 'var(--space-2)' }}>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-              Mức bồi thường cam kết
+              Giá trị bảo hiểm (Insurance Coverage)
             </div>
             <div
-              className="tabular-nums"
+              className="tabular-nums font-mono"
               style={{
                 fontSize: 'var(--text-2xl)',
                 fontWeight: 600,
@@ -520,19 +530,27 @@ export const ShipmentDetailPage: React.FC = () => {
                 marginTop: '2px',
               }}
             >
-              {shipment.insurance.insured_amount_vnd.toLocaleString('vi-VN')} VND
+              {coverageDisplay.primaryText}
             </div>
+            {coverageDisplay.weiText && (
+              <div
+                className="font-mono"
+                style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}
+              >
+                {coverageDisplay.weiText} Wei
+              </div>
+            )}
 
-            {/* Mandatory Token Label */}
+            {/* Network / Token Label */}
             <div
               style={{
                 marginTop: 'var(--space-2)',
                 marginBottom: 'var(--space-2)',
                 padding: '4px 8px',
                 borderRadius: 'var(--radius-sm)',
-                backgroundColor: 'rgba(217, 119, 6, 0.1)',
-                border: '1px solid rgba(217, 119, 6, 0.3)',
-                color: '#b45309',
+                backgroundColor: coverageDisplay.isEth ? 'var(--color-accent-soft)' : 'rgba(217, 119, 6, 0.1)',
+                border: coverageDisplay.isEth ? '1px solid var(--color-border)' : '1px solid rgba(217, 119, 6, 0.3)',
+                color: coverageDisplay.isEth ? 'var(--color-accent)' : '#b45309',
                 fontSize: '11px',
                 fontWeight: 600,
                 display: 'inline-flex',
@@ -541,8 +559,51 @@ export const ShipmentDetailPage: React.FC = () => {
               }}
             >
               <Coins size={12} />
-              <span>Local/Testnet Token — không phải tiền thật</span>
+              <span>{coverageDisplay.unitLabel}</span>
             </div>
+
+            {buyerWallet && (
+              <div
+                style={{
+                  marginTop: 'var(--space-2)',
+                  marginBottom: 'var(--space-2)',
+                  padding: '6px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'var(--color-surface-secondary)',
+                  border: '1px solid var(--color-border-subtle)',
+                }}
+              >
+                <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginBottom: 2 }}>
+                  Buyer Wallet Address:
+                </div>
+                <div className="flex-row items-center justify-between gap-2">
+                  <span
+                    className="font-mono"
+                    style={{ fontSize: '11px', color: 'var(--color-text-primary)' }}
+                    title={buyerWallet}
+                  >
+                    {shortenAddress(buyerWallet, 10, 8)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(buyerWallet, 'buyer_wallet')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--color-accent)',
+                      fontSize: '11px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 3,
+                    }}
+                  >
+                    {copiedKey === 'buyer_wallet' ? <Check size={11} /> : <Copy size={11} />}
+                    {copiedKey === 'buyer_wallet' ? 'Đã chép' : 'Chép'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div
               style={{
@@ -554,11 +615,24 @@ export const ShipmentDetailPage: React.FC = () => {
               Điều kiện vi phạm: Vượt ngưỡng liên tục <strong>{shipment.violation_duration_minutes} phút</strong>
             </div>
 
-            <div style={{ marginTop: 'var(--space-3)' }}>
+            <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               <InsuranceStatusBadge
                 status={shipment.insurance.status}
                 payoutStatus={shipment.insurance.payout_status}
               />
+              {policyStatus && (
+                <Badge
+                  variant={
+                    policyStatus === 'CONFIRMED'
+                      ? 'success'
+                      : policyStatus === 'FAILED'
+                      ? 'danger'
+                      : 'warning'
+                  }
+                >
+                  Policy: {policyStatus}
+                </Badge>
+              )}
             </div>
 
             {isEvidencePending && (
@@ -773,10 +847,20 @@ export const ShipmentDetailPage: React.FC = () => {
               border: '1px solid var(--color-border-subtle)',
             }}
           >
-            <div className="flex-row items-center gap-3">
+            <div className="flex-row items-center gap-3" style={{ flexWrap: 'wrap' }}>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
-                Mạng Blockchain: <strong>{shipment.blockchain?.network || 'Ethereum Localnet / Hardhat'}</strong>
+                Mạng Blockchain: <strong>{networkDisplay}</strong>
               </span>
+              {policyContract && (
+                <span className="font-mono" style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }} title={policyContract}>
+                  Contract: {shortenAddress(policyContract)}
+                </span>
+              )}
+              {policyTx && (
+                <span className="font-mono" style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }} title={policyTx}>
+                  Policy Tx: {shortenAddress(policyTx, 8, 6)}
+                </span>
+              )}
               <BlockchainBadge status={shipment.blockchain?.confirmation_status || 'NOT_SUBMITTED'} />
             </div>
 

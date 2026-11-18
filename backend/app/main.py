@@ -15,11 +15,14 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.routes import router
 from app.core.config import Settings, load_settings, validate_auth_config
 from app.core.database import make_engine, make_session_factory
+from app.integrations.blockchain_adapter import BlockchainError
 from app.services.shipments import DuplicateShipmentCode, ShipmentDeleteConflict, ShipmentNotFound
 from app.services.clock import SYSTEM_CLOCK
 from app.services.blockchain_outbox import configured_coordinator
+from app.services.google_maps_service import GoogleMapsService, LocationResolveError
 from app.services.integrity_anchor_service import configured_integrity_coordinator
 from app.services.insurance_evidence import configured_evidence_coordinator
+from app.services.policy_blockchain import configured_policy_coordinator
 from app.services.signed_ingestion import IngestionError
 from app.services.batch_service import BatchServiceError
 from app.services.auth import AuthError, LoginRateLimiter
@@ -135,6 +138,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.session_factory = make_session_factory(app.state.engine)
     app.state.clock = SYSTEM_CLOCK
     app.state.blockchain = configured_coordinator(settings)
+    app.state.policy_blockchain = configured_policy_coordinator(settings)
+    app.state.google_maps_service = GoogleMapsService(
+        api_key=settings.google_maps_api_key,
+        allow_nominatim_fallback=settings.geocoding_fallback_nominatim,
+    )
     app.state.integrity_blockchain = configured_integrity_coordinator(settings)
     app.state.insurance_evidence = configured_evidence_coordinator(
         settings,
@@ -207,8 +215,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return error_response(exc.status_code, exc.code, exc.message)
 
     @app.exception_handler(BatchServiceError)
-    async def batch_service_error(_request: Request, exc: BatchServiceError):
-        return error_response(exc.status_code, exc.code, exc.message)
+    async def batch_service_error(request: Request, exc: BatchServiceError):
+        return error_response(exc.status_code, exc.code, exc.message, request=request)
+
+    @app.exception_handler(LocationResolveError)
+    async def location_resolve_error(request: Request, exc: LocationResolveError):
+        return error_response(exc.status_code, exc.code, exc.message, request=request)
+
+    @app.exception_handler(BlockchainError)
+    async def blockchain_error(request: Request, exc: BlockchainError):
+        return error_response(502, exc.code, f"Lỗi tương tác Blockchain: {exc.code}", request=request)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(_request: Request, exc: StarletteHTTPException):

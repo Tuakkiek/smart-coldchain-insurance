@@ -17,6 +17,8 @@ from app.services.route_simulator import location_for_sample
 from app.services.clock import Clock, SYSTEM_CLOCK
 from app.services.temperature_policy import evaluate, utc
 from app.services.blockchain_outbox import BlockchainCoordinator, RAW_TRANSACTION_KEY
+from app.services.eth_units import SEPOLIA_CHAIN_ID, SEPOLIA_CURRENCY
+from app.services.policy_blockchain import PolicyCoordinator
 
 
 class ShipmentNotFound(Exception):
@@ -42,25 +44,59 @@ def ensure_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
-def create_shipment(session: Session, payload: ShipmentCreate) -> Shipment:
+def create_shipment(
+    session: Session,
+    payload: ShipmentCreate,
+    *,
+    policy_coordinator: PolicyCoordinator | None = None,
+    default_contract_address: str = "",
+    default_expiry_days: int = 30,
+) -> Shipment:
+    now = datetime.now(timezone.utc)
+    is_sepolia_eth = payload.resolved_currency == SEPOLIA_CURRENCY
+    contract_address = (
+        policy_coordinator.contract_address
+        if policy_coordinator is not None and policy_coordinator.contract_address
+        else default_contract_address
+    ) or None
+    chain_id = (
+        policy_coordinator.chain_id
+        if policy_coordinator is not None
+        else SEPOLIA_CHAIN_ID
+    ) if is_sepolia_eth else None
+    expiry_days = payload.policy_expiry_days or default_expiry_days
     shipment = Shipment(
         id=str(uuid4()),
         code=payload.code,
         cargo_type=payload.cargo_type,
         origin_name=payload.origin.name,
+        origin_formatted_address=payload.origin.formatted_address,
+        origin_place_id=payload.origin.place_id,
         origin_latitude=payload.origin.latitude,
         origin_longitude=payload.origin.longitude,
         destination_name=payload.destination.name,
+        destination_formatted_address=payload.destination.formatted_address,
+        destination_place_id=payload.destination.place_id,
         destination_latitude=payload.destination.latitude,
         destination_longitude=payload.destination.longitude,
         temp_min_c=payload.temp_min_c,
         temp_max_c=payload.temp_max_c,
         violation_duration_minutes=payload.violation_duration_minutes,
-        insured_amount_vnd=payload.insured_amount_vnd,
+        insured_amount_vnd=payload.insured_amount_vnd or 0,
+        insurance_amount=payload.resolved_eth_amount,
+        insurance_amount_wei=payload.resolved_wei_amount,
+        insurance_currency=payload.resolved_currency,
+        blockchain_chain_id=chain_id,
+        buyer_wallet_address=payload.resolved_buyer_wallet,
+        policy_contract_address=contract_address if is_sepolia_eth else None,
+        policy_transaction_hash=None,
+        policy_status="PENDING" if is_sepolia_eth else None,
+        policy_last_error=None,
+        policy_expiry=(now + timedelta(days=expiry_days)) if is_sepolia_eth else None,
         status="created",
         insurance_status="active",
         payout_status="not_requested",
-        created_at=datetime.now(timezone.utc),
+        created_at=now,
     )
     session.add(shipment)
     try:
@@ -69,6 +105,9 @@ def create_shipment(session: Session, payload: ShipmentCreate) -> Shipment:
         session.rollback()
         # The only unique constraint on this insert is shipments.code.
         raise DuplicateShipmentCode from exc
+
+    if is_sepolia_eth and policy_coordinator is not None and policy_coordinator.can_submit_server_side:
+        shipment = policy_coordinator.create_or_retry_policy(session, shipment.id)
     return shipment
 
 
@@ -115,7 +154,12 @@ def delete_shipment(session: Session, shipment_id: str) -> None:
     has_audit = session.scalar(select(IngestionAudit.id).where(
         IngestionAudit.shipment_id == shipment_id,
     ).limit(1)) is not None
-    has_blockchain_record = shipment.blockchain_network is not None or shipment.transaction_hash is not None
+    has_blockchain_record = (
+        shipment.blockchain_network is not None
+        or shipment.transaction_hash is not None
+        or shipment.policy_transaction_hash is not None
+        or shipment.policy_status in {"SUBMITTED", "CONFIRMED"}
+    )
     if has_telemetry or has_event or has_batch or has_audit or has_blockchain_record:
         raise ShipmentDeleteConflict(
             "SHIPMENT_HAS_DATA",
@@ -311,37 +355,80 @@ def shipment_dict(
             "transaction_hash": shipment.transaction_hash,
             "confirmation_status": shipment.confirmation_status,
         }
+        if shipment.blockchain_chain_id is not None:
+            blockchain["chain_id"] = shipment.blockchain_chain_id
+        if shipment.policy_contract_address is not None:
+            blockchain["contract_address"] = shipment.policy_contract_address
+        if shipment.policy_transaction_hash is not None:
+            blockchain["policy_transaction_hash"] = shipment.policy_transaction_hash
+        if shipment.policy_status is not None:
+            blockchain["policy_status"] = shipment.policy_status
+
+    origin_data: dict = {
+        "name": shipment.origin_name,
+        "latitude": shipment.origin_latitude,
+        "longitude": shipment.origin_longitude,
+    }
+    if shipment.origin_formatted_address is not None:
+        origin_data["formatted_address"] = shipment.origin_formatted_address
+    if shipment.origin_place_id is not None:
+        origin_data["place_id"] = shipment.origin_place_id
+
+    destination_data: dict = {
+        "name": shipment.destination_name,
+        "latitude": shipment.destination_latitude,
+        "longitude": shipment.destination_longitude,
+    }
+    if shipment.destination_formatted_address is not None:
+        destination_data["formatted_address"] = shipment.destination_formatted_address
+    if shipment.destination_place_id is not None:
+        destination_data["place_id"] = shipment.destination_place_id
+
+    insurance_data: dict = {
+        "insured_amount_vnd": shipment.insured_amount_vnd,
+        "status": shipment.insurance_status,
+        "payout_status": shipment.payout_status,
+    }
+    if (
+        shipment.insurance_currency != "VND"
+        or shipment.insurance_amount is not None
+        or shipment.buyer_wallet_address is not None
+        or shipment.policy_status is not None
+    ):
+        insurance_data.update({
+            "coverage_amount": shipment.insurance_amount,
+            "coverage_amount_wei": shipment.insurance_amount_wei,
+            "currency": shipment.insurance_currency,
+            "chain_id": shipment.blockchain_chain_id,
+            "buyer_wallet_address": shipment.buyer_wallet_address,
+            "policy_contract_address": shipment.policy_contract_address,
+            "policy_transaction_hash": shipment.policy_transaction_hash,
+            "policy_status": shipment.policy_status,
+            "policy_last_error": shipment.policy_last_error,
+        })
+
     status = shipment.status
     if latest and utc(clock.now()) - utc(latest.received_at) > timedelta(minutes=gap_minutes):
         status = "sensor_data_gap"
-    return {
+    result: dict = {
         "id": shipment.id,
         "code": shipment.code,
         "cargo_type": shipment.cargo_type,
         "status": status,
-        "origin": {
-            "name": shipment.origin_name,
-            "latitude": shipment.origin_latitude,
-            "longitude": shipment.origin_longitude,
-        },
-        "destination": {
-            "name": shipment.destination_name,
-            "latitude": shipment.destination_latitude,
-            "longitude": shipment.destination_longitude,
-        },
+        "origin": origin_data,
+        "destination": destination_data,
         "temp_min_c": shipment.temp_min_c,
         "temp_max_c": shipment.temp_max_c,
         "violation_duration_minutes": shipment.violation_duration_minutes,
         "latest_telemetry": latest_dict,
         "location": location_dict(latest) if latest else None,
-        "insurance": {
-            "insured_amount_vnd": shipment.insured_amount_vnd,
-            "status": shipment.insurance_status,
-            "payout_status": shipment.payout_status,
-        },
+        "insurance": insurance_data,
         "blockchain": blockchain,
         "created_at": ensure_utc(shipment.created_at),
     }
+    if shipment.buyer_wallet_address is not None:
+        result["buyer_wallet_address"] = shipment.buyer_wallet_address
+    return result
 
 
 def event_dict(event: ShipmentEvent) -> dict:

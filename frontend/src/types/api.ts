@@ -7,8 +7,41 @@
 
 export interface Place {
   name: string;
+  address?: string;
+  formatted_address?: string | null;
+  place_id?: string | null;
   latitude: number;
   longitude: number;
+}
+
+export interface LocationResolvePayload {
+  input: string;
+}
+
+export interface ResolvedLocation {
+  address: string;
+  formatted_address: string;
+  latitude: number;
+  longitude: number;
+  place_id: string | null;
+  source: string;
+}
+
+export interface LocationResolveOut {
+  success: true;
+  data: ResolvedLocation;
+}
+
+export type PolicyLifecycleStatus = 'PENDING' | 'SUBMITTED' | 'CONFIRMED' | 'FAILED';
+export type InsuranceCurrency = 'SepoliaETH' | 'VND';
+
+export interface BlockchainPublicConfigOut {
+  network: string;
+  chain_id: number;
+  currency: string;
+  insurance_contract_address: string | null;
+  blockchain_enabled: boolean;
+  server_policy_creation_enabled: boolean;
 }
 
 export type LocationSource = 'backend_simulated';
@@ -247,6 +280,15 @@ export type PayoutStatus =
 
 export interface InsuranceOut {
   insured_amount_vnd: number;
+  coverage_amount?: string | null;
+  coverage_amount_wei?: string | null;
+  currency?: InsuranceCurrency | null;
+  chain_id?: number | null;
+  buyer_wallet_address?: string | null;
+  policy_contract_address?: string | null;
+  policy_transaction_hash?: string | null;
+  policy_status?: PolicyLifecycleStatus | null;
+  policy_last_error?: string | null;
   status: InsuranceStatus;
   payout_status: PayoutStatus;
 }
@@ -260,7 +302,11 @@ export type BlockchainConfirmationStatus =
 
 export interface BlockchainOut {
   network: string;
+  chain_id?: number | null;
+  contract_address?: string | null;
   transaction_hash?: string | null;
+  policy_transaction_hash?: string | null;
+  policy_status?: PolicyLifecycleStatus | null;
   anchor_transaction_hash?: string | null;
   insurance_transaction_hash?: string | null;
   confirmation_status: BlockchainConfirmationStatus;
@@ -278,6 +324,7 @@ export interface ShipmentOut {
   temp_min_c: number;
   temp_max_c: number;
   violation_duration_minutes: number;
+  buyer_wallet_address?: string | null;
   latest_telemetry: LatestTelemetryOut | null;
   device_integrity?: DeviceHealthOut | null;
   location: LocationOut | null;
@@ -304,7 +351,12 @@ export interface ShipmentCreatePayload {
   temp_min_c: number;
   temp_max_c: number;
   violation_duration_minutes?: number;
-  insured_amount_vnd: number;
+  insurance?: {
+    coverage_amount: string;
+    currency: 'SepoliaETH';
+  };
+  buyer_wallet_address?: string;
+  insured_amount_vnd?: number;
 }
 
 export type EventType = 'TEMPERATURE_BREACH_STARTED' | 'INSURANCE_TRIGGERED' | 'SENSOR_DATA_GAP';
