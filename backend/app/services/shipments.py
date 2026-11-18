@@ -151,8 +151,8 @@ def delete_shipment(session: Session, shipment_id: str) -> None:
     has_blockchain_record = (
         shipment.blockchain_network is not None
         or shipment.transaction_hash is not None
-        or shipment.policy_transaction_hash is not None
         or shipment.policy_status in {"SUBMITTED", "CONFIRMED"}
+        or (shipment.policy_transaction_hash is not None and shipment.policy_status != "FAILED")
     )
     if has_telemetry or has_event or has_batch or has_audit or has_blockchain_record:
         raise ShipmentDeleteConflict(
