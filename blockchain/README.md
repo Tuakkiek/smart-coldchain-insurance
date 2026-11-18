@@ -1,142 +1,90 @@
 # Blockchain — Smart Cold Chain Insurance
 
-Smart Contract quản lý dữ liệu toàn vẹn (Module A) và chính sách bảo hiểm chuỗi lạnh (Module B) trên EVM blockchain.
+Smart Contract quản lý dữ liệu toàn vẹn (**Module A — `ColdChainDataIntegrity`**) và chính sách bảo hiểm chuỗi lạnh bằng native **`SepoliaETH`** (**Module B — `ColdChainInsurance`**) trên mạng **Ethereum Sepolia (`11155111`)**.
 
-> 🚀 **Môi trường triển khai hiện tại: Ethereum Sepolia (`11155111`) qua Remix + MetaMask**  
-> - **Dành cho Backend (NTK):** Xem hướng dẫn cấu hình `.env`, phân vai ví (`Anchorer` / `Oracle`), địa chỉ contract và lưu ý Alchemy tại **[HANDOFF_SEPOLIA.md](HANDOFF_SEPOLIA.md)** và **[deployments/sepolia.json](deployments/sepolia.json)**.  
-> - **Quy trình Remix & Python tooling (không cần Hardhat / Node.js):** Xem **[REMIX_SETUP.md](REMIX_SETUP.md)**, **[compiler-settings.json](compiler-settings.json)** và kịch bản kiểm thử thủ công trên Remix cho người mới tại **[REMIX_TEST_SCENARIOS.md](REMIX_TEST_SCENARIOS.md)**.  
-> - *(Các lệnh `npx hardhat` / `npm` bên dưới là tài liệu **legacy** cho môi trường local `31337` trước đây.)*
+> ⚠️ **Demo only** — `SepoliaETH` trong project này chỉ là coin testnet miễn phí, không có giá trị tiền thật. Không kết nối ví/tài khoản có tài sản thật.
 
-> ⚠️ **Demo only** — Token và tài sản trong project này không có giá trị thật.
-> Không kết nối ví/tài khoản có tiền thật.
+---
 
-## Stack
+## Tài liệu hướng dẫn nhanh
 
-- **Solidity** 0.8.24
-- **Hardhat** 2.x + TypeScript
-- **OpenZeppelin** Contracts v5 (ERC-20, SafeERC20, ReentrancyGuard)
-- **Chai** + **Mocha** (qua Hardhat Toolbox) — 83 test cases (100% passing) bao phủ toàn bộ Module A, Module B, Deployment Workflow, Phase 6 Backend Oracle/Integrity Integration, Security/Failure Scenarios và Cross-contract Integration Flow
+- **Bàn giao cấu hình `.env` & vai trò ví cho Backend (NTK):** [HANDOFF_SEPOLIA.md](HANDOFF_SEPOLIA.md) · [deployments/sepolia.json](deployments/sepolia.json)
+- **Hướng dẫn Demo E2E & thao tác Remix + MetaMask cho người mới (NTK, TTDK):** [REMIX_TEST_SCENARIOS.md](REMIX_TEST_SCENARIOS.md)
+- **Giải thích kiến trúc, Merkle Tree & liên kết Backend ↔ Blockchain từ đầu:** [BLOCKCHAIN_EXPLAINED.md](BLOCKCHAIN_EXPLAINED.md)
+- **Hướng dẫn Compile / Deploy Remix & Python Tooling:** [REMIX_SETUP.md](REMIX_SETUP.md) · [compiler-settings.json](compiler-settings.json)
+- **Đặc tả kỹ thuật tích hợp (ABI, Keys, Events, Errors, Outbox):** [INTEGRATION.md](INTEGRATION.md)
 
-## Cài đặt
+---
 
-```bash
-cd blockchain
-npm install
-```
+## Stack & Công cụ
 
-## Scripts
-
-| Lệnh                 | Mô tả                                                          |
-|-----------------------|-----------------------------------------------------------------|
-| `npm run compile`     | Compile smart contracts                                         |
-| `npm run test`        | Chạy toàn bộ 83 unit & integration tests                        |
-| `npm run node`        | Khởi chạy local Hardhat node (Chain ID 31337)                   |
-| `npm run deploy`      | Deploy 3 contracts lên local node                               |
-| `npm run seed`        | Tạo dữ liệu demo (neo lô telemetry Module A & policy Module B)  |
-| `npm run verify`      | Xác minh bytecode, roles, Merkle root và solvency               |
-| `npm run roles`       | Kiểm tra hoặc cập nhật `anchorer` / `oracle` trên chain         |
-| `npm run inspect`     | Tra cứu trực tiếp event logs (`BatchAnchored`, `InsurancePaid`) |
-| `npm run export-abi`  | Xuất pure ABI và metadata bàn giao cho Backend & Frontend       |
-| `npm run clean`       | Xoá artifacts/cache                                             |
-
-## Quy trình chạy demo Local
-
-```bash
-# Terminal 1: Chạy local node
-npm run node
-
-# Terminal 2: Deploy contracts
-npm run deploy
-
-# Terminal 2: Tạo dữ liệu demo
-npm run seed
-
-# Terminal 2: Xác minh deployment
-npm run verify
-
-# Terminal 2: Xuất ABI bàn giao (tùy chọn)
-npm run export-abi
-```
-
-Sau khi deploy, thông tin contract được lưu tại `deployments/localhost.json`.
+- **Solidity** (`^0.8.24`, compile bằng Remix `0.8.36+commit.8a079791`, optimizer `200`, `evmVersion: osaka`)
+- **OpenZeppelin** Contracts `v5.6.1` (`ReentrancyGuard`)
+- **Remix IDE + Browser Extension (MetaMask)** trên mạng **Ethereum Sepolia (`11155111`)**
+- **Python Web3.py Tooling** (`web3==7.12.0`, `python-dotenv==1.1.0`) — không cần cài Node.js
 
 ## Cấu trúc thư mục
 
-```
+```text
 blockchain/
-  contracts/
-    ColdChainDataIntegrity.sol  # Module A: Telemetry batch Merkle root anchoring & verification
-    ColdChainInsurance.sol      # Module B: Insurance policy, funding, payout & refund
-    MockInsuranceToken.sol      # Token ERC-20 demo
-    test/
-      MaliciousReentrantToken.sol # Token ERC-20 độc hại để test tấn công Reentrancy
-  scripts/
-    deploy.ts                   # Script deploy 3 contracts & phân quyền
-    seed-demo.ts                # Script tạo dữ liệu demo (deterministic)
-    verify-deployment.ts        # Script xác minh 6 tiêu chí deployment
-    manage-roles.ts             # Script kiểm tra / xoay vòng quyền Anchorer & Oracle
-    inspect-onchain.ts          # Script tra cứu event logs & state thực tế trên chain
-    export-abi.ts               # Script trích xuất pure ABI bàn giao
-  test/
-    ColdChainInsurance.test.ts          # Module B tests (36 cases)
-    DataIntegrity.test.ts               # Module A tests + Merkle-v1 Golden Vectors (20 cases)
-    DeploymentWorkflow.test.ts          # Deploy, seed & verification workflow tests (5 cases)
-    Phase6IntegrationScenarios.test.ts  # Phase 6 Outbox mapping, tamper & E13-E17b tests (12 cases)
-    SecurityAndFailureScenarios.test.ts # Reentrancy, SafeERC20 failures, Solvency (8 cases)
-    IntegrationFlow.test.ts             # Module A + Module B E2E workflow (2 cases)
-  deployments/
-    localhost.json              # Thông tin deploy mạng local (sinh tự động)
-    abi/                        # Bàn giao ABI cho Backend & Frontend
-      ColdChainDataIntegrity.abi.json
-      ColdChainInsurance.abi.json
-      MockInsuranceToken.abi.json
-      contract-interfaces.json
-  artifacts/                    # Sinh tự động bởi Hardhat
-  typechain-types/              # TypeScript typings (sinh tự động)
-  INTEGRATION.md                # Hướng dẫn tích hợp cho Member 1 (Backend) & Member 3
-  README.md                     # File này
+├── contracts/
+│   ├── ColdChainDataIntegrity.sol    # Module A: Merkle root anchoring & verification
+│   └── ColdChainInsurance.sol        # Module B: Native SepoliaETH insurance policy & payout
+├── deployments/
+│   ├── sepolia.json                  # Manifest chính thức trên Ethereum Sepolia (11155111)
+│   └── abi/
+│       ├── ColdChainDataIntegrity.json      # Wrapped ABI {"contractName", "abi"} cho Backend
+│       ├── ColdChainDataIntegrity.abi.json  # Pure ABI array
+│       ├── ColdChainInsurance.json          # Wrapped ABI {"contractName", "abi"} cho Backend
+│       ├── ColdChainInsurance.abi.json      # Pure ABI array
+│       └── contract-interfaces.json         # Bảng tổng hợp functions, events, custom errors
+├── scripts_py/
+│   ├── preflight_sepolia.py          # Kiểm tra kết nối RPC, số dư ví & state on-chain
+│   ├── create_sepolia_manifest.py    # Sinh file deployments/sepolia.json (không chứa secrets)
+│   └── validate_remix_abi.py         # Đối chiếu ABI xuất từ Remix với Backend
+├── ABI.md                            # Lưu trữ ABI sau mỗi lần compile trên Remix
+├── BLOCKCHAIN_EXPLAINED.md           # Giải thích toàn diện nguyên lý Merkle & liên kết Backend
+├── HANDOFF_SEPOLIA.md                # Hướng dẫn điền .env & phân vai ví cho NTK
+├── INTEGRATION.md                    # Đặc tả giao thức & quy tắc tích hợp Backend
+├── REMIX_SETUP.md                    # Hướng dẫn compile & deploy trên Remix IDE
+├── REMIX_TEST_SCENARIOS.md           # Kịch bản Demo E2E & tự thực hành trên Remix + MetaMask
+├── compiler-settings.json            # Cấu hình compiler & SHA-256 checksum nguồn
+├── requirements.txt                  # Thư viện Python cho scripts_py/
+└── .env.example                      # Mẫu cấu hình môi trường Sepolia (không chứa secrets)
 ```
 
-## Contracts
+## Cài đặt & Kiểm tra bằng Python (tùy chọn)
 
-### 1. ColdChainDataIntegrity (Module A)
+```bash
+pip install -r blockchain/requirements.txt
 
-Contract chịu trách nhiệm lưu trữ (anchor) và xác thực tính toàn vẹn của các lô dữ liệu telemetry IoT từ Edge/Backend.
+# Kiểm tra kết nối Sepolia, số dư ví Owner/Anchorer/Oracle, bytecode & role on-chain:
+python blockchain/scripts_py/preflight_sepolia.py --manifest blockchain/deployments/sepolia.json
+```
 
-- **Merkle v1 Protocol**: Tuân thủ chuẩn RFC 6962 (`SHA-256(0x00 || canonical_record_utf8)` cho lá và `SHA-256(0x01 || left || right)` cho node cha).
-- Khóa batch (`batchKey`) và khóa shipment (`shipmentKey`) sử dụng `keccak256(bytes)`.
+## Tóm tắt Smart Contracts đang chạy trên Sepolia (`11155111`)
 
-| Hàm                                | Ai gọi            | Mô tả                                                             |
-|-------------------------------------|-------------------|-------------------------------------------------------------------|
-| `anchorBatch(...)`                  | Anchorer (Backend)| Neo Merkle root, recordCount, sequences và deviceKey cho batch    |
-| `getBatch(batchKey)`                | Public view       | Trả về toàn bộ thông tin batch (tuple 8 giá trị)                 |
-| `verifyBatch(batchKey, root)`       | Public view       | Xác thực tính toàn vẹn của batch (so sánh candidate Merkle root)  |
-| `batchExists(batchKey)`             | Public view       | Kiểm tra nhanh sự tồn tại của batch                              |
-| `setAnchorer(newAnchorer)`          | Owner             | Cập nhật địa chỉ anchorer được cấp quyền                          |
+### 1. `ColdChainDataIntegrity` (`0xE04F6f1bb80C438D356E0547ec10337F33ecD81f`)
+- **Merkle-v1 Protocol:** `SHA-256(0x00 || canonical_record_utf8)` cho lá và `SHA-256(0x01 || left || right)` cho node cha.
+- Keys (`batchKey`, `shipmentKey`, `deviceKey`) dùng `keccak256(UTF8(id))`.
 
-### 2. ColdChainInsurance (Module B)
+| Hàm | Ai gọi | Mô tả |
+|---|---|---|
+| `anchorBatch(...)` | Anchorer (Backend `0xd2D6...`) | Neo Merkle root, `recordCount`, sequence bounds cho batch |
+| `getBatch(batchKey)` | Public view | Trả về tuple thông tin batch |
+| `verifyBatch(batchKey, root)` | Public view | So khớp candidate Merkle root với root bất biến on-chain |
+| `batchExists(batchKey)` | Public view | Kiểm tra batch đã được neo hay chưa |
+| `setAnchorer(newAnchorer)` | Owner (`0x6607...`) | Cập nhật địa chỉ anchorer |
 
-Contract chính quản lý chính sách bảo hiểm:
+### 2. `ColdChainInsurance` (`0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F`)
+- Sử dụng trực tiếp native **`SepoliaETH`** (mức gợi ý demo cho ví `2–10 ETH`: **`0.01 SepoliaETH` = `10000000000000000` `wei`** = `10 Finney`).
 
-| Hàm                        | Ai gọi          | Mô tả                                                             |
-|----------------------------|-----------------|-------------------------------------------------------------------|
-| `createPolicy(...)`        | Insurer         | Đăng ký policy, ghi nhận insurer, khóa token ký quỹ (SafeERC20)   |
-| `reportViolation(...)`      | Oracle (Backend)| Báo vi phạm, tự động chuyển token cho beneficiary khi đủ điều kiện|
-| `refundExpiredPolicy(...)` | Insurer / Owner | Hoàn lại token cho bên bảo hiểm khi chuyến hàng an toàn, hết hạn |
-| `setOracle(...)`           | Owner           | Cập nhật địa chỉ oracle                                           |
-| `getPolicy(...)`           | Public view     | Đọc thông tin chi tiết policy (7 giá trị tuple khớp Backend)       |
-| `isPolicyActive(...)`      | Public view     | Kiểm tra nhanh policy có đang active và còn hiệu lực không        |
-| `getContractBalance()`     | Public view     | Kiểm tra số dư quỹ bảo hiểm trong contract                        |
-
-### 3. MockInsuranceToken (MINS)
-
-Token ERC-20 đơn giản dùng để mô phỏng ký quỹ và chi trả bảo hiểm.
-- Owner có thể `mint()` thêm token.
-- 18 decimals.
-- Sử dụng Custom Errors (`MockToken__CallerNotOwner`, `MockToken__ZeroAddress`).
-- Không đại diện giá trị VND hoặc tiền thật.
-
-## Môi trường & Xác nhận khối (Confirmations)
-
-- **Local Node**: Cung cấp xác nhận tức thì (1 confirmation, mining ~0 giây). Khởi động lại node sẽ thiết lập lại trạng thái từ block 0.
-- **Testnet**: Trạng thái hiện tại là `BLOCKED` (theo Definition of Done Phase 5) do phạm vi đồ án tập trung vào Local Node demo ổn định; không tạo địa chỉ giả mạo trên testnet. Khi nhóm cấp RPC và Faucet testnet, script deploy có thể cấu hình target network tương ứng.
+| Hàm | Ai gọi | Mô tả |
+|---|---|---|
+| `createPolicy(...)` (`payable`) | Insurer / Owner (`0x6607...`) | Tạo policy và gửi kèm `SepoliaETH` khóa làm quỹ bảo hiểm |
+| `reportViolation(...)` | Oracle (Backend `0x7747...`) | Báo vi phạm hợp lệ, tự động chuyển `SepoliaETH` cho `beneficiary` |
+| `refundExpiredPolicy(...)` | Insurer / Owner | Hoàn lại `SepoliaETH` khi chuyến hàng an toàn và hết hạn |
+| `setOracle(newOracle)` | Owner (`0x6607...`) | Cập nhật địa chỉ oracle |
+| `getPolicy(shipmentKey)` | Public view | Đọc chi tiết policy (tuple 7 giá trị) |
+| `isPolicyActive(shipmentKey)` | Public view | Kiểm tra policy còn hoạt động và chưa hết hạn |
+| `getContractBalance()` | Public view | Xem số dư `SepoliaETH` (`wei`) đang giữ trong contract |

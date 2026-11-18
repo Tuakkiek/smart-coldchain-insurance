@@ -1,20 +1,16 @@
-# ── Hardhat / Node ────────────────────────────────────
-node_modules/
-artifacts/
-cache/
-typechain-types/
-dist/
-coverage/
-coverage.json
+# ── Python Tooling ───────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
 
-# ── Environment secrets ──────────────────────────────
+# ── Environment secrets ──────────────────────────────────
 .env
 .env.*
 !.env.example
 
-# ── OS / Editor ──────────────────────────────────────
+# ── OS / Editor ──────────────────────────────────────────
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
-

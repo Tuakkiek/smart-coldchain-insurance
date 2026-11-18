@@ -7,21 +7,21 @@
 
 ## 1. Thông tin Bàn giao Mạng & Artifacts (Handoff)
 
-### 1.1. Cấu hình Mạng (Network Configuration)
+### 1.1. Cấu hình Mạng (Ethereum Sepolia)
 
-| Thuộc tính | Ethereum Sepolia (Mục tiêu chính thức) | Local Chain (Hardhat Node — Legacy) |
-|---|---|---|
-| **Network Name** | `sepolia` | `localhost` |
-| **RPC URL** | `https://eth-sepolia.g.alchemy.com/v2/<ALCHEMY_KEY>` (NTK giữ trong env) | `http://127.0.0.1:8545` |
-| **Chain ID** | `11155111` | `31337` |
-| **Block Time / Finality** | ~12s/block (`BLOCKCHAIN_CONFIRMATIONS=2`, `TIMEOUT=120s`) | Tức thì (~0s, 1 confirmation) |
-| **Block Explorer** | `https://sepolia.etherscan.io` | Không có |
-| **Manifest chuẩn** | `blockchain/deployments/sepolia.json` | `blockchain/deployments/localhost.json` |
-| **Deploy Toolchain** | Remix IDE (`0.8.36+commit.8a079791`, `osaka`) + MetaMask | Hardhat `2.29.1` (Legacy) |
+| Thuộc tính | Ethereum Sepolia (`11155111`) |
+|---|---|
+| **Network Name** | `sepolia` |
+| **RPC URL** | `https://eth-sepolia.g.alchemy.com/v2/<ALCHEMY_KEY>` (NTK giữ trong env) |
+| **Chain ID** | `11155111` |
+| **Block Time / Finality** | ~12s/block (`BLOCKCHAIN_CONFIRMATIONS=2`, `TIMEOUT=120s`) |
+| **Block Explorer** | `https://sepolia.etherscan.io` |
+| **Manifest chuẩn** | `blockchain/deployments/sepolia.json` |
+| **Deploy Toolchain** | Remix IDE (`0.8.36+commit.8a079791`, `osaka`) + Browser Extension (`MetaMask`) |
 
 > 🚀 **Lưu ý vận hành Sepolia + Alchemy:**
-> - Xem bảng phân vai địa chỉ ví (`Owner`, `Anchorer`, `Oracle`), biến `.env` mẫu và `deployBlockNumber` (`12145351`, `12145343`) trong **[HANDOFF_SEPOLIA.md](HANDOFF_SEPOLIA.md)**.
-> - Khi dùng `get_logs(...)` trên Alchemy Free Tier, tránh `from_block=0` (nên dùng `deployBlockNumber` hoặc dải block gần `latest`).
+> - Xem bảng phân vai địa chỉ ví (`Owner`, `Anchorer`, `Oracle`), biến `.env` mẫu và `deployBlockNumber` (`12145351`, `12159144`) trong **[HANDOFF_SEPOLIA.md](HANDOFF_SEPOLIA.md)**.
+> - Khi dùng `get_logs(...)` trên Alchemy Free Tier, tránh `from_block=0` (dùng `BLOCKCHAIN_START_BLOCK=12145351` hoặc chunk scan từ `latest`).
 
 ### 1.2. Đường dẫn Artifacts & ABI Bàn giao
 
@@ -33,7 +33,6 @@ Backend và Frontend sử dụng các file ABI được đóng gói từ Remix (
    - `blockchain/deployments/abi/ColdChainDataIntegrity.abi.json`
    - `blockchain/deployments/abi/ColdChainInsurance.abi.json`
    - Bảng tổng hợp signature: `blockchain/deployments/abi/contract-interfaces.json`
-   - *(Ghi chú: `MockInsuranceToken` là artifact legacy; bản hiện tại dùng trực tiếp native `SepoliaETH` cho ký quỹ & chi trả.)*
 3. **Deployment & Compiler Metadata**:
    - `blockchain/deployments/sepolia.json` (chứa addresses thật, `deployTxHash`, `deployBlockNumber`, và các roles public — không chứa secret).
    - `blockchain/compiler-settings.json` (khóa compiler, optimizer, `osaka`, SHA-256 checksum source).
@@ -236,26 +235,22 @@ function getContractBalance() external view returns (uint256);
 
 ```python
 import json
+import os
 from pathlib import Path
 from web3 import Web3
 
-# 1. Kết nối Local Hardhat Node
-w3 = Web3(Web3.HTTPProvider("http://127.0.0.1:8545", request_kwargs={"timeout": 5}))
-assert w3.is_connected(), "Không thể kết nối RPC Node"
-assert w3.eth.chain_id == 31337, "Chain ID không khớp"
+# 1. Kết nối Ethereum Sepolia qua Alchemy HTTPS RPC
+w3 = Web3(Web3.HTTPProvider(os.environ["BLOCKCHAIN_RPC_URL"], request_kwargs={"timeout": 10}))
+assert w3.is_connected(), "Không thể kết nối Sepolia RPC"
+assert w3.eth.chain_id == 11155111, "Chain ID không khớp Sepolia"
 
-# 2. Đọc Deployment Info & ABI
-deployments_file = Path("blockchain/deployments/localhost.json")
-with open(deployments_file, "r", encoding="utf-8") as f:
-    deployment = json.load(f)
-
+# 2. Đọc Deployment Info & Wrapped ABI
+deployment = json.loads(Path("blockchain/deployments/sepolia.json").read_text(encoding="utf-8"))
 data_integrity_address = deployment["contracts"]["ColdChainDataIntegrity"]["address"]
 insurance_address = deployment["contracts"]["ColdChainInsurance"]["address"]
 
-with open("blockchain/deployments/abi/ColdChainDataIntegrity.abi.json") as f:
-    data_integrity_abi = json.load(f)
-with open("blockchain/deployments/abi/ColdChainInsurance.abi.json") as f:
-    insurance_abi = json.load(f)
+data_integrity_abi = json.loads(Path("blockchain/deployments/abi/ColdChainDataIntegrity.json").read_text(encoding="utf-8"))["abi"]
+insurance_abi = json.loads(Path("blockchain/deployments/abi/ColdChainInsurance.json").read_text(encoding="utf-8"))["abi"]
 
 data_integrity = w3.eth.contract(address=data_integrity_address, abi=data_integrity_abi)
 insurance = w3.eth.contract(address=insurance_address, abi=insurance_abi)
@@ -273,7 +268,7 @@ device_key = bytes(w3.keccak(text=device_id))
 merkle_root = bytes.fromhex("5706c737b9d61c51fee11fca1da56f8a6f9986c220afa0b1e875908857a1ae37")
 
 # 4. Anchor Batch vào Module A (Caller: Anchorer Signer)
-anchorer_key = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a" # Hardhat Account #2
+anchorer_key = os.environ["BACKEND_ANCHORER_PRIVATE_KEY"]
 anchorer_account = w3.eth.account.from_key(anchorer_key)
 
 if not data_integrity.functions.batchExists(batch_key).call():
@@ -287,13 +282,13 @@ if not data_integrity.functions.batchExists(batch_key).call():
         3   # recordCount
     ).build_transaction({
         "from": anchorer_account.address,
-        "nonce": w3.eth.get_transaction_count(anchorer_account.address),
-        "gas": 250000,
-        "gasPrice": w3.eth.gas_price
+        "nonce": w3.eth.get_transaction_count(anchorer_account.address, "pending"),
+        "chainId": 11155111,
+        "gas": 400000,
     })
     signed = w3.eth.account.sign_transaction(tx, private_key=anchorer_key)
     tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=10)
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
     assert receipt["status"] == 1, "Anchor batch failed"
     print("Batch anchored thành công, Tx:", tx_hash.hex())
 
@@ -301,8 +296,8 @@ if not data_integrity.functions.batchExists(batch_key).call():
 is_valid = data_integrity.functions.verifyBatch(batch_key, merkle_root).call()
 assert is_valid is True, "Toàn vẹn dữ liệu Merkle root không khớp"
 
-# 6. Báo vi phạm và kích hoạt bồi thường (Module B - Caller: Oracle Signer)
-oracle_key = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" # Hardhat Account #1
+# 6. Báo vi phạm và kích hoạt bồi thường SepoliaETH (Module B - Caller: Oracle Signer)
+oracle_key = os.environ["BLOCKCHAIN_ORACLE_PRIVATE_KEY"]
 oracle_account = w3.eth.account.from_key(oracle_key)
 
 event_id = "c3afece0-1668-4f96-aad6-58349f8f0a64"
@@ -317,15 +312,15 @@ if policy[4] == 1:  # Active
         detected_at
     ).build_transaction({
         "from": oracle_account.address,
-        "nonce": w3.eth.get_transaction_count(oracle_account.address),
+        "nonce": w3.eth.get_transaction_count(oracle_account.address, "pending"),
+        "chainId": 11155111,
         "gas": 300000,
-        "gasPrice": w3.eth.gas_price
     })
     signed_payout = w3.eth.account.sign_transaction(payout_tx, private_key=oracle_key)
     payout_hash = w3.eth.send_raw_transaction(signed_payout.raw_transaction)
-    payout_receipt = w3.eth.wait_for_transaction_receipt(payout_hash, timeout=10)
+    payout_receipt = w3.eth.wait_for_transaction_receipt(payout_hash, timeout=120)
     assert payout_receipt["status"] == 1, "Bồi thường bảo hiểm thất bại"
-    print("Bồi thường thành công, Tx:", payout_hash.hex())
+    print("Bồi thường SepoliaETH thành công, Tx:", payout_hash.hex())
 ```
 
 ---
@@ -354,18 +349,8 @@ Hiện tại `backend/app/services/batch_service.py` tạo sẵn `IntegrationOut
 
 ---
 
-## 6. Ma trận kiểm thử (Test Matrix)
+## 6. Trạng thái Kiểm chứng Sepolia (`11155111`)
 
-| Test File | Phạm vi kiểm thử | Số lượng Cases | Kết quả |
-|---|---|---|---|
-| `ColdChainInsurance.test.ts` | Khởi tạo, tạo policy, chi trả oracle, hoàn tiền hết hạn, solvency, Backend tuple mapping, mock token mint | 36 | PASS (100%) |
-| `DataIntegrity.test.ts` | Cross-language Merkle-v1 golden vectors (1, 2, 3 leaves), anchor batch, duplicate revert, sequence validation, verifyBatch mismatch/unknown | 20 | PASS (100%) |
-| `DeploymentWorkflow.test.ts` | Triển khai 3 hợp đồng, phân quyền Anchorer/Oracle, seed dữ liệu mẫu deterministic, schema localhost.json không rò rỉ secrets | 5 | PASS (100%) |
-| `IntegrationFlow.test.ts` | Chu trình E2E kết hợp Module A & Module B: Batch Anchoring $\rightarrow$ Integrity Check $\rightarrow$ Breach $\rightarrow$ Oracle Payout $\rightarrow$ Tampered data detection | 2 | PASS (100%) |
-| `Phase6IntegrationScenarios.test.ts` | Đối chiếu Outbox payload (`batch_service.py`), chống duplicate anchor (E14), DB tamper detection (E08/E09/E19), sai Anchorer/Oracle (E13/E15), double payout (E16), expiry refund (E17), insufficient funding/allowance (`E17b`), unseeded policy guard, xoay vòng `setOracle` | 12 | PASS (100%) |
-| `SecurityAndFailureScenarios.test.ts` | Tấn công Reentrancy qua SafeERC20/ReentrancyGuard, rollback trạng thái khi transfer lỗi, kiểm tra biên thời gian expiry, solvency checks | 8 | PASS (100%) |
-| **Tổng cộng** | **Bao phủ toàn diện Module A & B, Deployment Workflow, Phase 6 E2E Integration & Cross-contract Security** | **83** | **PASS (100%)** |
-
-> **Xác nhận tương thích & Trạng thái hiện tại:**
-> - **Sepolia (`11155111`):** Đã deploy 3 contracts từ Remix (`0.8.36+commit.8a079791`, `osaka`), xác minh bytecode + roles (`Owner`, `Anchorer`, `Oracle`) trực tiếp trên Sepolia bằng `preflight_sepolia.py`, và đối chiếu 100% parity ABI qua `validate_remix_abi.py`. Đang chờ Shipment UUID thật từ Backend & cấu hình Alchemy `.env` phía NTK để tạo policy (`createPolicy`) và chạy smoke E2E Sepolia.
-> - **Legacy Local (`31337`):** Bộ 83 Hardhat tests và `Web3IntegrityAdapter` + `Web3BlockchainAdapter` E2E trên local node đã pass lịch sử trước khi chuyển sang Sepolia.
+- **ABI Parity (`validate_remix_abi.py`):** Cả `ColdChainDataIntegrity` (5 chữ ký Backend, 18 entries) và `ColdChainInsurance` bản native `SepoliaETH` (4 chữ ký Backend, 28 entries) đã được đối chiếu khớp 100% với `backend/app/integrations/abi/*.json`.
+- **On-chain Preflight (`preflight_sepolia.py`):** Đã xác minh bytecode và roles (`Anchorer = 0xd2D6...`, `Oracle = 0x7747...`) trực tiếp trên Sepolia tại `deployments/sepolia.json`, cùng kiểm tra kết nối thành công từ `Web3IntegrityAdapter` và `Web3BlockchainAdapter` của Backend.
+- **Hướng dẫn Demo E2E thủ công trên Remix + MetaMask:** Xem [REMIX_TEST_SCENARIOS.md](REMIX_TEST_SCENARIOS.md).
