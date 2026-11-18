@@ -30,7 +30,7 @@ Nếu **chỉ dùng MySQL truyền thống**, sẽ có 2 vấn đề lớn:
   │ (Lưu Merkle Root bất biến)   │                        │  (Khóa tiền & tự động trả)   │
   └──────────────────────────────┘                        └──────────────────────────────┘
                                                                          │
-                                                                         ▼ (safeTransfer MINS)
+                                                                         ▼ (chuyển SepoliaETH)
                                                                 [Ví Beneficiary]
 ```
 
@@ -131,19 +131,22 @@ Khi Admin bấm kiểm tra toàn vẹn một lô (`POST /api/v1/batches/{batch_i
 
 ---
 
-## 5. Cơ chế Bảo hiểm tự động (`ColdChainInsurance` & `MockInsuranceToken`)
+## 5. Cơ chế Bảo hiểm tự động (`ColdChainInsurance.sol` với Native `SepoliaETH`)
 
-### 5.1. Token `MINS` là gì?
-- `MockInsuranceToken` (`MINS`, 18 decimals) là một token ERC-20 dùng riêng cho demo (không phải tiền thật, không có giá trị quy đổi VND).
-- Người bảo hiểm (`Owner / Insurer`) giữ token `MINS`, dùng nó để ký quỹ vào hợp đồng bảo hiểm.
+### 5.1. Tiền tệ ký quỹ & Mức quy đổi `SepoliaETH` hợp lý cho Demo
+- Thay vì tạo thêm token ERC-20 riêng (`MINS`), hợp đồng bảo hiểm sử dụng trực tiếp **native `SepoliaETH`** (tiền test mặc định của mạng Ethereum Sepolia — không có giá trị tiền thật).
+- Vì các ví test thường có khoảng **`2 – 10 SepoliaETH`**, mức ký quỹ & bồi thường chuẩn được quy đổi như sau để chạy được hàng trăm lượt test/demo mà không lo hết ví:
+  - **Mức mặc định cho 1 chuyến hàng (`10,000,000 VND` nghiệp vụ):** **`0.01 SepoliaETH`** = **`10000000000000000` `wei`** (`10 Finney`).
+  - **Mức thấp (`5,000,000 VND`):** `0.005 SepoliaETH` (`5000000000000000` wei).
+  - **Mức cao (`20,000,000 VND`):** `0.02 SepoliaETH` (`20000000000000000` wei).
 
 ### 5.2. Vòng đời một hợp đồng bảo hiểm (`Policy`) trên Smart Contract
 Mỗi chuyến hàng (`_shipmentKey`) có tối đa 1 `Policy` với 4 trạng thái: `0 = NotExist`, `1 = Active`, `2 = PaidOut`, `3 = Refunded`.
 
-1. **Bước 1 — Ký quỹ & Khóa tiền (`approve` → `createPolicy`):**
-   - Trước khi chuyến hàng chạy (hoặc trước khi bồi thường), ví `Owner/Insurer` cho phép contract bảo hiểm rút một lượng token (`MockInsuranceToken.approve(insuranceAddr, amount)`), rồi gọi `ColdChainInsurance.createPolicy(shipmentKey, beneficiary, payoutAmount, expiry)`.
-   - Hợp đồng dùng `SafeERC20.safeTransferFrom` **rút ngay `payoutAmount` token từ ví Insurer vào khóa cứng trong chính địa chỉ Smart Contract** (Escrow) và đặt trạng thái `Active`.
-   - *Lưu ý:* Việc tạo shipment trên Web/MySQL chỉ sinh ra UUID trong DB; chưa tự động tạo/nạp tiền cho Policy trên Blockchain.
+1. **Bước 1 — Ký quỹ & Khóa `SepoliaETH` (`createPolicy` — chỉ 1 giao dịch):**
+   - Trước khi chuyến hàng chạy (hoặc trước khi bồi thường), ví `Owner/Insurer` gọi hàm **`createPolicy(shipmentKey, beneficiary, payoutAmount, expiry)`** và **gửi kèm `msg.value`** (ví dụ `0.01 SepoliaETH` = `10000000000000000` wei). Không cần bước `approve` trung gian.
+   - Smart Contract **giữ khóa cứng số `SepoliaETH` đó ngay trong số dư hợp đồng** (Escrow) và đặt trạng thái `Active`.
+   - *Lưu ý:* Việc tạo shipment trên Web/MySQL chỉ sinh ra UUID trong DB; chưa tự động gửi `SepoliaETH` tạo Policy trên Blockchain.
 2. **Bước 2 — Điều kiện kích hoạt (Off-chain ở Backend) & Bằng chứng (`PAYOUT_REQUIRES_ANCHORED_EVIDENCE=true`):**
    - Smart Contract **không thể tự đọc nhiệt kế** và cũng **không tự đếm 15 phút** được. Toàn bộ việc kiểm tra điều kiện nghiệp vụ nằm ở Backend (`InsuranceEvidenceCoordinator`):
      - Chuỗi dữ liệu phải là signed telemetry hợp lệ, **không bị ngắt quãng (gap)**, vượt ngưỡng nhiệt độ **liên tục ≥ 15 phút** theo `received_at`.
@@ -154,10 +157,10 @@ Mỗi chuyến hàng (`_shipmentKey`) có tối đa 1 `Policy` với 4 trạng t
      1. Người gọi phải đúng là ví `oracle` (`onlyOracle`).
      2. Policy phải đang `Active` (`ColdChain__PolicyNotActive` — **chặn chi trả 2 lần** nếu Oracle gửi trùng!).
      3. Thời gian block hiện tại chưa vượt quá `expiry` (`block.timestamp <= policy.expiry`).
-     4. Hợp đồng có đủ số dư token (`Solvency check`).
-   - Sau đó contract cập nhật `status = PaidOut` **trước** khi gọi `safeTransfer` chuyển `payoutAmount` token cho `beneficiary` (tuân thủ mẫu *Checks-Effects-Interactions* + `nonReentrant` chống tấn công rút tiền lặp lại Reentrancy), rồi phát sự kiện **`InsurancePaid`**.
+     4. Hợp đồng có đủ số dư `SepoliaETH` (`address(this).balance >= policy.payoutAmount`).
+   - Sau đó contract cập nhật `status = PaidOut` **trước** khi chuyển `0.01 SepoliaETH` cho `beneficiary` (tuân thủ mẫu *Checks-Effects-Interactions* + `nonReentrant` chống tấn công Reentrancy), rồi phát sự kiện **`InsurancePaid`**.
 4. **Bước 4 — Hoàn tiền nếu chuyến hàng an toàn (`refundExpiredPolicy`):**
-   - Nếu hết hạn `expiry` mà chuyến hàng không vi phạm gì (vẫn `Active`), `Insurer` hoặc `Owner` gọi `refundExpiredPolicy(shipmentKey)` để rút lại số token đã khóa về ví ban đầu (`status = Refunded`).
+   - Nếu hết hạn `expiry` mà chuyến hàng không vi phạm gì (vẫn `Active`), `Insurer` hoặc `Owner` gọi `refundExpiredPolicy(shipmentKey)` để contract chuyển trả lại `SepoliaETH` đã khóa về ví `insurer` (`status = Refunded`).
 
 ---
 
@@ -186,4 +189,4 @@ Giao dịch Blockchain có thể chậm, timeout hoặc lỗi RPC. Vì vậy Bac
 1. **Blockchain không tự đo được nhiệt độ thật:** Nếu ai đó dùng máy sấy thổi vào cảm biến hoặc làm giả tín hiệu phần cứng trước khi ESP32 ký, thì chữ ký và Merkle Root vẫn hợp lệ về mặt toán học. Blockchain chỉ bảo vệ **tính bất biến kể từ sau khi dữ liệu đã được Backend tiếp nhận và neo**.
 2. **Blockchain không thay thế MySQL:** Dữ liệu chi tiết để vẽ biểu đồ, lọc theo giờ, kiểm tra thiếu gói (`DATA_INCOMPLETE`) đều đọc từ MySQL.
 3. **Tin cậy Backend Oracle ở Module B:** Smart Contract tin vào báo cáo của ví `Oracle` hợp lệ; nếu server Backend bị chiếm quyền và lộ private key của Oracle, kẻ tấn công có thể gọi `reportViolation` sai sự thật (vì vậy mới cần tách riêng private key vào biến môi trường bảo mật và có hàm `setOracle` để thu hồi ngay khi có sự cố).
-4. **Token `MINS` & SepoliaETH chỉ phục vụ demo:** Không đại diện cho tiền thật (VND) hay hợp đồng bảo hiểm pháp lý ngoài đời thực.
+4. **`SepoliaETH` trong dự án chỉ là coin testnet miễn phí:** Không đại diện cho ETH thật (mainnet) hay hợp đồng bảo hiểm pháp lý ngoài đời thực.

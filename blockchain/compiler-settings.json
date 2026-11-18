@@ -23,14 +23,10 @@
       "pinnedVersion": "5.6.1",
       "license": "MIT",
       "usedBy": [
-        "contracts/ColdChainInsurance.sol",
-        "contracts/MockInsuranceToken.sol"
+        "contracts/ColdChainInsurance.sol"
       ],
       "imports": [
-        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
-        "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
-        "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
-        "@openzeppelin/contracts/token/ERC20/ERC20.sol"
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol"
       ],
       "remixResolutionNote": "Keep bare @openzeppelin/contracts/... imports untouched in git. In Remix, pin v5.6.1 via .deps/npm/@openzeppelin/contracts or Remix package resolution before compiling."
     }
@@ -47,27 +43,24 @@
     "deployOrder": [
       {
         "step": 1,
-        "contract": "MockInsuranceToken",
-        "constructorArgs": [
-          "uint256 initialSupply (e.g. 1000000000000000000000000 for 1,000,000 MINS with 18 decimals)"
-        ]
-      },
-      {
-        "step": 2,
         "contract": "ColdChainDataIntegrity",
         "constructorArgs": [
           "address _anchorer (Backend Anchorer public address)"
         ]
       },
       {
-        "step": 3,
+        "step": 2,
         "contract": "ColdChainInsurance",
         "constructorArgs": [
-          "address _payoutToken (deployed MockInsuranceToken address)",
           "address _oracle (Backend Oracle public address)"
         ]
       }
-    ]
+    ],
+    "recommendedSepoliaETHScale": {
+      "defaultPolicyDepositETH": "0.01",
+      "defaultPolicyDepositWei": "10000000000000000",
+      "defaultPolicyDepositFinney": "10"
+    }
   },
   "contracts": {
     "ColdChainDataIntegrity": {
@@ -78,15 +71,9 @@
     },
     "ColdChainInsurance": {
       "sourcePath": "blockchain/contracts/ColdChainInsurance.sol",
-      "sha256": "b2efc697e4e500ca5ae3feeee158979221a0c44a4d9f0417700d37f2f34f5ef9",
+      "sha256": "11482f9849d5d97913bb9caed5a2c796ccbf6d4f2deac8ee8f9d97996ab8b997",
       "pragma": "^0.8.24",
       "abiHandoffSchema": "{\"contractName\": \"ColdChainInsurance\", \"abi\": [...]}"
-    },
-    "MockInsuranceToken": {
-      "sourcePath": "blockchain/contracts/MockInsuranceToken.sol",
-      "sha256": "7a93c3db6660bc314c2ffcbcdaebccf38d16e8c339012ec2b4f79c9185ab41b2",
-      "pragma": "^0.8.24",
-      "abiHandoffSchema": "{\"contractName\": \"MockInsuranceToken\", \"abi\": [...]}"
     }
   }
 }

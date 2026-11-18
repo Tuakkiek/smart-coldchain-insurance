@@ -560,19 +560,19 @@ MVP đề xuất **hai contract độc lập** để trách nhiệm rõ ràng:
 **Quy trình mới — tất cả chưa hoàn thành:**
 
 - [x] 1. Import/compile bằng Remix (`0.8.36+commit.8a079791`, `osaka`, optimizer `200`), trong Deploy & Run dùng `Browser Extension` (MetaMask) trên Sepolia `11155111`.
-- [x] 2. Deploy `MockInsuranceToken`: `0x33D620C26f045d2C60C8A29F41e987875aAEbC93` (tx `0xfae9e7...8b3711`, block `12145165`, `1,000,000 MINS`).
+- [x] 2. *(Đã đơn giản hóa — chuyển sang native `SepoliaETH`, không còn yêu cầu `MockInsuranceToken`; bản token cũ `0x33D620...` là legacy).*
 - [x] 3. Deploy `ColdChainDataIntegrity(0xd2D62EB2cd0731383b9F49A7e8DdD7cdD54b355E)`: `0xE04F6f1bb80C438D356E0547ec10337F33ecD81f` (tx `0x669df6...50b3f0`, block `12145351`).
-- [x] 4. Deploy `ColdChainInsurance(0x33D620C26f045d2C60C8A29F41e987875aAEbC93, 0x7747f2c48C0D9562c311BbeBE4F822aE372C54bb)`: `0xeD8266444aF3506C5FceB556cA00Bf4305De1cA8` (tx `0x30ade7...16ebf0`, block `12145343`).
-- [x] 5. Tách 3 ví Sepolia (`Owner: 0x66077Ef...`, `Anchorer: 0xd2D62EB...`, `Oracle: 0x7747f2c...`), đã nạp sẵn SepoliaETH (>2 ETH mỗi ví).
-- [ ] 6. Cấp token demo cho insurer; approve → createPolicy như Phase 3, dùng `shipmentKey` từ UUID shipment NTK cấp, expiry còn đủ cho độ trễ anchor. Xác minh escrow balance, policy và quyền sai bị từ chối. *(Chờ Shipment UUID từ NTK).*
-- [x] 7. Xác minh receipt `status=1`, bytecode và `owner()`/`anchorer()`/`oracle()`/`payoutToken()` trực tiếp trên Sepolia qua `blockchain/scripts_py/preflight_sepolia.py`.
+- [x] 4. Deploy `ColdChainInsurance(0x7747f2c48C0D9562c311BbeBE4F822aE372C54bb)` *(bản native `SepoliaETH`, bỏ `_payoutToken`)*: `0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F` (tx `0x6a8112...e07ddb`, block `12159144`).
+- [x] 5. Tách 3 ví Sepolia (`Owner: 0x66077Ef...`, `Anchorer: 0xd2D62EB...`, `Oracle: 0x7747f2c...`), đã nạp sẵn SepoliaETH (~7.5–9.2 ETH mỗi ví).
+- [ ] 6. Dùng `Owner` gọi payable `createPolicy(...)` gửi kèm `0.01 SepoliaETH` (`10000000000000000` wei) với `shipmentKey` từ UUID shipment NTK cấp, expiry còn đủ cho độ trễ anchor. *(Chờ Shipment UUID từ NTK).*
+- [x] 7. Xác minh receipt `status=1`, bytecode và `anchorer()`/`oracle()`/`getContractBalance()` trực tiếp trên Sepolia qua `blockchain/scripts_py/preflight_sepolia.py`.
 - [x] 8. Export ABI từ Remix (`blockchain/ABI.md`), kiểm tra parity bằng `validate_remix_abi.py` và đóng gói dạng `{"contractName": ..., "abi": [...]}` tại `blockchain/deployments/abi/*.json`.
 - [x] 9. Ghi manifest chính thức `blockchain/deployments/sepolia.json` (addresses, `deployTxHash`, `deployBlockNumber`, roles public, compiler settings; không chứa secrets).
-- [ ] 10. Bàn giao package §3.2/§7.3 (đã viết `blockchain/HANDOFF_SEPOLIA.md`), chờ NTK cấu hình Alchemy + private keys vào Backend `.env` và xác nhận anchor/readback/payout smoke trên Sepolia.
+- [ ] 10. Bàn giao package §3.2/§7.3 (đã viết `blockchain/HANDOFF_SEPOLIA.md` + cập nhật sẵn Backend adapter/timeout/logs), chờ NTK cấu hình Alchemy + private keys vào Backend `.env` và xác nhận anchor/readback/payout smoke trên Sepolia.
 
 **Definition of Done mới:**
 
-- [x] Hai contracts và `MockInsuranceToken` có receipt `status=1`, bytecode và roles đúng trên Sepolia `11155111` tại `deployments/sepolia.json` *(bước `createPolicy` cho shipment demo chờ UUID từ NTK)*.
+- [x] Hai contracts `ColdChainDataIntegrity` và `ColdChainInsurance` (native `SepoliaETH`) có receipt `status=1`, bytecode và roles đúng trên Sepolia `11155111` tại `deployments/sepolia.json` *(bước `createPolicy` cho shipment demo chờ UUID từ NTK)*.
 - [ ] NTK import ABI và chạy smoke Phase 6 bằng Web3.py/Alchemy; có tx/Etherscan/root/balance evidence. Chưa có smoke thật thì giữ trạng thái chờ NTK, không quay lại local chain làm gate nghiệm thu chính.
 
 ### Phase 6 — Python Backend Integration, Oracle & Integrity

@@ -1,6 +1,9 @@
 {
   "network": "sepolia",
   "chainId": 11155111,
+  "currency": "SepoliaETH (Native)",
+  "recommendedPolicyDepositETH": "0.01",
+  "recommendedPolicyDepositWei": "10000000000000000",
   "explorer": "https://sepolia.etherscan.io",
   "confirmations": 2,
   "deployedVia": "Remix IDE + Browser Extension (MetaMask)",
@@ -15,12 +18,6 @@
     "openzeppelin": "5.6.1"
   },
   "contracts": {
-    "MockInsuranceToken": {
-      "address": "0x33D620C26f045d2C60C8A29F41e987875aAEbC93",
-      "deployTxHash": "0xfae9e747b27e56d440f7b6835da3693e26904077f85b258d7cc502e3788b3711",
-      "deployBlockNumber": 12145165,
-      "abiPath": "blockchain/deployments/abi/MockInsuranceToken.abi.json"
-    },
     "ColdChainDataIntegrity": {
       "address": "0xE04F6f1bb80C438D356E0547ec10337F33ecD81f",
       "deployTxHash": "0x669df621fdbd5962f2e3e6cf4311b7686da0f62a28e04b36f8c5f5a39450b3f0",
@@ -29,9 +26,9 @@
       "backendAbiPath": "backend/app/integrations/abi/ColdChainDataIntegrity.json"
     },
     "ColdChainInsurance": {
-      "address": "0xeD8266444aF3506C5FceB556cA00Bf4305De1cA8",
-      "deployTxHash": "0x30ade76d287eb06c66e5aa67273b0b7d7f661e479ac34fa821e149da2916ebf0",
-      "deployBlockNumber": 12145343,
+      "address": "0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F",
+      "deployTxHash": "0x6a811214cdb38cc1eccd55fcf1f8e6d06942af01e19dc670bccb817126e07ddb",
+      "deployBlockNumber": 12159144,
       "abiPath": "blockchain/deployments/abi/ColdChainInsurance.abi.json",
       "backendAbiPath": "backend/app/integrations/abi/ColdChainInsurance.json"
     }
@@ -41,6 +38,6 @@
     "anchorer": "0xd2D62EB2cd0731383b9F49A7e8DdD7cdD54b355E",
     "oracle": "0x7747f2c48C0D9562c311BbeBE4F822aE372C54bb"
   },
-  "recordedAt": "2026-11-16T05:54:14.054438Z",
+  "recordedAt": "2026-11-18T04:41:08.875915Z",
   "note": "Public addresses and tx metadata only. Never store private keys or Alchemy API keys here."
 }

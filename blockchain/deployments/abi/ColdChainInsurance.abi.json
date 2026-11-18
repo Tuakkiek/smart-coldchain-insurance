@@ -3,11 +3,6 @@
     "inputs": [
       {
         "internalType": "address",
-        "name": "_payoutToken",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
         "name": "_oracle",
         "type": "address"
       }
@@ -44,6 +39,27 @@
       }
     ],
     "name": "ColdChain__ContractInsufficientBalance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ColdChain__ETHTransferFailed",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "sent",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "expected",
+        "type": "uint256"
+      }
+    ],
+    "name": "ColdChain__IncorrectETHDeposit",
     "type": "error"
   },
   {
@@ -134,17 +150,6 @@
   {
     "inputs": [],
     "name": "ReentrancyGuardReentrantCall",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
-      }
-    ],
-    "name": "SafeERC20FailedOperation",
     "type": "error"
   },
   {
@@ -290,7 +295,7 @@
     ],
     "name": "createPolicy",
     "outputs": [],
-    "stateMutability": "nonpayable",
+    "stateMutability": "payable",
     "type": "function"
   },
   {
@@ -393,19 +398,6 @@
     "outputs": [
       {
         "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "payoutToken",
-    "outputs": [
-      {
-        "internalType": "contract IERC20",
         "name": "",
         "type": "address"
       }

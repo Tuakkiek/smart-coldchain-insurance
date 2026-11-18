@@ -10,7 +10,7 @@ Mở [Remix IDE](https://remix.ethereum.org/) và thiết lập tab **Solidity C
 
 | Thiết lập | Giá trị bắt buộc | Ghi chú |
 |---|---|---|
-| **Compiler** | `0.8.36+commit.8a079791` | Cả 3 file dùng `pragma solidity ^0.8.24;` nên tương thích trực tiếp |
+| **Compiler** | `0.8.36+commit.8a079791` | Cả 2 file dùng `pragma solidity ^0.8.24;` nên tương thích trực tiếp |
 | **Language** | `Solidity` | — |
 | **Enable optimization** | **Bật (`true`)**, `200` runs | Khớp cấu hình baseline trong `compiler-settings.json` |
 | **EVM Version** | `osaka` *(default của `0.8.36`)* | Đã xác nhận compile & deploy thành công trên Sepolia |
@@ -18,16 +18,12 @@ Mở [Remix IDE](https://remix.ethereum.org/) và thiết lập tab **Solidity C
 
 ### Cách import source và pin OpenZeppelin `v5.6.1` (không sửa `.sol`)
 
-1. Copy 3 file từ `blockchain/contracts/` vào workspace Remix:
+1. Copy 2 file chính từ `blockchain/contracts/` vào workspace Remix *(không còn cần `MockInsuranceToken.sol` vì bảo hiểm dùng trực tiếp native `SepoliaETH`)*:
    - `contracts/ColdChainDataIntegrity.sol`
    - `contracts/ColdChainInsurance.sol`
-   - `contracts/MockInsuranceToken.sol`
-2. Hai file `ColdChainInsurance.sol` và `MockInsuranceToken.sol` đang dùng:
+2. File `ColdChainInsurance.sol` đang dùng:
    ```solidity
-   import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-   import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
    import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-   import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
    ```
 3. **Cách pin đúng phiên bản `@openzeppelin/contracts@5.6.1` trên Remix:**
    - **Cách A (Khuyên dùng):** Trong Remix, tạo hoặc kiểm tra thư mục `.deps/npm/@openzeppelin/contracts/` (khi Remix tự tải lần đầu), đảm bảo `package.json` trong `.deps/npm/@openzeppelin/contracts/package.json` là version **`5.6.1`** (không để bản khác trôi nổi).
@@ -67,10 +63,12 @@ Sau khi compile cả 3 contract trên Remix không có lỗi:
 - **ENVIRONMENT:** Chọn **`Browser Extension`** → kết nối **MetaMask**.
 - **Mạng trên MetaMask:** Chọn **Sepolia test network** (`Chain ID: 11155111`).
 - **ACCOUNT:** Đảm bảo ví Deployer (Owner) có đủ Sepolia ETH trước khi deploy.
-- **Thứ tự Deploy chuẩn (giữ nguyên constructor):**
-  1. `MockInsuranceToken(initialSupply)` — ví dụ `1000000000000000000000000` (`1,000,000 * 10^18`).
-  2. `ColdChainDataIntegrity(_anchorer)` — truyền **địa chỉ public ví Anchorer** của Backend.
-  3. `ColdChainInsurance(_payoutToken, _oracle)` — truyền địa chỉ `MockInsuranceToken` ở bước 1 và **địa chỉ public ví Oracle** của Backend.
+- **Thứ tự Deploy chuẩn (2 contracts, dùng native `SepoliaETH`):**
+  1. `ColdChainDataIntegrity(_anchorer)` — truyền **địa chỉ public ví Anchorer** của Backend (`0xd2D62EB2cd0731383b9F49A7e8DdD7cdD54b355E`).
+  2. `ColdChainInsurance(_oracle)` — truyền **địa chỉ public ví Oracle** của Backend (`0x7747f2c48C0D9562c311BbeBE4F822aE372C54bb`).
+
+> **Mức ký quỹ Policy bằng `SepoliaETH` (cho ví test có `2 – 10 SepoliaETH`):**
+> - **Mức chuẩn mặc định:** **`0.01 SepoliaETH`** = **`10000000000000000` `wei`** (`10 Finney`). Khi gọi `createPolicy(...)` trên Remix, điền `10000000000000000` vào ô **`VALUE`** (chọn đơn vị `Wei` hoặc nhập `10` đơn vị `Finney`) và điền `_payoutAmount = 10000000000000000` (hoặc `0` để contract tự lấy theo `msg.value`).
 
 > **Lưu ý:** Sau khi deploy thật trên Sepolia, dùng Python tooling (không cần Node.js/Hardhat) để tạo manifest và xác minh trạng thái:
 >
@@ -79,7 +77,6 @@ Sau khi compile cả 3 contract trên Remix không có lỗi:
 >
 > # 1. Tạo blockchain/deployments/sepolia.json (không chứa secrets)
 > python blockchain/scripts_py/create_sepolia_manifest.py \
->   --token-address 0x... --token-tx 0x... --token-block 123456 \
 >   --integrity-address 0x... --integrity-tx 0x... --integrity-block 123457 \
 >   --insurance-address 0x... --insurance-tx 0x... --insurance-block 123458 \
 >   --owner 0x... --anchorer 0x... --oracle 0x...

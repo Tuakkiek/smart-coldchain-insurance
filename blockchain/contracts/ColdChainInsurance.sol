@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
@@ -10,12 +8,12 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * @notice Smart contract quản lý chính sách bảo hiểm chuỗi lạnh (cold chain).
  *         - Quản lý policy theo shipmentKey (bytes32).
  *         - Hạn chế quyền gọi reportViolation cho oracle address.
- *         - Tự động chi trả token demo khi nhận sự kiện vi phạm hợp lệ.
+ *         - Tự động chi trả SepoliaETH (native coin) khi nhận sự kiện vi phạm hợp lệ.
  *         - Chống gửi trùng (duplicate payout).
- *         - Hỗ trợ hoàn token ký quỹ cho insurer khi chuyến hàng kết thúc an toàn và policy hết hạn.
- *         - Kiểm tra khả năng thanh toán (solvency check) đảm bảo hợp đồng đủ tiền trước khi chi trả.
- *         - Sử dụng SafeERC20 đảm bảo an toàn cho giao dịch chuyển token.
- * @dev Contract MVP — chỉ dùng trên local chain hoặc testnet.
+ *         - Hỗ trợ hoàn SepoliaETH ký quỹ cho insurer khi chuyến hàng kết thúc an toàn và policy hết hạn.
+ *         - Kiểm tra khả năng thanh toán (solvency check) đảm bảo hợp đồng đủ số dư trước khi chi trả.
+ * @dev Contract MVP — sử dụng native SepoliaETH ký quỹ qua payable createPolicy(msg.value).
+ *      Mức demo gợi ý cho ví 2-10 SepoliaETH: 0.01 SepoliaETH = 10000000000000000 wei (10 Finney).
  *      Backend đóng vai trò oracle gửi giao dịch có bằng chứng tham chiếu.
  *      Quy tắc:
  *        - shipmentKey = keccak256(UTF8(shipment_id))
@@ -23,8 +21,6 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *        - detectedAt = Unix timestamp giây UTC
  */
 contract ColdChainInsurance is ReentrancyGuard {
-    using SafeERC20 for IERC20;
-
     // ─── Custom Errors ───────────────────────────────────────────────
     error ColdChain__CallerNotOwner();
     error ColdChain__CallerNotOracle();
@@ -37,6 +33,8 @@ contract ColdChainInsurance is ReentrancyGuard {
     error ColdChain__PolicyExpired(uint256 expiry, uint256 currentTimestamp);
     error ColdChain__PolicyNotExpired(uint256 expiry, uint256 currentTimestamp);
     error ColdChain__ContractInsufficientBalance(uint256 available, uint256 required);
+    error ColdChain__IncorrectETHDeposit(uint256 sent, uint256 expected);
+    error ColdChain__ETHTransferFailed();
 
     // ─── State Variables ─────────────────────────────────────────────
 
@@ -45,9 +43,6 @@ contract ColdChainInsurance is ReentrancyGuard {
 
     /// @notice Địa chỉ oracle được cấp quyền gọi reportViolation.
     address public oracle;
-
-    /// @notice Token ERC-20 demo dùng cho chi trả bảo hiểm.
-    IERC20 public payoutToken;
 
     // ─── Data Structures ─────────────────────────────────────────────
 
@@ -121,16 +116,14 @@ contract ColdChainInsurance is ReentrancyGuard {
     // ─── Constructor ─────────────────────────────────────────────────
 
     /**
-     * @param _payoutToken Địa chỉ MockInsuranceToken đã deploy.
      * @param _oracle Địa chỉ oracle ban đầu (Backend signer).
      */
-    constructor(address _payoutToken, address _oracle) {
-        if (_payoutToken == address(0) || _oracle == address(0)) {
+    constructor(address _oracle) {
+        if (_oracle == address(0)) {
             revert ColdChain__ZeroAddress();
         }
 
         owner = msg.sender;
-        payoutToken = IERC20(_payoutToken);
         oracle = _oracle;
     }
 
@@ -150,11 +143,11 @@ contract ColdChainInsurance is ReentrancyGuard {
     // ─── Core Functions ──────────────────────────────────────
 
     /**
-     * @notice Đăng ký một policy bảo hiểm mới cho shipment.
-     *         Caller phải approve đủ token cho contract trước khi gọi.
+     * @notice Đăng ký một policy bảo hiểm mới cho shipment bằng SepoliaETH.
+     *         Người gọi gửi kèm msg.value (tương ứng payoutAmount, hoặc truyền _payoutAmount = 0 để dùng trực tiếp msg.value).
      * @param _shipmentKey keccak256(UTF8(shipment_id)) — khóa duy nhất
      * @param _beneficiary Địa chỉ nhận bồi thường khi vi phạm
-     * @param _payoutAmount Số token demo chi trả
+     * @param _payoutAmount Số wei chi trả (hoặc 0 để dùng đúng msg.value)
      * @param _expiry Unix timestamp (giây) hết hạn policy
      */
     function createPolicy(
@@ -162,35 +155,36 @@ contract ColdChainInsurance is ReentrancyGuard {
         address _beneficiary,
         uint256 _payoutAmount,
         uint256 _expiry
-    ) external nonReentrant {
+    ) external payable nonReentrant {
         if (policies[_shipmentKey].status != PolicyStatus.NotExist) {
             revert ColdChain__PolicyAlreadyExists(_shipmentKey);
         }
         if (_beneficiary == address(0)) revert ColdChain__ZeroAddress();
-        if (_payoutAmount == 0) revert ColdChain__InvalidPayoutAmount();
+        uint256 depositAmount = _payoutAmount == 0 ? msg.value : _payoutAmount;
+        if (depositAmount == 0 || msg.value == 0) revert ColdChain__InvalidPayoutAmount();
+        if (msg.value != depositAmount) {
+            revert ColdChain__IncorrectETHDeposit(msg.value, depositAmount);
+        }
         if (_expiry <= block.timestamp) {
             revert ColdChain__InvalidExpiry(_expiry, block.timestamp);
         }
 
-        // Chuyển token từ insurer (msg.sender) vào contract để khóa vốn (SafeERC20)
-        payoutToken.safeTransferFrom(msg.sender, address(this), _payoutAmount);
-
-        // Lưu policy
+        // Lưu policy với số SepoliaETH đã khóa trong contract qua msg.value
         policies[_shipmentKey] = Policy({
             insurer: msg.sender,
             beneficiary: _beneficiary,
-            payoutAmount: _payoutAmount,
+            payoutAmount: depositAmount,
             expiry: _expiry,
             status: PolicyStatus.Active,
             evidenceHash: bytes32(0),
             detectedAt: 0
         });
 
-        emit PolicyCreated(_shipmentKey, msg.sender, _beneficiary, _payoutAmount, _expiry);
+        emit PolicyCreated(_shipmentKey, msg.sender, _beneficiary, depositAmount, _expiry);
     }
 
     /**
-     * @notice Báo cáo vi phạm nhiệt độ và kích hoạt chi trả bảo hiểm.
+     * @notice Báo cáo vi phạm nhiệt độ và kích hoạt chi trả bảo hiểm bằng SepoliaETH.
      *         Chỉ oracle (Backend) được gọi.
      * @param _shipmentKey keccak256(UTF8(shipment_id))
      * @param _evidenceHash keccak256(UTF8(event_id)) — tham chiếu bản ghi off-chain
@@ -214,18 +208,19 @@ contract ColdChainInsurance is ReentrancyGuard {
         }
 
         // Kiểm tra số dư quỹ bảo hiểm (Solvency / Unfunded Check)
-        uint256 balance = payoutToken.balanceOf(address(this));
+        uint256 balance = address(this).balance;
         if (balance < policy.payoutAmount) {
             revert ColdChain__ContractInsufficientBalance(balance, policy.payoutAmount);
         }
 
-        // Cập nhật trạng thái TRƯỚC khi transfer (Checks-Effects-Interactions)
+        // Cập nhật trạng thái TRƯỚC khi chuyển SepoliaETH (Checks-Effects-Interactions)
         policy.status = PolicyStatus.PaidOut;
         policy.evidenceHash = _evidenceHash;
         policy.detectedAt = _detectedAt;
 
-        // Chuyển token cho beneficiary (SafeERC20)
-        payoutToken.safeTransfer(policy.beneficiary, policy.payoutAmount);
+        // Chuyển SepoliaETH cho beneficiary
+        (bool success, ) = payable(policy.beneficiary).call{value: policy.payoutAmount}("");
+        if (!success) revert ColdChain__ETHTransferFailed();
 
         emit InsurancePaid(
             _shipmentKey,
@@ -237,7 +232,7 @@ contract ColdChainInsurance is ReentrancyGuard {
     }
 
     /**
-     * @notice Hoàn lại số token đã khóa cho bên bảo hiểm (insurer) khi policy đã hết hạn
+     * @notice Hoàn lại số SepoliaETH đã khóa cho bên bảo hiểm (insurer) khi policy đã hết hạn
      *         mà không xảy ra bất kỳ vi phạm nào.
      *         Chỉ insurer của policy hoặc contract owner mới được gọi.
      * @param _shipmentKey keccak256(UTF8(shipment_id))
@@ -261,16 +256,17 @@ contract ColdChainInsurance is ReentrancyGuard {
         }
 
         // Kiểm tra số dư contract
-        uint256 balance = payoutToken.balanceOf(address(this));
+        uint256 balance = address(this).balance;
         if (balance < policy.payoutAmount) {
             revert ColdChain__ContractInsufficientBalance(balance, policy.payoutAmount);
         }
 
-        // Checks-Effects-Interactions: cập nhật trạng thái trước khi transfer
+        // Checks-Effects-Interactions: cập nhật trạng thái trước khi chuyển ETH
         policy.status = PolicyStatus.Refunded;
 
         uint256 amount = policy.payoutAmount;
-        payoutToken.safeTransfer(policy.insurer, amount);
+        (bool success, ) = payable(policy.insurer).call{value: amount}("");
+        if (!success) revert ColdChain__ETHTransferFailed();
 
         emit PolicyRefunded(_shipmentKey, policy.insurer, amount);
     }
@@ -324,10 +320,10 @@ contract ColdChainInsurance is ReentrancyGuard {
     }
 
     /**
-     * @notice Lấy số dư token demo hiện có của hợp đồng bảo hiểm.
-     * @return balance Số dư token đang giữ trong contract
+     * @notice Lấy số dư SepoliaETH (wei) hiện có của hợp đồng bảo hiểm.
+     * @return balance Số dư wei đang giữ trong contract
      */
     function getContractBalance() external view returns (uint256 balance) {
-        return payoutToken.balanceOf(address(this));
+        return address(this).balance;
     }
 }
