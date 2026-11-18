@@ -229,3 +229,83 @@ def test_sepolia_adapter_helpers_abi_eip1559_and_chunked_logs(tmp_path):
             raise Web3Exception("range exceeded")
 
     assert _find_event_logs(chunk_web3, FailingEvent, {}, start_block=12145351) == []
+
+
+def test_policy_adapter_uses_native_eth_and_payable_abi():
+    import json
+    from types import SimpleNamespace
+    from eth_account import Account
+    from app.core.config import DEFAULT_ABI_PATH
+    from app.integrations.blockchain_adapter import Web3PolicyAdapter
+
+    abi_payload = json.loads(DEFAULT_ABI_PATH.read_text(encoding="utf-8"))["abi"]
+    create_fn = next(item for item in abi_payload if item.get("name") == "createPolicy")
+    assert create_fn["stateMutability"] == "payable"
+    assert not any(item.get("name") == "payoutToken" for item in abi_payload)
+
+    signer = Account.create()
+    built_txs = []
+    sent_raw = []
+
+    class FakeCall:
+        def __init__(self, value):
+            self._value = value
+
+        def call(self):
+            return self._value
+
+    class FakeBuildFn:
+        def build_transaction(self, tx_dict):
+            built_txs.append(tx_dict)
+            return {**tx_dict, "gasPrice": tx_dict.get("gasPrice", 100)}
+
+    fake_contract = SimpleNamespace(
+        functions=SimpleNamespace(
+            getPolicy=lambda _key: FakeCall(("0x" + "00" * 20, "0x" + "00" * 20, 0, 0, 0, b"\x00" * 32, 0)),
+            createPolicy=lambda *_args: FakeBuildFn(),
+        )
+    )
+    fake_web3 = SimpleNamespace(
+        eth=SimpleNamespace(
+            account=Account,
+            get_balance=lambda _addr: 10**18,
+            get_transaction_count=lambda _addr, _tag="pending": 7,
+            get_block=lambda _tag: {},
+            gas_price=100,
+            send_raw_transaction=lambda raw: sent_raw.append(raw),
+        )
+    )
+
+    settings = Settings(
+        database_url="sqlite:///:memory:",
+        admin_username="admin",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long!",
+        blockchain_enabled=True,
+        blockchain_chain_id=11155111,
+        blockchain_contract_address="0x13Cb896302ea78146EF5eb1E28bFfC1073b8ea9F",
+        blockchain_insurer_private_key=signer.key.hex(),
+    )
+    adapter = Web3PolicyAdapter(settings)
+    adapter._contract = lambda: (fake_web3, fake_contract, settings.blockchain_contract_address)  # type: ignore[method-assign]
+
+    res = adapter.submit_policy(
+        "8b4fb8a2-2996-4da2-90b9-35019517f56f",
+        "0x66077Ef603B524911B9226011A3C17Dd4B623fEF",
+        10**16,
+        1893456000,
+    )
+    assert res.already_active is False
+    assert built_txs[0]["value"] == 10**16
+    assert len(sent_raw) == 1
+
+    fake_web3.eth.get_balance = lambda _addr: 10**15
+    try:
+        adapter.submit_policy(
+            "8b4fb8a2-2996-4da2-90b9-35019517f56f",
+            "0x66077Ef603B524911B9226011A3C17Dd4B623fEF",
+            10**16,
+            1893456000,
+        )
+        raise AssertionError("Expected INSURER_INSUFFICIENT_ETH_BALANCE")
+    except BlockchainError as exc:
+        assert exc.code == "INSURER_INSUFFICIENT_ETH_BALANCE"
