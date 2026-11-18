@@ -215,8 +215,8 @@ export const DevicesPage: React.FC = () => {
     <div className="devices-page">
       {/* 1. Page Header & Actions */}
       <PageHeader
-        title="Quản lý Thiết bị ESP32 & Toàn vẹn Phần cứng"
-        description="Theo dõi trạng thái kết nối, khóa công khai ECDSA P-256, chữ ký số và tính liên tục dữ liệu thiết bị."
+        title="Thiết bị"
+        description="Trạng thái thiết bị và lô hàng đang được gán."
         action={
           <div className="devices-header-actions">
             <label className="devices-autorefresh-toggle">
@@ -225,7 +225,7 @@ export const DevicesPage: React.FC = () => {
                 checked={autoRefresh}
                 onChange={(e) => setAutoRefresh(e.target.checked)}
               />
-              <span>Tự động làm mới (10s)</span>
+              <span>Tự động (10s)</span>
             </label>
             <Button
               variant="secondary"
@@ -246,13 +246,11 @@ export const DevicesPage: React.FC = () => {
               }}
               icon={<Link2 size={14} />}
             >
-              Liên kết chuyến hàng
+              Gán thiết bị
             </Button>
           </div>
         }
       />
-
-      <p className="text-sm text-secondary">Sử dụng 10 thiết bị cố định: ESP32-01 đến ESP32-10. Chọn thiết bị để liên kết với lô hàng.</p>
 
       {loadFailed && devices.length === 0 ? (
         <ErrorState
@@ -280,6 +278,12 @@ export const DevicesPage: React.FC = () => {
             backendConnectionState={backendConnectionState}
             isEffectiveColdStart={isEffectiveColdStart}
           />
+
+          {(invalidSigCount > 0 || unknownKeyCount > 0 || gapCount > 0) && (
+            <div className="status-alert" role="status">
+              Có {invalidSigCount + unknownKeyCount} thiết bị cần kiểm tra chữ ký và {gapCount} thiết bị có khoảng trống dữ liệu. Chọn thiết bị để xem chi tiết kỹ thuật.
+            </div>
+          )}
 
           {/* 3. Unified Search & Filter Toolbar */}
           <DeviceFilterToolbar

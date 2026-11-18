@@ -1,483 +1,155 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageHeader } from '../components/layout/PageHeader';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { CopyButton } from '../components/ui/CopyButton';
-import { ShipmentStatusBadge, InsuranceStatusBadge } from '../components/data-display/StatusBadge';
-import { LoadingState } from '../components/feedback/LoadingState';
+import { Link2, MoreHorizontal, Plus, RefreshCw, Search, Thermometer, Trash2 } from 'lucide-react';
+import { ApiError } from '../api/client';
+import { getShipmentDevices } from '../api/devices';
+import { deleteShipment, getShipments } from '../api/shipments';
+import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { EmptyState } from '../components/feedback/EmptyState';
 import { ConfirmModal } from '../components/feedback/ConfirmModal';
-import { deleteShipment, getShipments } from '../api/shipments';
-import { ApiError } from '../api/client';
-import { ShipmentOut, ShipmentStatus } from '../types/api';
-import { Search, MapPin, Thermometer, Shield, Plus, Trash2, RefreshCw, Link2 } from 'lucide-react';
-import { CreateShipmentModal } from '../components/shipments/CreateShipmentModal';
-import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
+import { LoadingState } from '../components/feedback/LoadingState';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
-import { formatInsuranceCoverage, shortenAddress } from '../utils/ethereum';
+import { PageHeader } from '../components/layout/PageHeader';
+import { CreateShipmentModal } from '../components/shipments/CreateShipmentModal';
+import { InsuranceStatusBadge, ShipmentStatusBadge } from '../components/data-display/StatusBadge';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { ShipmentDeviceOut, ShipmentOut, ShipmentStatus } from '../types/api';
 
 export const ShipmentsPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [shipments, setShipments] = useState<ShipmentOut[]>([]);
-  const [filtered, setFiltered] = useState<ShipmentOut[]>([]);
+  const [devicesByShipment, setDevicesByShipment] = useState<Record<string, ShipmentDeviceOut[]>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [assignmentShipmentId, setAssignmentShipmentId] = useState<string | null>(null);
   const [shipmentToDelete, setShipmentToDelete] = useState<ShipmentOut | null>(null);
-  const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
-
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
-  const fetchShipments = async (isBackground = false, notifyManual = false) => {
-    if (!isBackground && !hasLoadedOnce) {
-      setLoading(true);
-    } else {
-      setRefreshing(true);
-    }
+  const fetchShipments = async (background = false, notify = false) => {
+    background || hasLoadedOnce ? setRefreshing(true) : setLoading(true);
     setLoadFailed(false);
     try {
-      const data = await getShipments();
-      setShipments(data.items);
-      setFiltered(data.items);
+      const response = await getShipments();
+      setShipments(response.items);
+      const assignments = await Promise.allSettled(response.items.map((item) => getShipmentDevices(item.id)));
+      setDevicesByShipment(Object.fromEntries(response.items.map((item, index) => [
+        item.id,
+        assignments[index].status === 'fulfilled' ? assignments[index].value.items : [],
+      ])));
       setHasLoadedOnce(true);
-      if (notifyManual) {
-        toast.success('Đã làm mới danh sách lô hàng.', { title: 'Làm mới thành công' });
-      }
-    } catch (err: unknown) {
-      if (isRequestCancelled(err)) return;
-      const msg = formatApiErrorMessage(err, 'Không thể tải danh sách lô hàng. Vui lòng thử lại.');
-      if (!hasLoadedOnce) {
-        setLoadFailed(true);
-      }
-      if (msg && (!isBackground || notifyManual)) {
-        toast.error(msg, {
-          title: 'Lỗi tải danh sách lô hàng',
-          dedupKey: 'shipments-fetch-error',
-          action: {
-            label: 'Thử lại',
-            onClick: () => fetchShipments(false),
-          },
-        });
-      }
+      if (notify) toast.success('Danh sách lô hàng đã được cập nhật.');
+    } catch (error: unknown) {
+      if (isRequestCancelled(error)) return;
+      if (!hasLoadedOnce) setLoadFailed(true);
+      if (!background || notify) toast.error(formatApiErrorMessage(error, 'Không thể tải danh sách lô hàng.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const handleShipmentCreated = (newShipment: ShipmentOut) => {
-    setShipments((prev) => [newShipment, ...prev]);
-    toast.success(`Đã tạo ${newShipment.name}. Shipment ID: ${newShipment.shipment_id}`, {
-      title: 'Tạo lô hàng thành công',
-      action: {
-        label: 'Gán thiết bị',
-        onClick: () => setAssignmentShipmentId(newShipment.id),
-      },
-    });
-  };
+  useEffect(() => { void fetchShipments(); }, []);
 
-  const handleRequestDeleteShipment = (shipment: ShipmentOut) => {
-    setShipmentToDelete(shipment);
-  };
+  const filtered = shipments.filter((shipment) => {
+    const term = searchTerm.trim().toLowerCase();
+    const matchesTerm = !term || [shipment.name, shipment.cargo_type, shipment.origin.name, shipment.destination.name].some((value) => value.toLowerCase().includes(term));
+    const matchesStatus = statusFilter === 'all' || shipment.status === (statusFilter as ShipmentStatus);
+    return matchesTerm && matchesStatus;
+  });
 
-  const handleConfirmDeleteShipment = async () => {
-    if (!shipmentToDelete || deletingShipmentId) return;
-    const shipment = shipmentToDelete;
-
-    setDeletingShipmentId(shipment.id);
+  const confirmDelete = async () => {
+    if (!shipmentToDelete || deletingId) return;
+    const target = shipmentToDelete;
+    setDeletingId(target.id);
     try {
-      await deleteShipment(shipment.id);
-      setShipments((current) => current.filter((item) => item.id !== shipment.id));
+      await deleteShipment(target.id);
+      setShipments((current) => current.filter((item) => item.id !== target.id));
       setShipmentToDelete(null);
-      toast.success(`Đã xóa lô hàng ${shipment.name} thành công.`, {
-        title: 'Xóa lô hàng thành công',
-      });
-    } catch (err: unknown) {
+      toast.success(`Đã xóa ${target.name}.`);
+    } catch (error: unknown) {
       setShipmentToDelete(null);
-      if (isRequestCancelled(err)) return;
-      let msg = '';
-      if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_ASSIGNED_DEVICES') {
-        msg = `Không thể xóa ${shipment.name}: vẫn còn thiết bị đang liên kết. Hãy bỏ liên kết trong trang Thiết bị trước.`;
-      } else if (err instanceof ApiError && err.code === 'SHIPMENT_HAS_DATA') {
-        msg = `Không thể xóa ${shipment.name} vì đã có dữ liệu vận hành hoặc lịch sử đối soát.`;
-      } else {
-        msg = formatApiErrorMessage(err, 'Không thể xóa lô hàng. Vui lòng thử lại.');
-      }
-      if (msg) {
-        toast.error(msg, {
-          title: 'Lỗi xóa lô hàng',
-          ...(err instanceof ApiError && err.code === 'SHIPMENT_HAS_ASSIGNED_DEVICES'
-            ? { action: { label: 'Tháo thiết bị', onClick: () => setAssignmentShipmentId(shipment.id) } }
-            : {}),
-        });
-      }
+      if (isRequestCancelled(error)) return;
+      const message = error instanceof ApiError && error.code === 'SHIPMENT_HAS_ASSIGNED_DEVICES'
+        ? 'Lô hàng vẫn còn thiết bị được gán. Hãy tháo thiết bị trước.'
+        : error instanceof ApiError && error.code === 'SHIPMENT_HAS_DATA'
+          ? 'Không thể xóa lô hàng đã có dữ liệu vận hành hoặc lịch sử đối soát.'
+          : formatApiErrorMessage(error, 'Không thể xóa lô hàng.');
+      toast.error(message);
     } finally {
-      setDeletingShipmentId(null);
+      setDeletingId(null);
     }
   };
 
-  useEffect(() => {
-    fetchShipments();
-  }, []);
-
-  useEffect(() => {
-    let result = shipments;
-
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter(
-        (s) =>
-          s.name.toLowerCase().includes(term) ||
-          s.cargo_type.toLowerCase().includes(term) ||
-          s.origin.name.toLowerCase().includes(term) ||
-          s.destination.name.toLowerCase().includes(term)
-      );
-    }
-
-    if (statusFilter !== 'all') {
-      result = result.filter((s) => s.status === (statusFilter as ShipmentStatus));
-    }
-
-    setFiltered(result);
-  }, [searchTerm, statusFilter, shipments]);
-
-  if (loading && !hasLoadedOnce) {
-    return <LoadingState fullPage message="Đang tải danh sách lô hàng..." />;
-  }
-
-  if (loadFailed && !hasLoadedOnce) {
-    return (
-      <div>
-        <PageHeader title="Danh sách Lô hàng Lạnh" />
-        <EmptyState
-          title="Chưa thể tải danh sách lô hàng"
-          description="Vui lòng kiểm tra kết nối máy chủ Backend và thử tải lại."
-          actionText="Thử lại"
-          onAction={() => fetchShipments(false)}
-        />
-      </div>
-    );
-  }
+  if (loading && !hasLoadedOnce) return <LoadingState fullPage message="Đang tải lô hàng..." />;
+  if (loadFailed && !hasLoadedOnce) return <><PageHeader title="Lô hàng" /><EmptyState title="Chưa thể tải danh sách" actionText="Thử lại" onAction={() => fetchShipments()} /></>;
 
   return (
     <div>
       <PageHeader
-        title="Danh sách Lô hàng Lạnh"
-        action={
-          <div className="flex-row items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => fetchShipments(true, true)}
-              loading={refreshing}
-              disabled={loading || refreshing}
-              icon={<RefreshCw size={14} />}
-            >
-              Làm mới
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsCreateModalOpen(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-            >
-              <Plus size={16} />
-              Tạo Lô Hàng Mới
-            </Button>
-          </div>
-        }
+        title="Lô hàng"
+        description="Theo dõi nhanh trạng thái, thiết bị và bảo hiểm."
+        action={<div className="flex-row gap-2"><Button size="sm" onClick={() => fetchShipments(true, true)} loading={refreshing} icon={<RefreshCw size={14} />}>Làm mới</Button><Button variant="primary" size="sm" onClick={() => setCreateOpen(true)} icon={<Plus size={15} />}>Tạo lô hàng</Button></div>}
       />
 
-      {/* Filter and Search Bar */}
-      <Card style={{ marginBottom: 'var(--space-6)', padding: 'var(--space-4)' }}>
-        <div
-          className="flex-row items-center justify-between"
-          style={{ gap: 'var(--space-4)', flexWrap: 'wrap' }}
-        >
-          <div
-            className="flex-row items-center gap-2"
-            style={{
-              flex: 1,
-              minWidth: '240px',
-              backgroundColor: 'var(--color-surface-secondary)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-md)',
-              padding: '6px 12px',
-            }}
-          >
-            <Search size={16} style={{ color: 'var(--color-text-tertiary)' }} />
-            <input
-              type="text"
-              placeholder="Tìm theo tên lô hàng, loại hàng, địa điểm..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                border: 'none',
-                background: 'transparent',
-                width: '100%',
-                fontSize: 'var(--text-sm)',
-                color: 'var(--color-text-primary)',
-              }}
-            />
-          </div>
+      <div className="filter-bar">
+        <label className="search-field">
+          <Search size={16} color="var(--color-text-tertiary)" />
+          <input aria-label="Tìm lô hàng" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Tìm theo tên, hàng hóa hoặc địa điểm" />
+        </label>
+        <select className="minimal-select" aria-label="Lọc trạng thái" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <option value="all">Tất cả trạng thái</option>
+          <option value="created">Mới tạo</option>
+          <option value="in_transit">Đang vận chuyển</option>
+          <option value="sensor_data_gap">Mất tín hiệu</option>
+          <option value="insurance_triggered">Đã kích hoạt bảo hiểm</option>
+        </select>
+      </div>
 
-          <div className="flex-row items-center gap-2">
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
-              Trạng thái:
-            </span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{
-                padding: '6px 12px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border)',
-                backgroundColor: 'var(--color-surface)',
-                fontSize: 'var(--text-sm)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              <option value="all">Tất cả ({shipments.length})</option>
-              <option value="in_transit">Đang vận chuyển</option>
-              <option value="insurance_triggered">Kích hoạt bảo hiểm</option>
-              <option value="sensor_data_gap">Mất tín hiệu</option>
-              <option value="created">Mới tạo</option>
-            </select>
-          </div>
-        </div>
-      </Card>
-
-      {/* Shipment Items List */}
-      {filtered.length === 0 ? (
-        <EmptyState
-          title="Không tìm thấy lô hàng nào"
-          description="Thử thay đổi từ khóa tìm kiếm hoặc bộ lọc trạng thái để xem kết quả."
-          actionText="Đặt lại bộ lọc"
-          onAction={() => {
-            setSearchTerm('');
-            setStatusFilter('all');
-          }}
-        />
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      {filtered.length === 0 ? <EmptyState title="Không tìm thấy lô hàng" description="Thử đổi từ khóa hoặc bộ lọc." actionText="Đặt lại" onAction={() => { setSearchTerm(''); setStatusFilter('all'); }} /> : (
+        <Card className="shipment-list" style={{ padding: 0 }}>
           {filtered.map((shipment) => {
-            const shipmentId = shipment.shipment_id || shipment.id;
-            const temp = shipment.latest_telemetry?.temperature_c;
-            const isBreach =
-              temp !== undefined &&
-              (temp < shipment.temp_min_c || temp > shipment.temp_max_c);
-
+            const temperature = shipment.latest_telemetry?.temperature_c;
+            const isBreach = temperature !== undefined && (temperature < shipment.temp_min_c || temperature > shipment.temp_max_c);
+            const assignedDevices = devicesByShipment[shipment.id] ?? [];
             return (
-              <Card
-                key={shipment.id}
-                interactive
-                onClick={() => navigate(`/shipments/${shipment.id}`)}
-                style={{ cursor: 'pointer' }}
-              >
-                <div
-                  className="flex-row items-center justify-between"
-                  style={{ gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-                    <div className="flex-row items-center gap-3" style={{ flexWrap: 'wrap' }}>
-                      <span
-                        className="font-mono"
-                        style={{
-                          fontSize: 'var(--text-lg)',
-                          fontWeight: 600,
-                          color: 'var(--color-text-primary)',
-                        }}
-                      >
-                        {shipment.name}
-                      </span>
-                      <ShipmentStatusBadge status={shipment.status} />
-                      <InsuranceStatusBadge
-                        status={shipment.insurance.status}
-                        payoutStatus={shipment.insurance.payout_status}
-                      />
-                    </div>
-                    <div
-                      className="id-copy-inline"
-                      style={{
-                        fontSize: 'var(--text-xs)',
-                        color: 'var(--color-text-tertiary)',
-                      }}
-                    >
-                      <span style={{ flexShrink: 0 }}>ID:</span>
-                      <span
-                        className="font-mono"
-                        style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        title={shipmentId}
-                      >
-                        {shipmentId}
-                      </span>
-                      <CopyButton value={shipmentId} iconSize={12} />
-                    </div>
-                  </div>
-
-                  <div className="flex-row items-center gap-2">
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-                      Tạo lúc: {new Date(shipment.created_at).toLocaleDateString('vi-VN')}
-                    </div>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon={<Link2 size={13} />}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setAssignmentShipmentId(shipment.id);
-                      }}
-                    >
-                      Gán / tháo thiết bị
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      loading={deletingShipmentId === shipment.id}
-                      disabled={deletingShipmentId !== null}
-                      icon={<Trash2 size={13} />}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleRequestDeleteShipment(shipment);
-                      }}
-                    >
-                      Xóa
-                    </Button>
-                  </div>
+              <div key={shipment.id} className="shipment-row" role="link" tabIndex={0} onClick={() => navigate(`/shipments/${shipment.id}`)} onKeyDown={(event) => event.key === 'Enter' && navigate(`/shipments/${shipment.id}`)}>
+                <div className="shipment-cell">
+                  <div className="compact-title">{shipment.name}</div>
+                  <div className="compact-meta">{shipment.cargo_type}</div>
+                  <div style={{ marginTop: 5 }}><ShipmentStatusBadge status={shipment.status} /></div>
                 </div>
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: 'var(--space-4)',
-                    paddingTop: 'var(--space-3)',
-                    borderTop: '1px solid var(--color-border-subtle)',
-                  }}
-                >
-                  {/* Cargo info */}
-                  <div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-                      Loại hàng hóa
-                    </div>
-                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginTop: '2px' }}>
-                      {shipment.cargo_type}
-                    </div>
-                  </div>
-
-                  {/* Route */}
-                  <div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                      <MapPin size={12} /> Tuyến đường (Mô phỏng)
-                    </div>
-                    <div style={{ fontSize: 'var(--text-sm)', marginTop: '2px' }}>
-                      {shipment.origin.name} → {shipment.destination.name}
-                    </div>
-                    {shipment.location && (
-                      <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
-                        Tiến độ: {shipment.location.progress_pct.toFixed(0)}%
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Temperature */}
-                  <div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                      <Thermometer size={12} /> Nhiệt độ hiện tại
-                    </div>
-                    <div
-                      className="tabular-nums"
-                      style={{
-                        fontSize: 'var(--text-sm)',
-                        fontWeight: 600,
-                        color: isBreach ? 'var(--color-danger)' : 'var(--color-text-primary)',
-                        marginTop: '2px',
-                      }}
-                    >
-                      {temp !== undefined ? `${temp.toFixed(1)}°C` : 'Chưa có telemetry'}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
-                      Giới hạn: {shipment.temp_min_c}°C đến {shipment.temp_max_c}°C
-                    </div>
-                  </div>
-
-                  {/* Insurance Amount */}
-                  <div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                      <Shield size={12} /> Giá trị bảo hiểm (Coverage)
-                    </div>
-                    {(() => {
-                      const cov = formatInsuranceCoverage(shipment.insurance);
-                      const buyerWallet = shipment.buyer_wallet_address || shipment.insurance.buyer_wallet_address;
-                      return (
-                        <>
-                          <div className="tabular-nums font-mono" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginTop: '2px' }}>
-                            {cov.primaryText}
-                          </div>
-                          <div style={{ fontSize: '10px', color: cov.isEth ? 'var(--color-accent)' : '#b45309', marginTop: '1px', fontWeight: 500 }}>
-                            {cov.unitLabel}
-                          </div>
-                          {buyerWallet && (
-                            <div className="font-mono" style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '2px' }} title={buyerWallet}>
-                              Buyer: {shortenAddress(buyerWallet)}
-                            </div>
-                          )}
-                          <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
-                            Vi phạm liên tục {shipment.violation_duration_minutes} phút
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
+                <div className="shipment-cell shipment-device-cell">
+                  <div className="compact-label">Thiết bị</div>
+                  <div className="compact-meta" style={{ color: 'var(--color-text-primary)' }}>{assignedDevices.length ? assignedDevices.map((device) => device.device_id).join(', ') : 'Chưa gán'}</div>
                 </div>
-              </Card>
+                <div className="shipment-cell">
+                  <div className="compact-label">Nhiệt độ</div>
+                  <div className="compact-value" style={{ color: isBreach ? 'var(--color-danger)' : undefined, textAlign: 'left' }}><Thermometer size={13} style={{ verticalAlign: -2 }} /> {temperature !== undefined ? `${temperature.toFixed(1)}°C` : 'Chưa có'}</div>
+                </div>
+                <div className="shipment-cell shipment-insurance-cell"><InsuranceStatusBadge status={shipment.insurance.status} payoutStatus={shipment.insurance.payout_status} /></div>
+                <details className="row-menu" onClick={(event) => event.stopPropagation()}>
+                  <summary aria-label={`Thao tác với ${shipment.name}`}><MoreHorizontal size={18} /></summary>
+                  <div className="row-menu-popover">
+                    <button className="row-menu-item" onClick={() => setAssignmentShipmentId(shipment.id)}><Link2 size={15} />Gán / tháo thiết bị</button>
+                    <button className="row-menu-item danger" disabled={Boolean(deletingId)} onClick={() => setShipmentToDelete(shipment)}><Trash2 size={15} />Xóa lô hàng</button>
+                  </div>
+                </details>
+              </div>
             );
           })}
-        </div>
+        </Card>
       )}
 
-      {/* Modal Tạo Lô Hàng Mới */}
-      <CreateShipmentModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onSuccess={handleShipmentCreated}
-      />
-      <AssignDeviceModal
-        isOpen={assignmentShipmentId !== null}
-        initialShipmentId={assignmentShipmentId}
-        onClose={() => setAssignmentShipmentId(null)}
-        onSuccess={(_device, message) => toast.success(message, { title: 'Thiết bị lô hàng' })}
-      />
-
-      {/* Modal Xác Nhận Xóa Lô Hàng */}
-      <ConfirmModal
-        isOpen={Boolean(shipmentToDelete)}
-        title="Xác nhận xóa lô hàng"
-        message={
-          shipmentToDelete ? (
-            <>
-              Bạn có chắc chắn muốn xóa lô hàng{' '}
-              <strong className="font-mono">{shipmentToDelete.name}</strong> không?
-            </>
-          ) : null
-        }
-        description="Chỉ lô hàng chưa liên kết thiết bị và chưa có dữ liệu vận hành hoặc lịch sử đối soát mới có thể xóa. Thao tác này không thể hoàn tác."
-        confirmLabel={deletingShipmentId ? 'Đang xóa...' : 'Xác nhận'}
-        cancelLabel="Hủy"
-        variant="danger"
-        loading={Boolean(deletingShipmentId)}
-        onConfirm={handleConfirmDeleteShipment}
-        onCancel={() => {
-          if (!deletingShipmentId) setShipmentToDelete(null);
-        }}
-      />
+      <CreateShipmentModal isOpen={createOpen} onClose={() => setCreateOpen(false)} onSuccess={(shipment) => { setShipments((current) => [shipment, ...current]); setAssignmentShipmentId(shipment.id); }} />
+      <AssignDeviceModal isOpen={assignmentShipmentId !== null} initialShipmentId={assignmentShipmentId} onClose={() => setAssignmentShipmentId(null)} onSuccess={(_device, message) => { toast.success(message); void fetchShipments(true); }} />
+      <ConfirmModal isOpen={Boolean(shipmentToDelete)} title="Xóa lô hàng?" message={shipmentToDelete ? <>Bạn sắp xóa <strong>{shipmentToDelete.name}</strong>.</> : null} description="Chỉ lô hàng chưa có thiết bị hoặc dữ liệu vận hành mới có thể xóa. Thao tác này không thể hoàn tác." confirmLabel="Xóa" cancelLabel="Hủy" variant="danger" loading={Boolean(deletingId)} onConfirm={confirmDelete} onCancel={() => !deletingId && setShipmentToDelete(null)} />
     </div>
   );
 };
-

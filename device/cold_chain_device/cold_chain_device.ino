@@ -255,8 +255,12 @@ void sendReading(float temperature, float humidity) {
     Serial.printf("[SEQUENCE] Sending sequence %lu\n",
                   static_cast<unsigned long>(sequence));
 
-    const int status = postTelemetry(body);
+    Serial.println("\n========== TELEMETRY JSON ==========");
+    Serial.println(body);
+    Serial.println("====================================\n");   
 
+    const int status = postTelemetry(body);
+    
     if (status == 200 || status == 201) {
       Serial.printf("[SUCCESS] Telemetry accepted (sequence %lu)\n",
                     static_cast<unsigned long>(sequence));

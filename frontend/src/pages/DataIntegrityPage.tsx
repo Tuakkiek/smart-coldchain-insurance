@@ -21,14 +21,7 @@ import {
   BatchVerifyResultOut,
 } from '../types/api';
 import { ApiError } from '../api/client';
-import {
-  Layers,
-  ShieldAlert,
-  RefreshCw,
-  Database,
-  Link as LinkIcon,
-  CheckCircle2,
-} from 'lucide-react';
+import { Layers, ShieldAlert, RefreshCw, Link as LinkIcon } from 'lucide-react';
 
 export const DataIntegrityPage: React.FC = () => {
   const { toast } = useToast();
@@ -233,8 +226,8 @@ export const DataIntegrityPage: React.FC = () => {
     return (
       <div>
         <PageHeader
-          title="Toàn vẹn Dữ liệu & Merkle Batches"
-          description="Quản lý tính toàn vẹn dữ liệu cảm biến và kiểm tra Merkle root neo on-chain."
+          title="Blockchain"
+          description="Theo dõi trạng thái neo và đối chiếu Merkle batch."
         />
         <EmptyState
           title="Chưa thể tải dữ liệu Merkle Batches"
@@ -254,120 +247,29 @@ export const DataIntegrityPage: React.FC = () => {
 
   const totalBatches = batches.length;
   const anchoredBatches = batches.filter((b) => b.anchor_status === 'DATA_ANCHORED').length;
-  const totalRecordsCalculated = batches.reduce((acc, b) => acc + (b.record_count || 0), 0);
-
-  const getOverallVerificationDisplay = () => {
-    const status = summary?.verification_status ?? (failedBatches.length > 0 ? 'DATA_INTEGRITY_FAILED' : batches.length > 0 ? 'MATCHED' : 'NOT_CHECKED');
-    switch (status) {
-      case 'MATCHED':
-        return {
-          text: 'Toàn vẹn khớp',
-          subtitle: 'Đối soát Merkle Root trùng khớp',
-          color: 'var(--color-success)',
-        };
-      case 'DATA_INTEGRITY_FAILED':
-        return {
-          text: 'Sai lệch dữ liệu',
-          subtitle: 'Phát hiện can thiệp Merkle Root!',
-          color: 'var(--color-danger)',
-        };
-      case 'NOT_CHECKED':
-      default:
-        return {
-          text: 'Chưa đối chiếu',
-          subtitle: 'Chưa kiểm tra Merkle Root',
-          color: 'var(--color-neutral)',
-        };
-    }
-  };
-
   return (
     <div>
-      {/* Top Controls */}
-      <div
-        className="flex-row items-center justify-between"
-        style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap', gap: 'var(--space-2)' }}
-      >
-
-        <div className="flex-row items-center gap-3">
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)',
-              fontSize: 'var(--text-xs)',
-              cursor: 'pointer',
-              color: 'var(--color-text-secondary)',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-            />
-            Tự động đồng bộ (10s)
-          </label>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => fetchData(true, true)}
-            loading={refreshing}
-            disabled={loading || refreshing}
-            icon={<RefreshCw size={14} />}
-          >
-            Làm mới
-          </Button>
-        </div>
-      </div>
-
       <PageHeader
-        title="Toàn vẹn Dữ liệu & Merkle Batches"
+        title="Blockchain"
+        description="Trạng thái neo và đối chiếu toàn vẹn dữ liệu."
+        action={<div className="flex-row items-center gap-3"><label style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}><input type="checkbox" checked={autoRefresh} onChange={(event) => setAutoRefresh(event.target.checked)} /> Tự động (10s)</label><Button size="sm" onClick={() => fetchData(true, true)} loading={refreshing} icon={<RefreshCw size={14} />}>Làm mới</Button></div>}
       />
 
-      {/* 5 KPI Metric Cards */}
-      <div
-        className="metrics-grid"
-        style={{
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-          marginBottom: 'var(--space-6)',
-        }}
-      >
+      <div className="metrics-grid integrity-metrics">
         <MetricCard
-          title="Tổng số bản ghi trong batch"
-          value={summary?.record_count ?? totalRecordsCalculated}
-          subtitle="Mẫu telemetry đã gom vào batch"
-          icon={<Database size={20} />}
-        />
-        <MetricCard
-          title="Tổng số Merkle Batch"
+          title="Tổng Merkle batch"
           value={summary?.batch_count ?? totalBatches}
-          subtitle="Batch đã niêm phong"
           icon={<Layers size={20} />}
-          accentColor="var(--color-primary)"
         />
         <MetricCard
-          title="Trạng thái xác minh chung"
-          value={getOverallVerificationDisplay().text}
-          subtitle={getOverallVerificationDisplay().subtitle}
-          icon={<CheckCircle2 size={20} />}
-          accentColor={getOverallVerificationDisplay().color}
-        />
-        <MetricCard
-          title="Batch đã neo on-chain"
-          value={`${anchoredBatches} / ${totalBatches}`}
-          subtitle="Đã xác nhận trên Blockchain"
+          title="Đã neo blockchain"
+          value={anchoredBatches}
           icon={<LinkIcon size={20} />}
           accentColor="var(--color-accent)"
         />
         <MetricCard
-          title="Sai lệch toàn vẹn (Failed)"
+          title="Đối chiếu thất bại"
           value={failedBatches.length}
-          subtitle={
-            failedBatches.length > 0
-              ? 'Phát hiện can thiệp dữ liệu!'
-              : 'Không có sai lệch'
-          }
           icon={<ShieldAlert size={20} />}
           accentColor={failedBatches.length > 0 ? 'var(--color-danger)' : undefined}
         />
@@ -384,9 +286,8 @@ export const DataIntegrityPage: React.FC = () => {
       )}
 
 
-      {/* MERKLE BATCHES LIST TABLE */}
       <Card
-        title="Danh sách Merkle Batches (Merkle Batches Table)"
+        title="Merkle batches"
         style={{ marginBottom: 'var(--space-6)' }}
       >
         <MerkleBatchTable
