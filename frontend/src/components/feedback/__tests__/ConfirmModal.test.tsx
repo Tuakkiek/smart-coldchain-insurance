@@ -52,7 +52,7 @@ describe('ConfirmModal', () => {
       <ConfirmModal
         isOpen
         title="Xác nhận xóa thiết bị"
-        message="Bạn có chắc chắn muốn xóa ESP32-001 không?"
+        message="Bạn có chắc chắn muốn xóa ESP32-01 không?"
         onConfirm={onConfirm}
         onCancel={onCancel}
       />

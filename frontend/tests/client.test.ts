@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loginAdmin, logoutAdmin } from '../src/api/auth';
 import { apiClient } from '../src/api/client';
 import { endSession, getActiveSession, getAuthSnapshot, startSession } from '../src/auth/session';
-import { registerDevice } from '../src/api/devices';
+import { assignDevice } from '../src/api/devices';
 import { createShipment } from '../src/api/shipments';
 import { jsonResponse, tokenFor } from './helpers';
 
@@ -63,7 +63,7 @@ describe('Bearer API client with refresh-cookie integration', () => {
     startSession(token);
     fetchMock.mockImplementation(async () => jsonResponse({}));
     await apiClient.get('/api/v1/shipments');
-    await registerDevice({ device_id: 'ESP32-001', device_name: 'Sensor' });
+    await assignDevice('ESP32-01', { shipment_id: 'test-shipment', active: true });
     await createShipment({} as Parameters<typeof createShipment>[0]);
 
     for (const [url, options] of fetchMock.mock.calls) {

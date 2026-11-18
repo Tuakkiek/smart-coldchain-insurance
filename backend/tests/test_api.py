@@ -17,7 +17,7 @@ from app.services.clock import VirtualClock
 
 
 SHIPMENT = {
-    "code": "SHIP-TEST-001",
+    "name": "SHIP-TEST-001",
     "cargo_type": "vaccine",
     "origin": {"name": "Kho A", "latitude": 10.03, "longitude": 105.77},
     "destination": {"name": "Điểm B", "latitude": 10.05, "longitude": 105.81},
@@ -78,6 +78,9 @@ def test_create_list_detail_and_persistence(api):
     client, app = api
     created = create_shipment(client)
     assert UUID(created["id"]).version == 4
+    assert created["shipment_id"] == created["id"]
+    assert created["name"] == SHIPMENT["name"]
+    assert "code" not in created
     assert created["status"] == "created"
     assert created["latest_telemetry"] is None
     assert created["location"] is None
@@ -98,14 +101,29 @@ def test_create_list_detail_and_persistence(api):
     fresh.state.engine.dispose()
 
 
+@pytest.mark.parametrize("name", ["", "   ", "a" * 256, 123, None])
+def test_shipment_name_is_required_text_with_maximum_255_characters(api, name):
+    client, _ = api
+    assert client.post("/api/v1/shipments", json=SHIPMENT | {"name": name}).status_code == 422
+
+
+def test_shipment_name_is_trimmed_and_legacy_code_is_rejected(api):
+    client, _ = api
+    response = client.post("/api/v1/shipments", json=SHIPMENT | {"name": "  Vaccine Cần Thơ  "})
+    assert response.json()["name"] == "Vaccine Cần Thơ"
+    payload = dict(SHIPMENT)
+    payload["code"] = payload.pop("name")
+    assert client.post("/api/v1/shipments", json=payload).status_code == 422
+
+
 def test_delete_unused_shipment_requires_device_unassignment(api):
     client, app = api
     created = create_shipment(client)
     shipment_id = created["id"]
-    assert client.post("/api/v1/devices", json={
-        "device_id": "ESP32-DELETE", "device_name": "Delete Test Sensor",
-    }).status_code == 201
-    assignment_url = "/api/v1/devices/ESP32-DELETE/assignments"
+    from app.services.signed_ingestion import register_device
+    with app.state.session_factory() as session:
+        register_device(session, "ESP32-01", "Test sensor")
+    assignment_url = "/api/v1/devices/ESP32-01/assignments"
     assert client.post(assignment_url, json={
         "shipment_id": shipment_id, "active": True,
     }).status_code == 200
@@ -337,10 +355,11 @@ def test_timezone_is_normalized_to_utc(api):
 
 def test_duplicate_missing_and_malformed_json(api):
     client, _app = api
-    create_shipment(client)
+    first = create_shipment(client)
     duplicate = client.post("/api/v1/shipments", json=SHIPMENT)
-    assert duplicate.status_code == 409
-    assert duplicate.json()["error"]["code"] == "DUPLICATE_SHIPMENT_CODE"
+    assert duplicate.status_code == 201
+    assert duplicate.json()["name"] == first["name"]
+    assert duplicate.json()["shipment_id"] != first["shipment_id"]
     unknown = client.get("/api/v1/shipments/8b4fb8a2-2996-4da2-90b9-35019517f56f")
     assert unknown.status_code == 404
     assert unknown.json()["error"]["code"] == "SHIPMENT_NOT_FOUND"
@@ -358,7 +377,7 @@ def test_seed_is_repeatable_and_has_example_event(api):
     seed_demo(app.state.session_factory)
     items = client.get("/api/v1/shipments").json()["items"]
     assert len(items) == 3
-    demo_three = next(item for item in items if item["code"] == "SHIP-DEMO-003")
+    demo_three = next(item for item in items if item["name"] == "SHIP-DEMO-003")
     events = client.get(f"/api/v1/shipments/{demo_three['id']}/events").json()["items"]
     assert len(events) == 1
     assert events[0]["type"] == "TEMPERATURE_BREACH_STARTED"

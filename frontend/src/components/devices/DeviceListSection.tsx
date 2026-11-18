@@ -14,7 +14,6 @@ import {
   KeyRound,
   HelpCircle,
   Link2,
-  Trash2,
   ChevronRight,
 } from 'lucide-react';
 
@@ -22,14 +21,11 @@ export interface DeviceListSectionProps {
   devices: DeviceItemOut[];
   totalCount: number;
   selectedDeviceId: string | null;
-  deletingDeviceId: string | null;
   isEffectiveColdStart: boolean;
   hasActiveFilters: boolean;
   onSelectDevice: (deviceId: string) => void;
   onAssignDevice: (deviceId: string) => void;
-  onDeleteDevice: (device: DeviceItemOut) => void;
   onResetFilters: () => void;
-  onRegisterDevice: () => void;
 }
 
 const CompactSignatureBadge: React.FC<{ status: SignatureStatus }> = ({ status }) => {
@@ -81,14 +77,11 @@ export const DeviceListSection: React.FC<DeviceListSectionProps> = ({
   devices,
   totalCount,
   selectedDeviceId,
-  deletingDeviceId,
   isEffectiveColdStart,
   hasActiveFilters,
   onSelectDevice,
   onAssignDevice,
-  onDeleteDevice,
   onResetFilters,
-  onRegisterDevice,
 }) => {
   return (
     <Card className="devices-list-card">
@@ -111,9 +104,7 @@ export const DeviceListSection: React.FC<DeviceListSectionProps> = ({
           <EmptyState
             icon={<Cpu size={24} />}
             title="Chưa có thiết bị ESP32 nào"
-            description="Hệ thống chưa ghi nhận thiết bị cảm biến nào. Hãy đăng ký thiết bị mới để bắt đầu giám sát."
-            actionText="Đăng ký thiết bị (Admin)"
-            onAction={onRegisterDevice}
+            description="Bộ 10 thiết bị cố định chưa được khởi tạo. Vui lòng kiểm tra Backend local."
           />
         </div>
       ) : devices.length === 0 ? (
@@ -216,10 +207,10 @@ export const DeviceListSection: React.FC<DeviceListSectionProps> = ({
                       to={`/shipments/${dev.assigned_shipment_id}`}
                       className="device-shipment-link"
                       onClick={(e) => e.stopPropagation()}
-                      title={`Xem chi tiết lô hàng ${dev.assigned_shipment_code || dev.assigned_shipment_id}`}
+                      title={`Xem chi tiết lô hàng ${dev.assigned_shipment_name || dev.assigned_shipment_id}`}
                     >
                       <Badge variant="info">
-                        {dev.assigned_shipment_code || `${dev.assigned_shipment_id.slice(0, 8)}...`}
+                        {dev.assigned_shipment_name || `${dev.assigned_shipment_id.slice(0, 8)}...`}
                       </Badge>
                     </Link>
                   ) : (
@@ -246,20 +237,6 @@ export const DeviceListSection: React.FC<DeviceListSectionProps> = ({
                   >
                     <Link2 size={12} aria-hidden="true" />
                     <span>{dev.assigned_shipment_id ? 'Đổi chuyến' : 'Gán chuyến'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="device-row-btn device-row-btn--danger"
-                    onClick={() => onDeleteDevice(dev)}
-                    disabled={deletingDeviceId === dev.device_id}
-                    title={
-                      dev.assigned_shipment_id
-                        ? 'Cần bỏ liên kết chuyến hàng trước khi xóa thiết bị'
-                        : 'Xóa thiết bị đã đăng ký'
-                    }
-                  >
-                    <Trash2 size={12} aria-hidden="true" />
-                    <span>{deletingDeviceId === dev.device_id ? 'Đang xóa...' : 'Xóa'}</span>
                   </button>
                   <ChevronRight
                     size={16}

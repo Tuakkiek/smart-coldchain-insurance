@@ -16,7 +16,7 @@ def test_existing_schema_upgrades_and_downgrades_without_losing_legacy_rows(tmp_
         Base.metadata.create_all(engine, tables=[Shipment.__table__, Telemetry.__table__, ShipmentEvent.__table__])
         with engine.begin() as connection:
             connection.exec_driver_sql(
-                "INSERT INTO shipments (id, code, cargo_type, origin_name, origin_latitude, "
+                "INSERT INTO shipments (id, name, cargo_type, origin_name, origin_latitude, "
                 "origin_longitude, destination_name, destination_latitude, destination_longitude, "
                 "temp_min_c, temp_max_c, violation_duration_minutes, insured_amount_vnd, status, "
                 "insurance_status, payout_status, created_at) VALUES "
@@ -31,8 +31,8 @@ def test_existing_schema_upgrades_and_downgrades_without_losing_legacy_rows(tmp_
                 "ingestion_audit", "integrity_batches", "integrity_batch_items",
                 "integration_outbox", "alembic_version"} <= table_names
         with engine.connect() as connection:
-            assert connection.scalar(select(Shipment.code)) == "MIGRATION"
-            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "20261118_07"
+            assert connection.scalar(select(Shipment.name)) == "MIGRATION"
+            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "20261118_08"
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
         with engine.begin() as connection:
@@ -41,6 +41,6 @@ def test_existing_schema_upgrades_and_downgrades_without_losing_legacy_rows(tmp_
         assert "devices" not in inspect(engine).get_table_names()
         assert "integrity_batches" not in inspect(engine).get_table_names()
         with engine.connect() as connection:
-            assert connection.scalar(select(Shipment.code)) == "MIGRATION"
+            assert connection.exec_driver_sql("SELECT code FROM shipments").scalar() == "MIGRATION"
     finally:
         engine.dispose()

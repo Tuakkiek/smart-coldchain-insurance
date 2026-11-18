@@ -66,7 +66,7 @@ def legacy_database(engine, *, conflicting=False):
     factory = make_session_factory(engine)
     with factory() as session:
         first = shipments.create_shipment(session, ShipmentCreate.model_validate(SHIPMENT))
-        second = shipments.create_shipment(session, ShipmentCreate.model_validate(SHIPMENT | {"code": "OLD-002"}))
+        second = shipments.create_shipment(session, ShipmentCreate.model_validate(SHIPMENT | {"name": "OLD-002"}))
     # Strip columns introduced in later migrations (20261118_07) so the legacy snapshot truly reflects 20261109_02.
     post_02_shipment_cols = (
         "origin_formatted_address", "origin_place_id",
@@ -147,7 +147,10 @@ def assert_preserved(engine, before):
     metadata.reflect(bind=engine)
     with engine.connect() as connection:
         for name, (columns, rows) in before.items():
-            query = sa.select(*(metadata.tables[name].c[column] for column in columns))
+            table = metadata.tables[name]
+            query = sa.select(*(table.c[
+                column if column in table.c else {"name": "code", "code": "name"}.get(column, column)
+            ] for column in columns))
             assert sorted(map(repr, connection.execute(query).all())) == rows, name
 
 
@@ -209,16 +212,16 @@ def test_mysql_concurrent_assignment_has_one_winner_and_same_pair_is_idempotent(
     upgrade_schema(engine)
     factory = make_session_factory(engine)
     with factory() as session:
-        signed_ingestion.register_device(session, "RACE-DEVICE", "Race sensor")
+        signed_ingestion.register_device(session, "ESP32-01", "Race sensor")
         first = shipments.create_shipment(session, ShipmentCreate.model_validate(SHIPMENT)).id
-        second = shipments.create_shipment(session, ShipmentCreate.model_validate(SHIPMENT | {"code": "RACE-002"})).id
+        second = shipments.create_shipment(session, ShipmentCreate.model_validate(SHIPMENT | {"name": "RACE-002"})).id
     barrier = Barrier(2)
 
     def assign(shipment_id):
         with factory() as session:
             barrier.wait(timeout=10)
             try:
-                signed_ingestion.set_assignment(session, "RACE-DEVICE", shipment_id, True)
+                signed_ingestion.set_assignment(session, "ESP32-01", shipment_id, True)
                 return 200
             except signed_ingestion.IngestionError as exc:
                 assert exc.code == "DEVICE_ALREADY_ASSIGNED"
@@ -243,10 +246,10 @@ def prepared_registry(engine):
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("ascii")
     with factory() as session:
-        signed_ingestion.register_device(session, "ESP32-001", "Snapshot sensor")
+        signed_ingestion.register_device(session, "ESP32-01", "Snapshot sensor")
         shipment_id = shipments.create_shipment(session, ShipmentCreate.model_validate(SHIPMENT)).id
-        signed_ingestion.set_assignment(session, "ESP32-001", shipment_id, True)
-        signed_ingestion.add_key(session, "ESP32-001", "key-v1", pem)
+        signed_ingestion.set_assignment(session, "ESP32-01", shipment_id, True)
+        signed_ingestion.add_key(session, "ESP32-01", "key-v1", pem)
     return factory, key, shipment_id
 
 
@@ -260,16 +263,16 @@ def test_ingestion_refreshes_cached_authorization_after_revocation(migration_eng
     with factory() as reader:
         # Establish an old MySQL consistent snapshot and retain old ORM objects.
         shipments.get_shipment(reader, shipment_id)
-        cached_device = reader.get(Device, "ESP32-001")
-        cached_assignment = reader.get(DeviceAssignment, ("ESP32-001", shipment_id))
-        cached_key = reader.get(DeviceKey, ("ESP32-001", "key-v1"))
+        cached_device = reader.get(Device, "ESP32-01")
+        cached_assignment = reader.get(DeviceAssignment, ("ESP32-01", shipment_id))
+        cached_key = reader.get(DeviceKey, ("ESP32-01", "key-v1"))
         with factory() as writer:
             if revoked == "assignment":
-                signed_ingestion.set_assignment(writer, "ESP32-001", shipment_id, False)
+                signed_ingestion.set_assignment(writer, "ESP32-01", shipment_id, False)
             elif revoked == "key":
-                signed_ingestion.set_key_status(writer, "ESP32-001", "key-v1", "revoked")
+                signed_ingestion.set_key_status(writer, "ESP32-01", "key-v1", "revoked")
             else:
-                signed_ingestion.get_device(writer, "ESP32-001", lock=True).status = "revoked"
+                signed_ingestion.get_device(writer, "ESP32-01", lock=True).status = "revoked"
                 writer.commit()
         assert cached_device.status == "active" and cached_assignment.active and cached_key.status == "active"
         with pytest.raises(signed_ingestion.IngestionError) as error:
@@ -283,15 +286,15 @@ def test_ingestion_refreshes_cached_authorization_after_revocation(migration_eng
 def test_unassign_refreshes_previously_cached_inactive_assignment(migration_engine):
     factory, _, shipment_id = prepared_registry(migration_engine)
     with factory() as session:
-        signed_ingestion.set_assignment(session, "ESP32-001", shipment_id, False)
+        signed_ingestion.set_assignment(session, "ESP32-01", shipment_id, False)
     with factory() as reader:
-        cached = reader.get(DeviceAssignment, ("ESP32-001", shipment_id))
+        cached = reader.get(DeviceAssignment, ("ESP32-01", shipment_id))
         assert not cached.active
         with factory() as writer:
-            signed_ingestion.set_assignment(writer, "ESP32-001", shipment_id, True)
-        signed_ingestion.set_assignment(reader, "ESP32-001", shipment_id, False)
+            signed_ingestion.set_assignment(writer, "ESP32-01", shipment_id, True)
+        signed_ingestion.set_assignment(reader, "ESP32-01", shipment_id, False)
     with factory() as session:
-        assert not session.get(DeviceAssignment, ("ESP32-001", shipment_id)).active
+        assert not session.get(DeviceAssignment, ("ESP32-01", shipment_id)).active
 
 
 def test_mysql_concurrent_signed_retry_uses_current_receipt_not_old_snapshot(migration_engine):
@@ -305,7 +308,7 @@ def test_mysql_concurrent_signed_retry_uses_current_receipt_not_old_snapshot(mig
     def send(_):
         with factory() as session:
             shipments.get_shipment(session, shipment_id)
-            cached_device = session.get(Device, "ESP32-001")
+            cached_device = session.get(Device, "ESP32-01")
             assert cached_device.last_sequence_number == 0
             barrier.wait(timeout=10)
             return signed_ingestion.ingest(session, shipment_id, payload,

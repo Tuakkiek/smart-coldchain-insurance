@@ -218,7 +218,7 @@ export const OverviewPage: React.FC = () => {
                     <div>
                       <div className="flex-row items-center gap-2">
                         <span className="font-mono" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                          {shipment.code}
+                          {shipment.name}
                         </span>
                         <ShipmentStatusBadge status={shipment.status} />
                       </div>

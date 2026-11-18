@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { normalizeDeviceItem } from '../src/api/devices';
 
 const device = {
-  device_id: 'ESP32-001',
+  device_id: 'ESP32-01',
   device_name: 'Cold Chain Sensor',
   has_public_key: true,
   keys: [{ key_id: 'key-v1', status: 'active' }],
@@ -15,12 +15,12 @@ describe('device assignment projection', () => {
     const result = normalizeDeviceItem({
       ...device,
       current_shipment_id: currentShipmentId,
-      assigned_shipment_code: 'OLD-SHIPMENT',
+      assigned_shipment_name: 'OLD-SHIPMENT',
       assignments: [{ shipment_id: 'old-shipment', active: false }],
     });
 
     expect(result.assigned_shipment_id).toBeNull();
-    expect(result.assigned_shipment_code).toBeNull();
+    expect(result.assigned_shipment_name).toBeNull();
   });
 
   it('uses only the active assignment when current_shipment_id is omitted', () => {
@@ -49,11 +49,11 @@ describe('device assignment projection', () => {
     const result = normalizeDeviceItem({
       ...device,
       current_shipment_id: 'current-shipment',
-      assigned_shipment_code: 'SHIP-002',
+      assigned_shipment_name: 'SHIP-002',
       assignments: [{ shipment_id: 'old-shipment', active: false }],
     });
 
     expect(result.assigned_shipment_id).toBe('current-shipment');
-    expect(result.assigned_shipment_code).toBe('SHIP-002');
+    expect(result.assigned_shipment_name).toBe('SHIP-002');
   });
 });

@@ -241,7 +241,7 @@ export const IntegrityViolationAlert: React.FC<IntegrityViolationAlertProps> = (
                         fontWeight: 600,
                       }}
                     >
-                      {batch.shipment_code || batch.shipment_id}
+                      {batch.shipment_name || batch.shipment_id}
                     </span>
                     <span style={{ fontSize: 'var(--text-xs)', color: '#6E6E73' }}>
                       Thiết bị: <strong>{batch.device_id}</strong>

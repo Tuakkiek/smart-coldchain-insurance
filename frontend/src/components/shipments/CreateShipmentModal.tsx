@@ -22,7 +22,6 @@ import {
   X,
   MapPin,
   Thermometer,
-  RefreshCw,
   Search,
   Wallet,
   CheckCircle2,
@@ -56,7 +55,7 @@ interface ResolvedPlacePayload {
 }
 
 interface FormState {
-  code: string;
+  name: string;
   cargo_type: string;
   origin: LocationFieldState;
   destination: LocationFieldState;
@@ -80,15 +79,9 @@ function createEmptyLocation(address = ''): LocationFieldState {
   };
 }
 
-function generateRandomCode(): string {
-  const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `SHIP-${dateStr}-${rand}`;
-}
-
 function initialFormState(): FormState {
   return {
-    code: generateRandomCode(),
+    name: '',
     cargo_type: 'Vaccine',
     origin: createEmptyLocation(''),
     destination: createEmptyLocation(''),
@@ -142,10 +135,10 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
   const validation = useMemo(() => {
     const errors: Record<string, string> = {};
 
-    if (!form.code.trim()) {
-      errors.code = 'Mã lô hàng không được để trống';
-    } else if (form.code.trim().length > 64) {
-      errors.code = 'Mã lô hàng không vượt quá 64 ký tự';
+    if (!form.name.trim()) {
+      errors.name = 'Tên lô hàng không được để trống';
+    } else if (form.name.trim().length > 255) {
+      errors.name = 'Tên lô hàng không vượt quá 255 ký tự';
     }
 
     if (!form.cargo_type.trim()) {
@@ -342,7 +335,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
 
     // Mark all fields touched to show any validation feedback
     setTouched({
-      code: true,
+      name: true,
       cargo_type: true,
       originAddress: true,
       destAddress: true,
@@ -394,7 +387,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
       }
 
       const payload: ShipmentCreatePayload = {
-        code: form.code.trim(),
+        name: form.name.trim(),
         cargo_type: form.cargo_type.trim(),
         origin: resolvedOrigin,
         destination: resolvedDestination,
@@ -417,9 +410,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
       if (isRequestCancelled(err)) return;
       let msg = '';
       if (err instanceof ApiError) {
-        if (err.code === 'DUPLICATE_SHIPMENT_CODE') {
-          msg = `Mã lô hàng '${form.code.trim()}' đã tồn tại trên hệ thống. Vui lòng đổi mã khác.`;
-        } else if (err.details && err.details.length > 0) {
+        if (err.details && err.details.length > 0) {
           const detailMsg = err.details
             .map((d) => `${d.field ? d.field + ': ' : ''}${d.message}`)
             .join(', ');
@@ -792,7 +783,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
                 <div>
                   <label
-                    htmlFor="shipment-code-input"
+                    htmlFor="shipment-name-input"
                     style={{
                       display: 'block',
                       fontSize: 'var(--text-xs)',
@@ -801,52 +792,34 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
                       marginBottom: 4,
                     }}
                   >
-                    Mã Lô Hàng (Code) *
+                    Tên lô hàng *
                   </label>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input
-                      id="shipment-code-input"
+                      id="shipment-name-input"
                       type="text"
-                      value={form.code}
+                      value={form.name}
                       onChange={(e) => {
-                        markTouched('code');
-                        setForm({ ...form, code: e.target.value });
+                        markTouched('name');
+                        setForm({ ...form, name: e.target.value });
                       }}
-                      onBlur={() => markTouched('code')}
+                      onBlur={() => markTouched('name')}
                       disabled={submitting}
-                      placeholder="VD: SHIP-202611-001"
+                      maxLength={255}
+                      placeholder="VD: Vaccine Cần Thơ - đợt 1"
                       style={{
                         flex: 1,
                         padding: '8px 12px',
                         borderRadius: 'var(--radius-md)',
-                        border: `1px solid ${touched.code && validation.errors.code ? 'var(--color-danger)' : 'var(--color-border)'}`,
+                        border: `1px solid ${touched.name && validation.errors.name ? 'var(--color-danger)' : 'var(--color-border)'}`,
                         fontSize: 'var(--text-sm)',
                         backgroundColor: 'var(--color-surface)',
                       }}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, code: generateRandomCode() })}
-                      disabled={submitting}
-                      title="Tạo mã ngẫu nhiên"
-                      style={{
-                        padding: '8px 10px',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--color-border)',
-                        backgroundColor: 'var(--color-surface-secondary)',
-                        cursor: submitting ? 'not-allowed' : 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--color-text-secondary)',
-                      }}
-                    >
-                      <RefreshCw size={14} />
-                    </button>
                   </div>
-                  {touched.code && validation.errors.code && (
+                  {touched.name && validation.errors.name && (
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger)' }}>
-                      {validation.errors.code}
+                      {validation.errors.name}
                     </span>
                   )}
                 </div>

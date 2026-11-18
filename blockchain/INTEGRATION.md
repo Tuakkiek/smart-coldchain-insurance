@@ -369,3 +369,8 @@ Hiện tại `backend/app/services/batch_service.py` tạo sẵn `IntegrationOut
 > **Xác nhận tương thích & Trạng thái hiện tại:**
 > - **Sepolia (`11155111`):** Đã deploy 3 contracts từ Remix (`0.8.36+commit.8a079791`, `osaka`), xác minh bytecode + roles (`Owner`, `Anchorer`, `Oracle`) trực tiếp trên Sepolia bằng `preflight_sepolia.py`, và đối chiếu 100% parity ABI qua `validate_remix_abi.py`. Đang chờ Shipment UUID thật từ Backend & cấu hình Alchemy `.env` phía NTK để tạo policy (`createPolicy`) và chạy smoke E2E Sepolia.
 > - **Legacy Local (`31337`):** Bộ 83 Hardhat tests và `Web3IntegrityAdapter` + `Web3BlockchainAdapter` E2E trên local node đã pass lịch sử trước khi chuyển sang Sepolia.
+# Tên lô hàng và bộ thiết bị cố định (2026-11-18)
+
+Backend tạo lô hàng bằng `name`, trả `shipment_id` UUID (`id` cùng giá trị). Luôn hash UUID cho `shipmentKey`, không hash tên vì tên có thể trùng. Bộ thiết bị dùng `ESP32-01` đến `ESP32-10`; `deviceKey` hash đúng chuỗi này. Public key P-256 lưu ở MySQL, private key chỉ ở file local/ESP32, không đăng ký khóa ESP32 lên chain. Định danh không cần đổi Solidity. ABI/adapter/scripts đã đồng bộ với source hiện có dùng native ETH (constructor chỉ nhận Oracle; `createPolicy` payable, gửi `value=amount_wei`, không approve ERC-20).
+
+`seed-demo.ts` dùng `ESP32-01` và nhận `DEMO_SHIPMENT_ID` để seed policy ETH localhost cho UUID mới từ API. Batch seed chỉ minh họa lưu root của fixture, không phải evidence của thiết bị thật. Nếu đang dùng bản ERC-20 cũ cần deploy lại local và cập nhật địa chỉ; không tự động deploy lên testnet. Xem [hướng dẫn local](../docs/local-devices.md). Các mục token MINS bên dưới là tài liệu tích hợp cũ.

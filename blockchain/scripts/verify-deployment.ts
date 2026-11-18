@@ -75,21 +75,16 @@ async function main() {
   const insurance = await ethers.getContractAt("ColdChainInsurance", insuranceAddress);
   const insOwner = await insurance.owner();
   const insOracle = await insurance.oracle();
-  const insPayoutToken = await insurance.payoutToken();
   const contractBalance = await insurance.getContractBalance();
 
   console.log(`   - Owner:           ${insOwner}`);
   console.log(`   - Oracle:          ${insOracle}`);
-  console.log(`   - Payout Token:    ${insPayoutToken}`);
-  console.log(`   - Contract Escrow: ${ethers.formatEther(contractBalance)} ${tokenSymbol}`);
+  console.log(`   - Contract Escrow: ${ethers.formatEther(contractBalance)} ETH`);
 
-  if (insPayoutToken.toLowerCase() !== tokenAddress.toLowerCase()) {
-    throw new Error("PayoutToken của Insurance không khớp với MockInsuranceToken!");
-  }
   if (insOracle.toLowerCase() !== deployment.contracts.ColdChainInsurance.oracle.toLowerCase()) {
     throw new Error("Oracle address không khớp với cấu hình deployment!");
   }
-  console.log("   [OK] ColdChainInsurance bytecode và liên kết token/oracle chính xác.");
+  console.log("   [OK] ColdChainInsurance bytecode và native ETH/oracle chính xác.");
 
   // 5. Kiểm tra Dữ liệu Seed Demo trên Module A
   const demoBatchId = "batch-0001-sealed";
@@ -130,7 +125,7 @@ async function main() {
 
   console.log(`   - Insurer:     ${policy.insurer}`);
   console.log(`   - Beneficiary: ${policy.beneficiary}`);
-  console.log(`   - Payout:      ${ethers.formatEther(policy.payoutAmount)} ${tokenSymbol}`);
+  console.log(`   - Payout:      ${ethers.formatEther(policy.payoutAmount)} ETH`);
   console.log(`   - Expiry:      ${new Date(Number(policy.expiry) * 1000).toISOString()}`);
   console.log(`   - Status:      ${statusStr} (code: ${policy.status})`);
   console.log(`   - Is Active:   ${isActive}`);

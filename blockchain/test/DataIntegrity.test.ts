@@ -108,7 +108,7 @@ describe("ColdChainDataIntegrity", function () {
     const batchKey = ethers.keccak256(ethers.toUtf8Bytes(batchId));
     const shipmentId = "8b4fb8a2-2996-4da2-90b9-35019517f56f";
     const shipmentKey = ethers.keccak256(ethers.toUtf8Bytes(shipmentId));
-    const deviceId = "ESP32-001";
+    const deviceId = "ESP32-01";
     const deviceKey = ethers.keccak256(ethers.toUtf8Bytes(deviceId));
 
     // Golden root for 3 records from protocol_vectors_v1.json

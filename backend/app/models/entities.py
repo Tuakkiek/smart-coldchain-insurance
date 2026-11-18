@@ -43,7 +43,7 @@ class Shipment(Base):
     __tablename__ = "shipments"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     cargo_type: Mapped[str] = mapped_column(String(100), nullable=False)
     origin_name: Mapped[str] = mapped_column(String(255), nullable=False)
     origin_formatted_address: Mapped[str | None] = mapped_column(String(500))

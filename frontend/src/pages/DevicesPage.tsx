@@ -3,12 +3,10 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { LoadingState } from '../components/feedback/LoadingState';
 import { ErrorState } from '../components/feedback/ErrorState';
-import { ConfirmModal } from '../components/feedback/ConfirmModal';
 import { useBackendConnectionState } from '../components/feedback/ConnectionStatus';
-import { deleteDevice, getDevices } from '../api/devices';
+import { getDevices } from '../api/devices';
 import { DeviceItemOut } from '../types/api';
 import { ApiError } from '../api/client';
-import { RegisterDeviceModal } from '../components/devices/RegisterDeviceModal';
 import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { AdminDeviceDetailModal } from '../components/devices/AdminDeviceDetailModal';
 import { DeviceStatsGrid } from '../components/devices/DeviceStatsGrid';
@@ -16,7 +14,7 @@ import { DeviceFilterToolbar } from '../components/devices/DeviceFilterToolbar';
 import { DeviceListSection } from '../components/devices/DeviceListSection';
 import { DeviceDetailPanel } from '../components/devices/DeviceDetailPanel';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
-import { RefreshCw, Plus, Link2 } from 'lucide-react';
+import { RefreshCw, Link2 } from 'lucide-react';
 import '../styles/devices.css';
 
 export const DevicesPage: React.FC = () => {
@@ -32,13 +30,10 @@ export const DevicesPage: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Admin modals
-  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assignModalDeviceId, setAssignModalDeviceId] = useState<string | null>(null);
   const [isAdminDetailModalOpen, setIsAdminDetailModalOpen] = useState(false);
   const [adminModalDeviceId, setAdminModalDeviceId] = useState<string | null>(null);
-  const [deviceToDelete, setDeviceToDelete] = useState<DeviceItemOut | null>(null);
-  const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -156,50 +151,6 @@ export const DevicesPage: React.FC = () => {
     };
   }, [autoRefresh, fetchDevicesList]);
 
-  const handleRequestDeleteDevice = (device: DeviceItemOut) => {
-    if (device.assigned_shipment_id) {
-      const msg = `Thiết bị ${device.device_id} đang liên kết với chuyến hàng ${
-        device.assigned_shipment_code || device.assigned_shipment_id
-      }. Hãy bỏ liên kết trước khi xóa.`;
-      toast.warning(msg, { title: 'Không thể xóa thiết bị' });
-      return;
-    }
-    setDeviceToDelete(device);
-  };
-
-  const handleConfirmDeleteDevice = async () => {
-    if (!deviceToDelete || deletingDeviceId) return;
-    const device = deviceToDelete;
-
-    setDeletingDeviceId(device.device_id);
-    try {
-      await deleteDevice(device.device_id);
-      setDevices((current) => current.filter((item) => item.device_id !== device.device_id));
-      if (selectedDeviceId === device.device_id) setSelectedDeviceId(null);
-      setDeviceToDelete(null);
-      toast.success(`Đã xóa thiết bị ${device.device_id} thành công.`, {
-        title: 'Xóa thiết bị thành công',
-      });
-    } catch (err: unknown) {
-      setDeviceToDelete(null);
-      if (isRequestCancelled(err)) return;
-      let msg = '';
-      if (err instanceof ApiError && err.code === 'DEVICE_ASSIGNED') {
-        msg = 'Không thể xóa: thiết bị vẫn đang liên kết với một chuyến hàng.';
-      } else if (err instanceof ApiError && err.code === 'DEVICE_HAS_DATA') {
-        msg =
-          'Không thể xóa thiết bị đã có dữ liệu telemetry vì cần giữ lịch sử đối soát. Hãy thu hồi thiết bị thay thế.';
-      } else {
-        msg = formatApiErrorMessage(err, 'Không thể xóa thiết bị. Vui lòng thử lại.');
-      }
-      if (msg) {
-        toast.error(msg, { title: 'Lỗi xóa thiết bị' });
-      }
-    } finally {
-      setDeletingDeviceId(null);
-    }
-  };
-
   const handleResetFilters = () => {
     setSearchTerm('');
     setStatusFilter('all');
@@ -217,8 +168,8 @@ export const DevicesPage: React.FC = () => {
       d.device_id.toLowerCase().includes(normalizedQuery) ||
       (d.device_name && d.device_name.toLowerCase().includes(normalizedQuery)) ||
       d.firmware_version.toLowerCase().includes(normalizedQuery) ||
-      (d.assigned_shipment_code &&
-        d.assigned_shipment_code.toLowerCase().includes(normalizedQuery)) ||
+      (d.assigned_shipment_name &&
+        d.assigned_shipment_name.toLowerCase().includes(normalizedQuery)) ||
       (d.assigned_shipment_id &&
         d.assigned_shipment_id.toLowerCase().includes(normalizedQuery)) ||
       d.key_id.toLowerCase().includes(normalizedQuery);
@@ -297,17 +248,11 @@ export const DevicesPage: React.FC = () => {
             >
               Liên kết chuyến hàng
             </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsRegisterModalOpen(true)}
-              icon={<Plus size={14} />}
-            >
-              Đăng ký thiết bị (Admin)
-            </Button>
           </div>
         }
       />
+
+      <p className="text-sm text-secondary">Sử dụng 10 thiết bị cố định: ESP32-01 đến ESP32-10. Chọn thiết bị để liên kết với lô hàng.</p>
 
       {loadFailed && devices.length === 0 ? (
         <ErrorState
@@ -353,7 +298,6 @@ export const DevicesPage: React.FC = () => {
             devices={filteredDevices}
             totalCount={totalCount}
             selectedDeviceId={selectedDeviceId}
-            deletingDeviceId={deletingDeviceId}
             isEffectiveColdStart={isEffectiveColdStart}
             hasActiveFilters={hasActiveFilters}
             onSelectDevice={(deviceId) => {
@@ -364,16 +308,13 @@ export const DevicesPage: React.FC = () => {
               setAssignModalDeviceId(deviceId);
               setIsAssignModalOpen(true);
             }}
-            onDeleteDevice={handleRequestDeleteDevice}
             onResetFilters={handleResetFilters}
-            onRegisterDevice={() => setIsRegisterModalOpen(true)}
           />
 
           {/* 5. Selected Device Detail Panel */}
           <DeviceDetailPanel
             device={selectedDevice}
             isEffectiveColdStart={isEffectiveColdStart}
-            deletingDeviceId={deletingDeviceId}
             onOpenAdminDetail={(deviceId) => {
               setAdminModalDeviceId(deviceId);
               setIsAdminDetailModalOpen(true);
@@ -382,7 +323,6 @@ export const DevicesPage: React.FC = () => {
               setAssignModalDeviceId(deviceId);
               setIsAssignModalOpen(true);
             }}
-            onDeleteDevice={handleRequestDeleteDevice}
             onClearSelection={() => {
               hasInitializedSelectionRef.current = true;
               setSelectedDeviceId(null);
@@ -392,23 +332,6 @@ export const DevicesPage: React.FC = () => {
       )}
 
       {/* Admin Modals */}
-      <RegisterDeviceModal
-        isOpen={isRegisterModalOpen}
-        onClose={() => setIsRegisterModalOpen(false)}
-        onSuccess={(res) => {
-          const msg =
-            res.provisioning_status === 'ready'
-              ? 'Đăng ký thiết bị thành công. Khóa thiết bị đã được tạo và cấu hình ESP32 đã được cập nhật.'
-              : `Thiết bị ${res.device_id} đã được đăng ký nhưng config.h chưa được cập nhật; hãy cấp khóa bằng quy trình local.`;
-          if (res.provisioning_status === 'ready') {
-            toast.success(msg, { title: 'Đăng ký thiết bị' });
-          } else {
-            toast.info(msg, { title: 'Cần cấp khóa local' });
-          }
-          fetchDevicesList(false);
-        }}
-      />
-
       <AssignDeviceModal
         isOpen={isAssignModalOpen}
         onClose={() => {
@@ -431,27 +354,6 @@ export const DevicesPage: React.FC = () => {
         }}
       />
 
-      <ConfirmModal
-        isOpen={Boolean(deviceToDelete)}
-        title="Xác nhận xóa thiết bị"
-        message={
-          deviceToDelete ? (
-            <>
-              Bạn có chắc chắn muốn xóa thiết bị{' '}
-              <strong className="font-mono">{deviceToDelete.device_id}</strong> không?
-            </>
-          ) : null
-        }
-        description="Public key và các liên kết cũ chưa kích hoạt của thiết bị cũng sẽ bị xóa. Thiết bị đã có dữ liệu telemetry không thể xóa để bảo toàn lịch sử đối soát."
-        confirmLabel={deletingDeviceId ? 'Đang xóa...' : 'Xác nhận'}
-        cancelLabel="Hủy"
-        variant="danger"
-        loading={Boolean(deletingDeviceId)}
-        onConfirm={handleConfirmDeleteDevice}
-        onCancel={() => {
-          if (!deletingDeviceId) setDeviceToDelete(null);
-        }}
-      />
     </div>
   );
 };

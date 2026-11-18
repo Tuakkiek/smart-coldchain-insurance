@@ -13,7 +13,6 @@ vi.mock('../../api/devices', async (importOriginal) => {
   return {
     ...actual,
     getDevices: vi.fn(),
-    deleteDevice: vi.fn(),
   };
 });
 
@@ -66,6 +65,8 @@ describe('DevicesPage redesign', () => {
     expect(screen.queryByText(/Bảng đối chiếu phân biệt/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Render Cold Start/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Bảo vệ nội dung khóa thiết bị/i)).not.toBeInTheDocument();
+    expect(mockDevices).toHaveLength(10);
+    expect(screen.queryByRole('button', { name: /Đăng ký thiết bị|Xóa thiết bị/ })).not.toBeInTheDocument();
   });
 
   it('selects devices, shows 3 grouped detail sections, and shows guidance state when cleared', async () => {
@@ -83,14 +84,14 @@ describe('DevicesPage redesign', () => {
     expect(screen.getByText('A. Thông tin định danh')).toBeInTheDocument();
     expect(screen.getByText('B. Thông tin bảo mật')).toBeInTheDocument();
     expect(screen.getByText('C. Thông tin vận hành')).toBeInTheDocument();
-    expect(screen.getByText('KEY-ECDSA-P256-01')).toBeInTheDocument();
+    expect(screen.getByText('key-v1')).toBeInTheDocument();
     expect(screen.getByText('ECDSA P-256 (secp256r1)')).toBeInTheDocument();
 
-    // Click another device (ESP32-TAMPER-05 with missing sequences)
+    // Click another device (ESP32-05 with missing sequences)
     fireEvent.click(rows[4]);
     expect(rows[4]).toHaveAttribute('aria-selected', 'true');
     expect(rows[0]).toHaveAttribute('aria-selected', 'false');
-    expect(screen.getByText('KEY-ECDSA-P256-05')).toBeInTheDocument();
+    expect(screen.getByText('key-v1')).toBeInTheDocument();
     expect(screen.getByText('5 gói bị mất')).toBeInTheDocument();
     expect(screen.getByText(/Phát hiện mất sequence \(DATA_INCOMPLETE\)/i)).toBeInTheDocument();
 
@@ -111,7 +112,7 @@ describe('DevicesPage redesign', () => {
     const searchInput = screen.getByLabelText('Tìm kiếm thiết bị');
     fireEvent.change(searchInput, { target: { value: 'SHIP-001' } });
     expect(getDeviceRows()).toHaveLength(1);
-    expect(getDeviceRows()[0]).toHaveTextContent('ESP32-001');
+    expect(getDeviceRows()[0]).toHaveTextContent('ESP32-01');
 
     // Clear search and test status + signature filters
     fireEvent.change(searchInput, { target: { value: '' } });
@@ -119,7 +120,7 @@ describe('DevicesPage redesign', () => {
       target: { value: 'INVALID' },
     });
     expect(getDeviceRows()).toHaveLength(1);
-    expect(getDeviceRows()[0]).toHaveTextContent('ESP32-TAMPER-05');
+    expect(getDeviceRows()[0]).toHaveTextContent('ESP32-05');
 
     // Filter with no match shows empty state with reset action
     fireEvent.change(screen.getByLabelText('Trạng thái ESP32'), {
@@ -157,10 +158,10 @@ describe('DevicesPage redesign', () => {
 
   it('auto-refreshes every 10 seconds and preserves the currently selected device', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const manyDevices: DeviceItemOut[] = Array.from({ length: 12 }, (_, idx) => ({
+    const manyDevices: DeviceItemOut[] = Array.from({ length: 10 }, (_, idx) => ({
       ...mockDevices[0],
       id: `dev-${idx + 1}`,
-      device_id: `ESP32-FLEET-${String(idx + 1).padStart(2, '0')}`,
+      device_id: `ESP32-${String(idx + 1).padStart(2, '0')}`,
       device_name: `Cold Sensor #${idx + 1}`,
       key_id: `KEY-FLEET-${idx + 1}`,
     }));
@@ -173,7 +174,7 @@ describe('DevicesPage redesign', () => {
     renderDevicesPage();
 
     await waitFor(() => {
-      expect(getDeviceRows()).toHaveLength(12);
+      expect(getDeviceRows()).toHaveLength(10);
     });
 
     // Select the 5th device

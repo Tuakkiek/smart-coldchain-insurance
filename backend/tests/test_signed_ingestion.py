@@ -1,6 +1,7 @@
 """Signed ingest uses a real ephemeral key and the public API boundary."""
 
 import base64
+from httpx import Response
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
@@ -16,10 +17,11 @@ from app.main import create_app
 from app.models import Device, IngestionAudit, SignedTelemetryReceipt, Telemetry
 from app.services.clock import VirtualClock
 from app.services.telemetry_protocol import canonical_signed_bytes
+from app.services import signed_ingestion
 
 
 SHIPMENT = {
-    "code": "SIGNED-TEST", "cargo_type": "vaccine",
+    "name": "SIGNED-TEST", "cargo_type": "vaccine",
     "origin": {"name": "A", "latitude": 10.0, "longitude": 105.0},
     "destination": {"name": "B", "latitude": 11.0, "longitude": 106.0},
     "temp_min_c": 2.0, "temp_max_c": 8.0,
@@ -51,20 +53,19 @@ def setup_api(tmp_path):
     app.state.engine.dispose()
 
 
-def register(client, pem, shipment_id, device_id="ESP32-001"):
-    registered = client.post("/api/v1/devices", headers=ADMIN, json={
-        "device_id": device_id, "device_name": "Test sensor",
-    })
-    if registered.status_code != 201:
-        return registered
-    assigned = client.post(f"/api/v1/devices/{device_id}/assignments", headers=ADMIN,
-                           json={"shipment_id": shipment_id, "active": True})
-    assert assigned.status_code == 200, assigned.text
-    return client.post(f"/api/v1/devices/{device_id}/keys", headers=ADMIN,
-                       json={"key_id": "key-v1", "public_key_pem": pem})
+def register(client, pem, shipment_id, device_id="ESP32-01", key_id="key-v1"):
+    """Fixture setup through services: HTTP device/key creation is disabled."""
+    with client.app.state.session_factory() as session:
+        try:
+            signed_ingestion.register_device(session, device_id, "Test sensor")
+            signed_ingestion.set_assignment(session, device_id, shipment_id, True)
+            signed_ingestion.add_key(session, device_id, key_id, pem)
+            return Response(201, json=signed_ingestion.device_view(session, session.get(Device, device_id)))
+        except signed_ingestion.IngestionError as exc:
+            return Response(exc.status_code, json={"error": {"code": exc.code}})
 
 
-def signed(key, shipment_id, sequence, *, temperature=5.0, device_id="ESP32-001", key_id="key-v1"):
+def signed(key, shipment_id, sequence, *, temperature=5.0, device_id="ESP32-01", key_id="key-v1"):
     payload = {
         "payload_version": 1, "shipment_id": shipment_id, "device_id": device_id,
         "key_id": key_id, "sequence_number": sequence,
@@ -120,7 +121,7 @@ def test_registration_auth_and_signed_retry_conflict_gap(setup_api):
         assert session.scalar(select(func.count(Telemetry.id))) == 2
         assert session.scalar(select(func.count(SignedTelemetryReceipt.telemetry_id))) == 2
         assert session.scalar(select(func.count(IngestionAudit.id))) == 2
-        device = session.get(Device, "ESP32-001")
+        device = session.get(Device, "ESP32-01")
         assert device.last_sequence_number == 3
         assert device.last_seen_at is not None
     events = client.get(f"/api/v1/shipments/{shipment_id}/events").json()["items"]
@@ -140,13 +141,13 @@ def test_invalid_unknown_revoked_and_unassigned_are_audited(setup_api):
     invalid = client.post(route, json=changed)
     assert invalid.status_code == 401
     assert invalid.json()["error"]["code"] == "INVALID_SIGNATURE"
-    assert client.patch("/api/v1/devices/ESP32-001/keys/key-v1", headers=ADMIN,
+    assert client.patch("/api/v1/devices/ESP32-01/keys/key-v1", headers=ADMIN,
                         json={"status": "revoked"}).status_code == 200
     revoked = client.post(route, json=signed(key, shipment_id, 1))
     assert revoked.json()["error"]["code"] == "UNKNOWN_KEY"
-    assert client.patch("/api/v1/devices/ESP32-001/keys/key-v1", headers=ADMIN,
+    assert client.patch("/api/v1/devices/ESP32-01/keys/key-v1", headers=ADMIN,
                         json={"status": "active"}).status_code == 200
-    assert client.post("/api/v1/devices/ESP32-001/assignments", headers=ADMIN,
+    assert client.post("/api/v1/devices/ESP32-01/assignments", headers=ADMIN,
                        json={"shipment_id": shipment_id, "active": False}).status_code == 200
     assert client.post(route, json=signed(key, shipment_id, 1)).json()["error"]["code"] == "DEVICE_NOT_ASSIGNED"
     with app.state.session_factory() as session:
@@ -180,29 +181,32 @@ def test_production_requires_signed_payload(tmp_path):
     with TestClient(app) as client:
         shipment_id = client.post("/api/v1/shipments", headers=ADMIN, json=SHIPMENT).json()["id"]
         response = client.post(f"/api/v1/shipments/{shipment_id}/telemetry", json={
-            "device_id": "ESP32-001", "temperature_c": 5.0, "humidity_pct": 80.0,
+            "device_id": "ESP32-01", "temperature_c": 5.0, "humidity_pct": 80.0,
         })
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "SIGNED_TELEMETRY_REQUIRED"
     app.state.engine.dispose()
 
 
-def test_admin_key_rotation_and_body_limit(setup_api):
+def test_fixed_keys_cannot_be_added_and_revocation_and_body_limit_work(setup_api):
     client, _app, key, pem, shipment_id = setup_api
     assert register(client, pem, shipment_id).status_code == 201
     replacement = ec.generate_private_key(ec.SECP256R1())
     replacement_pem = replacement.public_key().public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("ascii")
-    added = client.post("/api/v1/devices/ESP32-001/keys", headers=ADMIN,
+    added = client.post("/api/v1/devices/ESP32-01/keys", headers=ADMIN,
                         json={"key_id": "key-v2", "public_key_pem": replacement_pem})
-    assert added.status_code == 201
-    assert {item["key_id"] for item in added.json()["keys"]} == {"key-v1", "key-v2"}
-    assert client.patch("/api/v1/devices/ESP32-001/keys/key-v1", headers=ADMIN,
+    assert added.status_code == 403
+    assert added.json()["error"]["code"] == "FIXED_DEVICE_REGISTRY"
+    assert client.patch("/api/v1/devices/ESP32-01/keys/key-v1", headers=ADMIN,
                         json={"status": "revoked"}).status_code == 200
     route = f"/api/v1/shipments/{shipment_id}/telemetry"
     assert client.post(route, json=signed(key, shipment_id, 1)).status_code == 401
-    assert client.post(route, json=signed(replacement, shipment_id, 1, key_id="key-v2")).status_code == 201
+    assert client.post(route, json=signed(replacement, shipment_id, 1, key_id="key-v2")).status_code == 401
+    assert client.patch("/api/v1/devices/ESP32-01/keys/key-v1", headers=ADMIN,
+                        json={"status": "active"}).status_code == 200
+    assert client.post(route, json=signed(key, shipment_id, 1)).status_code == 201
     oversized = client.post(route, content=b"{" + b" " * 9000 + b"}",
                             headers={"Content-Type": "application/json"})
     assert oversized.status_code == 413

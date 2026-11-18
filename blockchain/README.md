@@ -2,6 +2,8 @@
 
 Smart Contract quản lý dữ liệu toàn vẹn (Module A) và chính sách bảo hiểm chuỗi lạnh (Module B) trên EVM blockchain.
 
+Luồng hiện tại dùng `shipment_id` UUID và ESP32-01 đến ESP32-10. Backend/ABI/scripts đã đồng bộ với contract native ETH: constructor nhận Oracle, `createPolicy` gửi kèm `value`, không approve token. Xem [hướng dẫn local](../docs/local-devices.md). MockInsuranceToken chỉ còn là fixture độc lập; các mục MINS bên dưới mô tả luồng cũ.
+
 > 🚀 **Môi trường triển khai hiện tại: Ethereum Sepolia (`11155111`) qua Remix + MetaMask**  
 > - **Dành cho Backend (NTK):** Xem hướng dẫn cấu hình `.env`, phân vai ví (`Anchorer` / `Oracle`), địa chỉ contract và lưu ý Alchemy tại **[HANDOFF_SEPOLIA.md](HANDOFF_SEPOLIA.md)** và **[deployments/sepolia.json](deployments/sepolia.json)**.  
 > - **Quy trình Remix & Python tooling (không cần Hardhat / Node.js):** Xem **[REMIX_SETUP.md](REMIX_SETUP.md)**, **[compiler-settings.json](compiler-settings.json)** và kịch bản kiểm thử thủ công trên Remix cho người mới tại **[REMIX_TEST_SCENARIOS.md](REMIX_TEST_SCENARIOS.md)**.  

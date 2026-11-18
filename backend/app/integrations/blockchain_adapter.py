@@ -368,37 +368,6 @@ class Web3IntegrityAdapter:
         return Web3.to_hex(logs[-1]["transactionHash"]) if logs else None
 
 
-_MINIMAL_ERC20_ABI = [
-    {
-        "inputs": [{"name": "account", "type": "address"}],
-        "name": "balanceOf",
-        "outputs": [{"name": "", "type": "uint256"}],
-        "stateMutability": "view",
-        "type": "function",
-    },
-    {
-        "inputs": [
-            {"name": "owner", "type": "address"},
-            {"name": "spender", "type": "address"},
-        ],
-        "name": "allowance",
-        "outputs": [{"name": "", "type": "uint256"}],
-        "stateMutability": "view",
-        "type": "function",
-    },
-    {
-        "inputs": [
-            {"name": "spender", "type": "address"},
-            {"name": "amount", "type": "uint256"},
-        ],
-        "name": "approve",
-        "outputs": [{"name": "", "type": "bool"}],
-        "stateMutability": "nonpayable",
-        "type": "function",
-    },
-]
-
-
 class Web3PolicyAdapter:
     """Create, verify, and read back ColdChainInsurance policies on Sepolia / EVM chains."""
 
@@ -495,35 +464,14 @@ class Web3PolicyAdapter:
                 )
             raise BlockchainError("POLICY_ALREADY_EXISTS_MISMATCH")
 
-        token_address = Web3.to_checksum_address(contract.functions.payoutToken().call())
-        token = web3.eth.contract(address=token_address, abi=_MINIMAL_ERC20_ABI)
-        balance = int(token.functions.balanceOf(insurer_account.address).call())
-        if balance < amount_wei:
-            raise BlockchainError("INSURER_INSUFFICIENT_TOKEN_BALANCE")
-
-        allowance = int(token.functions.allowance(insurer_account.address, insurance_address).call())
-        nonce = web3.eth.get_transaction_count(insurer_account.address, "pending")
+        gas_limit = 300000
         gas_price = web3.eth.gas_price
+        balance = web3.eth.get_balance(insurer_account.address)
+        if balance < amount_wei + gas_limit * gas_price:
+            raise BlockchainError("INSURER_INSUFFICIENT_ETH_BALANCE")
+        nonce = web3.eth.get_transaction_count(insurer_account.address, "pending")
 
-        if allowance < amount_wei:
-            approve_tx = token.functions.approve(insurance_address, amount_wei).build_transaction({
-                "from": insurer_account.address,
-                "nonce": nonce,
-                "chainId": self.settings.blockchain_chain_id,
-                "gas": 100000,
-                "gasPrice": gas_price,
-            })
-            signed_approve = insurer_account.sign_transaction(approve_tx)
-            approve_hash = web3.eth.send_raw_transaction(signed_approve.raw_transaction)
-            approve_receipt = web3.eth.wait_for_transaction_receipt(
-                approve_hash, timeout=self.settings.blockchain_receipt_timeout_seconds,
-            )
-            if approve_receipt["status"] != 1:
-                raise BlockchainError("TOKEN_APPROVE_FAILED")
-            nonce += 1
-
-        # Note: ColdChainInsurance.createPolicy is nonpayable (locks ERC-20 payoutToken,
-        # never attaches native ETH via msg.value).
+        # Native SepoliaETH is escrowed by payable createPolicy(msg.value).
         policy_tx = contract.functions.createPolicy(
             shipment_key,
             checksum_buyer,
@@ -531,10 +479,11 @@ class Web3PolicyAdapter:
             expiry_timestamp,
         ).build_transaction({
             "from": insurer_account.address,
+            "value": amount_wei,
             "nonce": nonce,
             "chainId": self.settings.blockchain_chain_id,
-            "gas": 300000,
-            "gasPrice": web3.eth.gas_price,
+            "gas": gas_limit,
+            "gasPrice": gas_price,
         })
         signed_policy = insurer_account.sign_transaction(policy_tx)
         web3.eth.send_raw_transaction(signed_policy.raw_transaction)

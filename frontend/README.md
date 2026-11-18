@@ -1,5 +1,7 @@
 # Frontend — Smart Cold Chain Insurance Dashboard
 
+Luồng hiện tại: tạo lô hàng bằng tên, nhận `shipment_id` UUID, chọn và gán ESP32-01 đến ESP32-10 có sẵn. Không có đăng ký/xóa thiết bị. Xem [hướng dẫn local](../docs/local-devices.md).
+
 Giao diện giám sát chuỗi cung ứng lạnh, dữ liệu telemetry cảm biến (nhiệt độ, độ ẩm), vị trí mô phỏng tuyến đường, cảnh báo vi phạm ngưỡng nhiệt độ và trạng thái bồi thường bảo hiểm tự động trên Blockchain.
 
 Được phát triển theo lộ trình tại [ROADMAP_TTDK_FRONTEND_QA.md](../ROADMAP_TTDK_FRONTEND_QA.md) và hệ thống thiết kế [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md).

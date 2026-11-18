@@ -16,7 +16,6 @@ describe("ColdChainInsurance", function () {
     // Deploy ColdChainInsurance
     const Insurance = await ethers.getContractFactory("ColdChainInsurance");
     const insurance = await Insurance.deploy(
-      await token.getAddress(),
       oracle.address
     );
     await insurance.waitForDeployment();
@@ -24,7 +23,7 @@ describe("ColdChainInsurance", function () {
     // Dữ liệu demo
     const shipmentId = "8b4fb8a2-2996-4da2-90b9-35019517f56f";
     const shipmentKey = ethers.keccak256(ethers.toUtf8Bytes(shipmentId));
-    const payoutAmount = ethers.parseEther("1000");
+    const payoutAmount = ethers.parseEther("0.05");
     const expiry =
       (await ethers.provider.getBlock("latest"))!.timestamp + 86400 * 30;
     const evidenceHash = ethers.keccak256(
@@ -49,14 +48,14 @@ describe("ColdChainInsurance", function () {
     };
   }
 
-  /** Helper: approve + createPolicy */
+  /** Helper: createPolicy with native ETH escrow */
   async function createPolicyHelper(fixture: Awaited<ReturnType<typeof deployFixture>>) {
     const { token, insurance, owner, beneficiary, shipmentKey, payoutAmount, expiry } = fixture;
     const insuranceAddr = await insurance.getAddress();
-    await token.connect(owner).approve(insuranceAddr, payoutAmount);
+
     await insurance
       .connect(owner)
-      .createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry);
+      .createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry, { value: payoutAmount });
   }
 
   // ─── Deployment Tests ────────────────────────────────────────────
@@ -72,20 +71,15 @@ describe("ColdChainInsurance", function () {
       expect(await insurance.oracle()).to.equal(oracle.address);
     });
 
-    it("Should set the correct payout token", async function () {
-      const { insurance, token } = await loadFixture(deployFixture);
-      expect(await insurance.payoutToken()).to.equal(await token.getAddress());
+    it("Should start with no native ETH escrow", async function () {
+      const { insurance } = await loadFixture(deployFixture);
+      expect(await ethers.provider.getBalance(await insurance.getAddress())).to.equal(0);
     });
 
     it("Should reject zero address in constructor", async function () {
-      const { token, oracle } = await loadFixture(deployFixture);
       const Insurance = await ethers.getContractFactory("ColdChainInsurance");
       await expect(
-        Insurance.deploy(ethers.ZeroAddress, oracle.address)
-      ).to.be.revertedWithCustomError(Insurance, "ColdChain__ZeroAddress");
-
-      await expect(
-        Insurance.deploy(await token.getAddress(), ethers.ZeroAddress)
+        Insurance.deploy(ethers.ZeroAddress)
       ).to.be.revertedWithCustomError(Insurance, "ColdChain__ZeroAddress");
     });
   });
@@ -111,9 +105,9 @@ describe("ColdChainInsurance", function () {
       const { token, insurance, owner, beneficiary, shipmentKey, payoutAmount, expiry } =
         await loadFixture(deployFixture);
 
-      await token.connect(owner).approve(await insurance.getAddress(), payoutAmount);
+
       await expect(
-        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry)
+        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry, { value: payoutAmount })
       )
         .to.emit(insurance, "PolicyCreated")
         .withArgs(shipmentKey, owner.address, beneficiary.address, payoutAmount, expiry);
@@ -126,9 +120,9 @@ describe("ColdChainInsurance", function () {
       await createPolicyHelper(fixture);
 
       // Thử tạo lại cùng shipmentKey
-      await token.connect(owner).approve(await insurance.getAddress(), payoutAmount);
+
       await expect(
-        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry)
+        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, expiry, { value: payoutAmount })
       )
         .to.be.revertedWithCustomError(insurance, "ColdChain__PolicyAlreadyExists")
         .withArgs(shipmentKey);
@@ -138,11 +132,11 @@ describe("ColdChainInsurance", function () {
       const { token, insurance, owner, shipmentKey, payoutAmount, expiry } =
         await loadFixture(deployFixture);
 
-      await token.connect(owner).approve(await insurance.getAddress(), payoutAmount);
+
       await expect(
         insurance
           .connect(owner)
-          .createPolicy(shipmentKey, ethers.ZeroAddress, payoutAmount, expiry)
+          .createPolicy(shipmentKey, ethers.ZeroAddress, payoutAmount, expiry, { value: payoutAmount })
       ).to.be.revertedWithCustomError(insurance, "ColdChain__ZeroAddress");
     });
 
@@ -151,7 +145,7 @@ describe("ColdChainInsurance", function () {
         await loadFixture(deployFixture);
 
       await expect(
-        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, 0, expiry)
+        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, 0, expiry, { value: 0 })
       ).to.be.revertedWithCustomError(insurance, "ColdChain__InvalidPayoutAmount");
     });
 
@@ -159,19 +153,19 @@ describe("ColdChainInsurance", function () {
       const { token, insurance, owner, beneficiary, shipmentKey, payoutAmount } =
         await loadFixture(deployFixture);
 
-      await token.connect(owner).approve(await insurance.getAddress(), payoutAmount);
+
       await expect(
-        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, 1) // timestamp = 1 (quá khứ)
+        insurance.connect(owner).createPolicy(shipmentKey, beneficiary.address, payoutAmount, 1, { value: payoutAmount }) // timestamp = 1 (quá khứ)
       ).to.be.revertedWithCustomError(insurance, "ColdChain__InvalidExpiry");
     });
 
-    it("Should lock tokens in contract", async function () {
+    it("Should lock native ETH in contract", async function () {
       const fixture = await loadFixture(deployFixture);
       const { token, insurance, payoutAmount } = fixture;
 
       await createPolicyHelper(fixture);
 
-      const contractBalance = await token.balanceOf(await insurance.getAddress());
+      const contractBalance = await ethers.provider.getBalance(await insurance.getAddress());
       expect(contractBalance).to.equal(payoutAmount);
     });
   });
@@ -185,11 +179,11 @@ describe("ColdChainInsurance", function () {
 
       await createPolicyHelper(fixture);
 
-      const balanceBefore = await token.balanceOf(beneficiary.address);
+      const balanceBefore = await ethers.provider.getBalance(beneficiary.address);
       await insurance
         .connect(oracle)
         .reportViolation(shipmentKey, evidenceHash, detectedAt);
-      const balanceAfter = await token.balanceOf(beneficiary.address);
+      const balanceAfter = await ethers.provider.getBalance(beneficiary.address);
 
       expect(balanceAfter - balanceBefore).to.equal(payoutAmount);
     });
@@ -291,13 +285,14 @@ describe("ColdChainInsurance", function () {
       // Nhảy thời gian qua hạn policy
       await time.increaseTo(expiry + 10);
 
-      const balanceBefore = await token.balanceOf(owner.address);
-      await expect(insurance.connect(owner).refundExpiredPolicy(shipmentKey))
+      const balanceBefore = await ethers.provider.getBalance(owner.address);
+      const transaction = insurance.connect(owner).refundExpiredPolicy(shipmentKey);
+      await expect(transaction)
         .to.emit(insurance, "PolicyRefunded")
         .withArgs(shipmentKey, owner.address, payoutAmount);
-
-      const balanceAfter = await token.balanceOf(owner.address);
-      expect(balanceAfter - balanceBefore).to.equal(payoutAmount);
+      const receipt = await (await transaction).wait();
+      const balanceAfter = await ethers.provider.getBalance(owner.address);
+      expect(balanceAfter - balanceBefore + receipt!.fee).to.equal(payoutAmount);
 
       const policy = await insurance.getPolicy(shipmentKey);
       expect(policy.status).to.equal(3); // Refunded
@@ -308,18 +303,18 @@ describe("ColdChainInsurance", function () {
       const { token, insurance, owner, stranger, shipmentKey, payoutAmount, expiry } = fixture;
 
       // stranger là insurer
-      await token.transfer(stranger.address, payoutAmount);
-      await token.connect(stranger).approve(await insurance.getAddress(), payoutAmount);
+
+
       await insurance
         .connect(stranger)
-        .createPolicy(shipmentKey, fixture.beneficiary.address, payoutAmount, expiry);
+        .createPolicy(shipmentKey, fixture.beneficiary.address, payoutAmount, expiry, { value: payoutAmount });
 
       await time.increaseTo(expiry + 10);
 
-      const balanceBefore = await token.balanceOf(stranger.address);
+      const balanceBefore = await ethers.provider.getBalance(stranger.address);
       // owner gọi refund thay cho stranger
       await insurance.connect(owner).refundExpiredPolicy(shipmentKey);
-      const balanceAfter = await token.balanceOf(stranger.address);
+      const balanceAfter = await ethers.provider.getBalance(stranger.address);
 
       expect(balanceAfter - balanceBefore).to.equal(payoutAmount);
     });
