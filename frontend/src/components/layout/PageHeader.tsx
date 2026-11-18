@@ -2,7 +2,7 @@ import React from 'react';
 
 export interface PageHeaderProps {
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   breadcrumb?: string;
   action?: React.ReactNode;
 }

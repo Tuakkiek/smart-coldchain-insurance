@@ -4,6 +4,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { CopyButton } from '../components/ui/CopyButton';
 import { LoadingState } from '../components/feedback/LoadingState';
 import { EmptyState } from '../components/feedback/EmptyState';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
@@ -176,8 +177,12 @@ export const EventsPage: React.FC = () => {
                 <div className="flex-row items-center gap-2">
                   {renderEventIcon(evt.type)}
                   {renderBadge(evt.type)}
-                  <span className="font-mono" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-                    ID Lô: {evt.shipment_id}
+                  <span
+                    className="id-copy-inline font-mono"
+                    style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}
+                  >
+                    <span>ID Lô: {evt.shipment_id}</span>
+                    <CopyButton value={evt.shipment_id} iconSize={12} />
                   </span>
                 </div>
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>

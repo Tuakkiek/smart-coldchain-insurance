@@ -5,6 +5,7 @@ import { MetricCard } from '../components/data-display/MetricCard';
 import { ShipmentStatusBadge, InsuranceStatusBadge } from '../components/data-display/StatusBadge';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { CopyButton } from '../components/ui/CopyButton';
 import { LoadingState } from '../components/feedback/LoadingState';
 import { EmptyState } from '../components/feedback/EmptyState';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
@@ -186,6 +187,7 @@ export const OverviewPage: React.FC = () => {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               {shipments.slice(0, 5).map((shipment) => {
+                const shipmentId = shipment.shipment_id || shipment.id;
                 const temp = shipment.latest_telemetry?.temperature_c;
                 const isTempBreached =
                   temp !== undefined &&
@@ -199,6 +201,7 @@ export const OverviewPage: React.FC = () => {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
+                      gap: 'var(--space-3)',
                       padding: 'var(--space-3) var(--space-4)',
                       borderRadius: 'var(--radius-md)',
                       border: '1px solid var(--color-border-subtle)',
@@ -215,12 +218,30 @@ export const OverviewPage: React.FC = () => {
                       e.currentTarget.style.backgroundColor = 'var(--color-surface)';
                     }}
                   >
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <div className="flex-row items-center gap-2">
                         <span className="font-mono" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                          {shipment.name}
+                          {shipment.code}
                         </span>
                         <ShipmentStatusBadge status={shipment.status} />
+                      </div>
+                      <div
+                        className="id-copy-inline"
+                        style={{
+                          fontSize: '11px',
+                          color: 'var(--color-text-tertiary)',
+                          marginTop: '2px',
+                        }}
+                      >
+                        <span style={{ flexShrink: 0 }}>ID:</span>
+                        <span
+                          className="font-mono"
+                          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          title={shipmentId}
+                        >
+                          {shipmentId}
+                        </span>
+                        <CopyButton value={shipmentId} iconSize={12} />
                       </div>
                       <div
                         style={{
@@ -233,7 +254,7 @@ export const OverviewPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex-row items-center gap-4">
+                    <div className="flex-row items-center gap-4" style={{ flexShrink: 0 }}>
                       <div style={{ textAlign: 'right' }}>
                         <div
                           className="tabular-nums"
@@ -302,11 +323,10 @@ export const OverviewPage: React.FC = () => {
                     style={{
                       padding: 'var(--space-3)',
                       borderRadius: 'var(--radius-md)',
-                      borderLeft: `3px solid ${
-                        evt.type === 'INSURANCE_TRIGGERED'
-                          ? 'var(--color-danger)'
-                          : 'var(--color-warning)'
-                      }`,
+                      borderLeft: `3px solid ${evt.type === 'INSURANCE_TRIGGERED'
+                        ? 'var(--color-danger)'
+                        : 'var(--color-warning)'
+                        }`,
                       backgroundColor: 'var(--color-surface-secondary)',
                     }}
                   >
@@ -323,8 +343,8 @@ export const OverviewPage: React.FC = () => {
                       {evt.type === 'INSURANCE_TRIGGERED'
                         ? 'KÍCH HOẠT BẢO HIỂM'
                         : evt.type === 'TEMPERATURE_BREACH_STARTED'
-                        ? 'PHÁT HIỆN VI PHẠM NHIỆT ĐỘ'
-                        : 'MẤT TÍN HIỆU CẢM BIẾN'}
+                          ? 'PHÁT HIỆN VI PHẠM NHIỆT ĐỘ'
+                          : 'MẤT TÍN HIỆU CẢM BIẾN'}
                     </div>
                     <div
                       style={{

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { CopyButton } from '../ui/CopyButton';
 import {
   SignatureStatusBadge,
   DeviceOnlineBadge,
@@ -83,7 +84,10 @@ export const DeviceDetailPanel: React.FC<DeviceDetailPanelProps> = ({
             <div style={{ minWidth: 0 }}>
               <div className="device-detail-eyebrow">Chi tiết thiết bị đang chọn</div>
               <div className="device-detail-heading-row">
-                <span className="device-detail-id">{device.device_id}</span>
+                <span className="id-copy-inline">
+                  <span className="device-detail-id">{device.device_id}</span>
+                  <CopyButton value={device.device_id} iconSize={14} />
+                </span>
                 <span className="device-detail-name">
                   — {device.device_name || 'Cold Chain Sensor'}
                 </span>
@@ -139,8 +143,11 @@ export const DeviceDetailPanel: React.FC<DeviceDetailPanelProps> = ({
               <div className="device-detail-rows">
                 <div className="device-detail-item">
                   <span className="device-detail-label">Device ID</span>
-                  <span className="device-detail-value device-detail-value--mono">
-                    {device.device_id}
+                  <span className="id-copy-inline">
+                    <span className="device-detail-value device-detail-value--mono">
+                      {device.device_id}
+                    </span>
+                    <CopyButton value={device.device_id} iconSize={13} />
                   </span>
                 </div>
 
@@ -265,11 +272,29 @@ export const DeviceDetailPanel: React.FC<DeviceDetailPanelProps> = ({
                   <span className="device-detail-label">Lô hàng đang gán</span>
                   <div className="device-detail-value">
                     {device.assigned_shipment_id ? (
-                      <Link to={`/shipments/${device.assigned_shipment_id}`}>
-                        <Badge variant="info">
-                          {device.assigned_shipment_name || device.assigned_shipment_id}
-                        </Badge>
-                      </Link>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <Link to={`/shipments/${device.assigned_shipment_id}`}>
+                          <Badge variant="info">
+                            {device.assigned_shipment_name || device.assigned_shipment_id}
+                          </Badge>
+                        </Link>
+                        <span
+                          className="id-copy-inline font-mono"
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 400,
+                            color: 'var(--color-text-tertiary)',
+                          }}
+                        >
+                          <span
+                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            title={device.assigned_shipment_id}
+                          >
+                            {device.assigned_shipment_id}
+                          </span>
+                          <CopyButton value={device.assigned_shipment_id} iconSize={12} />
+                        </span>
+                      </div>
                     ) : (
                       <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 400 }}>
                         Chưa gán lô hàng

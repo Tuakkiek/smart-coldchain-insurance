@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { IntegrityBatch } from '../../types/api';
 import { Button } from '../ui/Button';
+import { CopyButton } from '../ui/CopyButton';
 import { useToast } from '../feedback/Toast';
 import {
   ShieldAlert,
@@ -231,20 +232,27 @@ export const IntegrityViolationAlert: React.FC<IntegrityViolationAlertProps> = (
                     >
                       {batch.batch_id}
                     </span>
-                    <span
-                      style={{
-                        fontSize: 'var(--text-xs)',
-                        padding: '2px 8px',
-                        borderRadius: 'var(--radius-sm)',
-                        backgroundColor: '#FFE4E6',
-                        color: '#E11D48',
-                        fontWeight: 600,
-                      }}
-                    >
-                      {batch.shipment_name || batch.shipment_id}
+                    <span className="id-copy-inline">
+                      <span
+                        style={{
+                          fontSize: 'var(--text-xs)',
+                          padding: '2px 8px',
+                          borderRadius: 'var(--radius-sm)',
+                          backgroundColor: '#FFE4E6',
+                          color: '#E11D48',
+                          fontWeight: 600,
+                        }}
+                        title={batch.shipment_id}
+                      >
+                        {batch.shipment_name || batch.shipment_id}
+                      </span>
+                      <CopyButton value={batch.shipment_id} iconSize={12} />
                     </span>
-                    <span style={{ fontSize: 'var(--text-xs)', color: '#6E6E73' }}>
-                      Thiết bị: <strong>{batch.device_id}</strong>
+                    <span className="id-copy-inline" style={{ fontSize: 'var(--text-xs)', color: '#6E6E73' }}>
+                      <span>
+                        Thiết bị: <strong className="font-mono">{batch.device_id}</strong>
+                      </span>
+                      <CopyButton value={batch.device_id} iconSize={12} />
                     </span>
                   </div>
 

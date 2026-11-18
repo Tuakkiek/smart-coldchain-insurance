@@ -5,6 +5,7 @@ import { getAdminDeviceDetails } from '../../api/devices';
 import { ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { CopyButton } from '../ui/CopyButton';
 import { LoadingState } from '../feedback/LoadingState';
 import { EmptyState } from '../feedback/EmptyState';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../feedback/Toast';
@@ -167,14 +168,19 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
             </div>
             <div>
               <h3
+                id="admin-device-detail-modal-title"
+                className="id-copy-inline"
                 style={{
                   fontSize: 'var(--text-lg)',
                   fontWeight: 600,
                   color: 'var(--color-text-primary)',
                   margin: 0,
+                  gap: '6px',
                 }}
               >
-                Chi Tiết Quản Trị Thiết Bị: {deviceId}
+                <span>Chi Tiết Quản Trị Thiết Bị:</span>
+                <span className="font-mono">{deviceId}</span>
+                <CopyButton value={deviceId} iconSize={14} />
               </h3>
               <p
                 style={{
@@ -250,9 +256,12 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
                   }}
                 >
                   <div className="flex-row items-center gap-2">
-                    <Cpu size={16} style={{ color: 'var(--color-accent)' }} />
-                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
-                      {deviceDetail.device_id}
+                    <Cpu size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                    <span className="id-copy-inline">
+                      <span className="font-mono" style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
+                        {deviceDetail.device_id}
+                      </span>
+                      <CopyButton value={deviceDetail.device_id} iconSize={13} />
                     </span>
                     {deviceDetail.device_name && (
                       <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
@@ -281,16 +290,31 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
                       </Badge>
                     </div>
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ color: 'var(--color-text-tertiary)' }}>Chuyến hiện gán</div>
                     <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginTop: 2 }}>
                       {deviceDetail.current_shipment_id ? (
-                        <Link
-                          to={`/shipments/${deviceDetail.current_shipment_id}`}
-                          style={{ color: 'var(--color-accent)' }}
-                        >
-                          {deviceDetail.current_shipment_name || `${deviceDetail.current_shipment_id.slice(0, 8)}...`}
-                        </Link>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                          <Link
+                            to={`/shipments/${deviceDetail.current_shipment_id}`}
+                            style={{ color: 'var(--color-accent)' }}
+                            title={deviceDetail.current_shipment_id}
+                          >
+                            {deviceDetail.current_shipment_name || `${deviceDetail.current_shipment_id.slice(0, 8)}...`}
+                          </Link>
+                          <span
+                            className="id-copy-inline font-mono"
+                            style={{ fontSize: '11px', fontWeight: 400, color: 'var(--color-text-tertiary)' }}
+                          >
+                            <span
+                              style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title={deviceDetail.current_shipment_id}
+                            >
+                              {deviceDetail.current_shipment_id}
+                            </span>
+                            <CopyButton value={deviceDetail.current_shipment_id} iconSize={11} />
+                          </span>
+                        </div>
                       ) : (
                         <span style={{ color: 'var(--color-text-tertiary)' }}>Chưa gán</span>
                       )}
@@ -393,7 +417,7 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
                           fontSize: 'var(--text-xs)',
                         }}
                       >
-                        <div className="flex-row items-center gap-2">
+                        <div className="id-copy-inline">
                           <Link
                             to={`/shipments/${a.shipment_id}`}
                             style={{
@@ -404,6 +428,7 @@ export const AdminDeviceDetailModal: React.FC<AdminDeviceDetailModalProps> = ({
                           >
                             {a.shipment_id}
                           </Link>
+                          <CopyButton value={a.shipment_id} iconSize={12} />
                         </div>
                         <Badge variant={a.active ? 'success' : 'neutral'}>
                           {a.active ? 'ĐANG KÍCH HOẠT' : 'ĐÃ DỪNG'}

@@ -15,7 +15,7 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismis
       <style>{`
         .coldchain-toast-container {
           position: fixed;
-          top: 24px;
+          bottom: 24px;
           right: 24px;
           z-index: 9999;
           display: flex;
@@ -44,7 +44,7 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismis
 
         @media (max-width: 640px) {
           .coldchain-toast-container {
-            top: 16px;
+            bottom: 16px;
             left: 16px;
             right: 16px;
             max-width: none;

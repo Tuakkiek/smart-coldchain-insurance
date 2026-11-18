@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { CopyButton } from '../components/ui/CopyButton';
 import { ShipmentStatusBadge, InsuranceStatusBadge } from '../components/data-display/StatusBadge';
 import { LoadingState } from '../components/feedback/LoadingState';
 import { EmptyState } from '../components/feedback/EmptyState';
@@ -266,6 +267,7 @@ export const ShipmentsPage: React.FC = () => {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           {filtered.map((shipment) => {
+            const shipmentId = shipment.shipment_id || shipment.id;
             const temp = shipment.latest_telemetry?.temperature_c;
             const isBreach =
               temp !== undefined &&
@@ -282,22 +284,41 @@ export const ShipmentsPage: React.FC = () => {
                   className="flex-row items-center justify-between"
                   style={{ gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}
                 >
-                  <div className="flex-row items-center gap-3">
-                    <span
-                      className="font-mono"
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
+                    <div className="flex-row items-center gap-3" style={{ flexWrap: 'wrap' }}>
+                      <span
+                        className="font-mono"
+                        style={{
+                          fontSize: 'var(--text-lg)',
+                          fontWeight: 600,
+                          color: 'var(--color-text-primary)',
+                        }}
+                      >
+                        {shipment.name}
+                      </span>
+                      <ShipmentStatusBadge status={shipment.status} />
+                      <InsuranceStatusBadge
+                        status={shipment.insurance.status}
+                        payoutStatus={shipment.insurance.payout_status}
+                      />
+                    </div>
+                    <div
+                      className="id-copy-inline"
                       style={{
-                        fontSize: 'var(--text-lg)',
-                        fontWeight: 600,
-                        color: 'var(--color-text-primary)',
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--color-text-tertiary)',
                       }}
                     >
-                      {shipment.name}
-                    </span>
-                    <ShipmentStatusBadge status={shipment.status} />
-                    <InsuranceStatusBadge
-                      status={shipment.insurance.status}
-                      payoutStatus={shipment.insurance.payout_status}
-                    />
+                      <span style={{ flexShrink: 0 }}>ID:</span>
+                      <span
+                        className="font-mono"
+                        style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={shipmentId}
+                      >
+                        {shipmentId}
+                      </span>
+                      <CopyButton value={shipmentId} iconSize={12} />
+                    </div>
                   </div>
 
                   <div className="flex-row items-center gap-2">

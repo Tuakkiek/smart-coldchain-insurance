@@ -5,6 +5,7 @@ import { assignDevice, getDevices } from '../../api/devices';
 import { getShipments } from '../../api/shipments';
 import { ApiError } from '../../api/client';
 import { Button } from '../ui/Button';
+import { CopyButton } from '../ui/CopyButton';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../feedback/Toast';
 import {
   Link2,
@@ -377,16 +378,36 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
                 gap: 'var(--space-3)',
               }}
             >
-              <div style={{ fontSize: 'var(--text-xs)' }}>
-                <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                  Trạng thái hiện tại của {currentDevice.device_id}:
+              <div style={{ fontSize: 'var(--text-xs)', minWidth: 0 }}>
+                <div
+                  className="id-copy-inline"
+                  style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}
+                >
+                  <span>
+                    Trạng thái hiện tại của <span className="font-mono">{currentDevice.device_id}</span>:
+                  </span>
+                  <CopyButton value={currentDevice.device_id} iconSize={12} />
                 </div>
                 <div style={{ color: 'var(--color-text-secondary)', marginTop: 2 }}>
                   {currentAssignedShipmentId ? (
-                    <span>
-                      Đang liên kết với chuyến hàng:{' '}
-                      <strong>{currentAssignedShipmentName || currentAssignedShipmentId}</strong>
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <span>
+                        Đang liên kết với chuyến hàng:{' '}
+                        <strong>{currentAssignedShipmentName || currentAssignedShipmentId}</strong>
+                      </span>
+                      <span
+                        className="id-copy-inline font-mono"
+                        style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}
+                      >
+                        <span
+                          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          title={currentAssignedShipmentId}
+                        >
+                          ID: {currentAssignedShipmentId}
+                        </span>
+                        <CopyButton value={currentAssignedShipmentId} iconSize={11} />
+                      </span>
+                    </div>
                   ) : (
                     <span>Chưa liên kết với chuyến hàng nào (Sẵn sàng gán).</span>
                   )}
