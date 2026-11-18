@@ -16,7 +16,7 @@
 #include <mbedtls/pk.h>
 #include <mbedtls/version.h>
 
-#include "config.h"  // Local credentials and TLS CA; ignored by Git.
+#include "config.h"  // Local credentials and signing key; ignored by Git.
 
 namespace {
 constexpr int kDhtPin = 27;
@@ -36,6 +36,25 @@ mbedtls_ctr_drbg_context randomGenerator;
 bool ready = false;
 bool clockRequested = false;
 
+bool initializeSequence() {
+  if (!preferences.begin("coldchain", false)) {
+    Serial.println("[SEQUENCE] Could not open Preferences");
+    return false;
+  }
+
+  const bool newDevice = preferences.getString("device", "") != DEVICE_ID;
+  if (newDevice || !preferences.isKey("sequence")) {
+    if (newDevice) preferences.putString("device", DEVICE_ID);
+    if (preferences.putUInt("sequence", kInitialSequenceNumber) != sizeof(uint32_t)) {
+      Serial.println("[SEQUENCE] Could not initialize counter");
+      return false;
+    }
+  }
+  Serial.printf("[SEQUENCE] Last reserved: %lu\n",
+                static_cast<unsigned long>(preferences.getUInt("sequence", kInitialSequenceNumber)));
+  return true;
+}
+
 bool connectWifi() {
   if (WiFi.status() == WL_CONNECTED) return true;
 
@@ -49,8 +68,7 @@ bool connectWifi() {
   Serial.println();
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("[WiFi] Connected successfully");
-    Serial.print("[WiFi] IP address: ");
+    Serial.print("[WiFi] Connected, IP: ");
     Serial.println(WiFi.localIP());
     return true;
   }
@@ -88,11 +106,9 @@ bool signMessage(const String &message, String &encoded) {
   size_t signatureLength = 0;
   size_t base64Length = 0;
 
-  const mbedtls_md_info_t *sha256 =
-      mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  const mbedtls_md_info_t *sha256 = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
   if (sha256 == nullptr ||
-      mbedtls_md(sha256,
-                 reinterpret_cast<const unsigned char *>(message.c_str()),
+      mbedtls_md(sha256, reinterpret_cast<const unsigned char *>(message.c_str()),
                  message.length(), digest) != 0) {
     Serial.println("[SIGN] SHA-256 calculation failed");
     return false;
@@ -101,8 +117,7 @@ bool signMessage(const String &message, String &encoded) {
 #if MBEDTLS_VERSION_MAJOR >= 3
   const int result = mbedtls_pk_sign(
       &signingKey, MBEDTLS_MD_SHA256, digest, sizeof(digest), signature,
-      sizeof(signature), &signatureLength, mbedtls_ctr_drbg_random,
-      &randomGenerator);
+      sizeof(signature), &signatureLength, mbedtls_ctr_drbg_random, &randomGenerator);
 #else
   const int result = mbedtls_pk_sign(
       &signingKey, MBEDTLS_MD_SHA256, digest, sizeof(digest), signature,
@@ -114,8 +129,8 @@ bool signMessage(const String &message, String &encoded) {
     return false;
   }
 
-  if (mbedtls_base64_encode(base64, sizeof(base64), &base64Length, signature,
-                            signatureLength) != 0 ||
+  if (mbedtls_base64_encode(base64, sizeof(base64), &base64Length,
+                            signature, signatureLength) != 0 ||
       base64Length >= sizeof(base64)) {
     Serial.println("[SIGN] Base64 encoding failed");
     return false;
@@ -132,24 +147,19 @@ bool loadSigningKey() {
   mbedtls_ctr_drbg_init(&randomGenerator);
 
   const char seed[] = "coldchain-wokwi-demo";
-  if (mbedtls_ctr_drbg_seed(
-          &randomGenerator, mbedtls_entropy_func, &entropy,
-          reinterpret_cast<const unsigned char *>(seed), sizeof(seed) - 1) !=
-      0) {
+  if (mbedtls_ctr_drbg_seed(&randomGenerator, mbedtls_entropy_func, &entropy,
+          reinterpret_cast<const unsigned char *>(seed), sizeof(seed) - 1) != 0) {
     Serial.println("[SIGN] Random generator initialization failed");
     return false;
   }
 
 #if MBEDTLS_VERSION_MAJOR >= 3
   const int result = mbedtls_pk_parse_key(
-      &signingKey,
-      reinterpret_cast<const unsigned char *>(DEVICE_PRIVATE_KEY_PEM),
-      strlen(DEVICE_PRIVATE_KEY_PEM) + 1, nullptr, 0,
-      mbedtls_ctr_drbg_random, &randomGenerator);
+      &signingKey, reinterpret_cast<const unsigned char *>(DEVICE_PRIVATE_KEY_PEM),
+      strlen(DEVICE_PRIVATE_KEY_PEM) + 1, nullptr, 0, mbedtls_ctr_drbg_random, &randomGenerator);
 #else
   const int result = mbedtls_pk_parse_key(
-      &signingKey,
-      reinterpret_cast<const unsigned char *>(DEVICE_PRIVATE_KEY_PEM),
+      &signingKey, reinterpret_cast<const unsigned char *>(DEVICE_PRIVATE_KEY_PEM),
       strlen(DEVICE_PRIVATE_KEY_PEM) + 1, nullptr, 0);
 #endif
 
@@ -160,9 +170,7 @@ bool loadSigningKey() {
   return true;
 }
 
-// Returns HTTP status. Returns -1 when the request could not be initialized
-// or the transport failed. A 409 is returned immediately so sendReading()
-// can allocate and sign a different sequence number for the same sample.
+// Retry transient failures with the same body; let sendReading() handle HTTP 409.
 int postTelemetry(const String &body) {
   if (!connectWifi()) return -1;
 
@@ -193,15 +201,8 @@ int postTelemetry(const String &body) {
     if (response.length() > 0) Serial.println(response);
     http.end();
 
-    if (status == 200 || status == 201) return status;
-
-    // A 409 is not a transient transport failure. Let the caller try a new
-    // sequence number rather than retrying the same conflicting payload.
-    if (status == 409) return status;
-
-    // Other permanent 4xx responses should not be retried.
-    if (status >= 400 && status < 500 && status != 429) return status;
-
+    if (status == 200 || status == 201 ||
+        (status >= 400 && status < 500 && status != 429)) return status;
     if (attempt < 3) delay(2000);
   }
 
@@ -224,12 +225,9 @@ void sendReading(float temperature, float humidity) {
   const int temperatureMilli = lroundf(temperature * 1000.0f);
   const int humidityMilli = lroundf(humidity * 1000.0f);
 
-  // On HTTP 409, keep the same physical sample and timestamp, but reserve a
-  // new sequence, re-sign the canonical message, and retry with that sequence.
+  // On HTTP 409, reserve a new sequence and re-sign the same sample/timestamp.
   for (uint8_t conflict = 0; conflict <= kMaxSequenceConflictSkips; ++conflict) {
-    const uint32_t previousSequence =
-        preferences.getUInt("sequence", kInitialSequenceNumber);
-
+    const uint32_t previousSequence = preferences.getUInt("sequence", kInitialSequenceNumber);
     if (previousSequence == UINT32_MAX) {
       Serial.println("[SEQUENCE] Counter exhausted; refusing to wrap to zero");
       return;
@@ -242,25 +240,17 @@ void sendReading(float temperature, float humidity) {
     }
 
     String signature;
-    const String canonical = canonicalMessage(
-        sequence, temperatureMilli, humidityMilli, recordedAt);
-
+    const String canonical = canonicalMessage(sequence, temperatureMilli, humidityMilli, recordedAt);
     if (!signMessage(canonical, signature)) {
       Serial.println("[SIGN] Could not sign telemetry; sample not sent");
       return;
     }
 
-    const String body =
-        String("{\"payload_version\":1,\"shipment_id\":\"") + SHIPMENT_ID +
-        "\",\"device_id\":\"" + DEVICE_ID + "\",\"key_id\":\"" + KEY_ID +
-        "\",\"sequence_number\":" + String(sequence) +
+    // Reuse the signed fields; display floats and signature are added only to the request.
+    const String body = canonical.substring(0, canonical.length() - 1) +
         ",\"temperature_c\":" + String(temperatureMilli / 1000.0, 3) +
         ",\"humidity_pct\":" + String(humidityMilli / 1000.0, 3) +
-        ",\"temperature_milli_c\":" + String(temperatureMilli) +
-        ",\"humidity_milli_pct\":" + String(humidityMilli) +
-        ",\"recorded_at\":\"" + recordedAt +
-        "\",\"firmware_version\":\"" + kFirmwareVersion +
-        "\",\"signature\":\"" + signature + "\"}";
+        ",\"signature\":\"" + signature + "\"}";
 
     Serial.printf("[DHT22] %.2f C, %.2f %% RH\n", temperature, humidity);
     Serial.printf("[SEQUENCE] Sending sequence %lu\n",
@@ -275,17 +265,12 @@ void sendReading(float temperature, float humidity) {
     }
 
     if (status == 409) {
-      Serial.printf(
-          "[SEQUENCE] Conflict at %lu. Reserving the next number and retrying the same sample.\n",
-          static_cast<unsigned long>(sequence));
+      Serial.printf("[SEQUENCE] Conflict at %lu; retrying with next number\n",
+                    static_cast<unsigned long>(sequence));
       continue;
     }
 
-    if (status == -1) {
-      Serial.println("[HTTP] Network/transport failure; this sequence remains reserved");
-    } else {
-      Serial.printf("[HTTP] Backend rejected telemetry with HTTP %d\n", status);
-    }
+    Serial.printf("[HTTP] Send failed (%d); sequence remains reserved\n", status);
     return;
   }
 
@@ -300,53 +285,12 @@ void setup() {
   Serial.begin(115200);
   delay(500);
 
-  Serial.println();
-  Serial.println("====================================");
-  Serial.println(" ESP32 COLD CHAIN MONITORING");
-  Serial.println("====================================");
-  Serial.printf("[DHT22] DATA pin: GPIO%d\n", kDhtPin);
-
+  Serial.printf("\nESP32 COLD CHAIN MONITORING | DHT22 GPIO%d\n", kDhtPin);
   sensor.setup(kDhtPin, DHTesp::DHT22);
   WiFi.mode(WIFI_STA);
 
-  if (!preferences.begin("coldchain", false)) {
-    Serial.println("[ERROR] Could not open Preferences namespace");
-    return;
-  }
-
-  // Initialize the local counter only for a new device namespace/key.
-  // Do not reset an existing counter on every boot.
-  const String savedDevice = preferences.getString("device", "");
-  if (savedDevice != DEVICE_ID) {
-    preferences.putString("device", DEVICE_ID);
-    if (preferences.putUInt("sequence", kInitialSequenceNumber) !=
-        sizeof(uint32_t)) {
-      Serial.println("[ERROR] Could not initialize sequence counter");
-      return;
-    }
-    Serial.printf("[SEQUENCE] New local counter initialized at %lu; first attempt is %lu\n",
-                  static_cast<unsigned long>(kInitialSequenceNumber),
-                  static_cast<unsigned long>(kInitialSequenceNumber + 1));
-  } else if (!preferences.isKey("sequence")) {
-    if (preferences.putUInt("sequence", kInitialSequenceNumber) !=
-        sizeof(uint32_t)) {
-      Serial.println("[ERROR] Could not initialize missing sequence counter");
-      return;
-    }
-    Serial.printf("[SEQUENCE] Missing counter initialized at %lu\n",
-                  static_cast<unsigned long>(kInitialSequenceNumber));
-  } else {
-    Serial.printf("[SEQUENCE] Restored last reserved sequence: %lu\n",
-                  static_cast<unsigned long>(
-                      preferences.getUInt("sequence", kInitialSequenceNumber)));
-  }
-
-  if (!loadSigningKey()) {
-    Serial.println("[ERROR] Signing key initialization failed");
-    return;
-  }
-
-  ready = true;
+  ready = initializeSequence() && loadSigningKey();
+  if (!ready) return;
   Serial.println("[SYSTEM] Firmware initialization complete");
 
   if (connectWifi()) {
