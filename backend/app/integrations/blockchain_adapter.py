@@ -27,6 +27,12 @@ class PolicyAlreadyPaid(BlockchainError):
         super().__init__("POLICY_ALREADY_PAID")
 
 
+class PolicyAlreadyRefunded(BlockchainError):
+    def __init__(self, transaction_hash: str | None = None):
+        self.transaction_hash = transaction_hash
+        super().__init__("POLICY_ALREADY_REFUNDED")
+
+
 class BatchAlreadyAnchored(BlockchainError):
     def __init__(self, matches: bool, transaction_hash: str | None = None):
         self.matches = matches
@@ -75,6 +81,14 @@ class PolicySubmission:
     already_active: bool = False
 
 
+@dataclass(frozen=True)
+class PreparedRefund:
+    transaction_hash: str
+    raw_transaction: str
+    recipient: str
+    amount_wei: int
+
+
 class PolicyGateway(Protocol):
     @property
     def contract_address(self) -> str: ...
@@ -90,6 +104,13 @@ class PolicyGateway(Protocol):
         self, transaction_hash: str, shipment_id: str, buyer_wallet: str, amount_wei: int,
         confirmations: int = 1,
     ) -> str: ...
+    @property
+    def supports_early_refund(self) -> bool: ...
+    def prepare_refund(
+        self, shipment_id: str, evidence_id: str, delivered_at: datetime,
+    ) -> PreparedRefund: ...
+    def broadcast_refund(self, raw_transaction: str) -> None: ...
+    def refund_receipt_state(self, transaction_hash: str, confirmations: int = 1) -> str: ...
 
 
 class BlockchainGateway(Protocol):
@@ -420,6 +441,10 @@ class Web3PolicyAdapter:
             and self.settings.blockchain_insurer_private_key
         )
 
+    @property
+    def supports_early_refund(self) -> bool:
+        return self.settings.blockchain_insurance_contract_version == "safe_delivery_v2"
+
     def _contract(self):
         settings = self.settings
         web3 = Web3(Web3.HTTPProvider(settings.blockchain_rpc_url, request_kwargs={"timeout": 8}))
@@ -547,3 +572,69 @@ class Web3PolicyAdapter:
         ):
             return "confirmed"
         return "failed"
+
+    def prepare_refund(
+        self, shipment_id: str, evidence_id: str, delivered_at: datetime,
+    ) -> PreparedRefund:
+        web3, contract, _address = self._contract()
+        shipment_key = self._shipment_key(shipment_id)
+        policy = contract.functions.getPolicy(shipment_key).call()
+        if int(policy[4]) == 3:
+            logs = _find_event_logs(
+                web3, contract.events.PolicyRefunded, {"shipmentKey": shipment_key},
+                self.settings.blockchain_start_block or self.settings.blockchain_deploy_block,
+            )
+            tx_hash = Web3.to_hex(logs[-1]["transactionHash"]) if logs else None
+            raise PolicyAlreadyRefunded(tx_hash)
+        if int(policy[4]) == 2:
+            raise BlockchainError("POLICY_ALREADY_PAID")
+        if int(policy[4]) != 1:
+            raise BlockchainError("POLICY_NOT_ACTIVE")
+
+        if delivered_at.tzinfo is None:
+            delivered_at = delivered_at.replace(tzinfo=timezone.utc)
+        if self.supports_early_refund:
+            account = web3.eth.account.from_key(self.settings.blockchain_oracle_private_key)
+            if contract.functions.oracle().call().lower() != account.address.lower():
+                raise BlockchainError("ORACLE_MISMATCH")
+            fn = contract.functions.completeSafeDelivery(
+                shipment_key, bytes(Web3.keccak(text=evidence_id)), int(delivered_at.timestamp())
+            )
+        else:
+            if int(datetime.now(timezone.utc).timestamp()) <= int(policy[3]):
+                raise BlockchainError("REFUND_WAITING_EXPIRY")
+            if not self.settings.blockchain_insurer_private_key:
+                raise BlockchainError("INSURER_SIGNER_NOT_CONFIGURED")
+            account = web3.eth.account.from_key(self.settings.blockchain_insurer_private_key)
+            if account.address.lower() != str(policy[0]).lower():
+                raise BlockchainError("INSURER_MISMATCH")
+            fn = contract.functions.refundExpiredPolicy(shipment_key)
+
+        gas_limit = _estimate_gas_limit(fn, {"from": account.address}, fallback=500_000)
+        tx = fn.build_transaction({
+            "from": account.address,
+            "nonce": web3.eth.get_transaction_count(account.address, "pending"),
+            "chainId": self.settings.blockchain_chain_id,
+            "gas": gas_limit,
+            **_tx_fee_fields(web3),
+        })
+        signed = account.sign_transaction(tx)
+        return PreparedRefund(
+            Web3.to_hex(signed.hash), Web3.to_hex(signed.raw_transaction),
+            Web3.to_checksum_address(policy[0]), int(policy[2]),
+        )
+
+    def broadcast_refund(self, raw_transaction: str) -> None:
+        web3, _contract, _address = self._contract()
+        web3.eth.send_raw_transaction(bytes.fromhex(raw_transaction.removeprefix("0x")))
+
+    def refund_receipt_state(self, transaction_hash: str, confirmations: int = 1) -> str:
+        web3, _contract, _address = self._contract()
+        try:
+            receipt = web3.eth.get_transaction_receipt(transaction_hash)
+        except TransactionNotFound:
+            return "missing"
+        if receipt["status"] != 1:
+            return "failed"
+        observed = web3.eth.block_number - receipt["blockNumber"] + 1
+        return "confirmed" if observed >= confirmations else "pending"

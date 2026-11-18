@@ -471,6 +471,17 @@
     },
     {
       "inputs": [
+        { "internalType": "bytes32", "name": "_shipmentKey", "type": "bytes32" },
+        { "internalType": "bytes32", "name": "_evidenceHash", "type": "bytes32" },
+        { "internalType": "uint256", "name": "_deliveredAt", "type": "uint256" }
+      ],
+      "name": "completeSafeDelivery",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
         {
           "internalType": "bytes32",
           "name": "_shipmentKey",

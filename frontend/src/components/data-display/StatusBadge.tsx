@@ -58,6 +58,11 @@ export const ShipmentStatusBadge: React.FC<ShipmentStatusBadgeProps> = ({ status
       variant = 'danger';
       icon = <ShieldAlert size={12} />;
       break;
+    case 'delivered':
+      label = 'Đã giao hàng';
+      variant = 'success';
+      icon = <CheckCircle2 size={12} />;
+      break;
   }
 
   return (

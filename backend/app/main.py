@@ -17,13 +17,14 @@ from app.api.routes import router
 from app.core.config import Settings, load_settings, validate_auth_config
 from app.core.database import make_engine, make_session_factory
 from app.integrations.blockchain_adapter import BlockchainError
-from app.services.shipments import ShipmentDeleteConflict, ShipmentNotFound
+from app.services.shipments import ShipmentDeleteConflict, ShipmentNotFound, ShipmentStateConflict
 from app.services.clock import SYSTEM_CLOCK
 from app.services.blockchain_outbox import configured_coordinator
 from app.services.google_maps_service import GoogleMapsService, LocationResolveError
 from app.services.integrity_anchor_service import configured_integrity_coordinator
 from app.services.insurance_evidence import configured_evidence_coordinator
 from app.services.policy_blockchain import configured_policy_coordinator
+from app.services.delivery_settlement import configured_delivery_settlement
 from app.services.signed_ingestion import IngestionError
 from app.services.batch_service import BatchServiceError
 from app.services.auth import AuthError, LoginRateLimiter
@@ -147,6 +148,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.clock = SYSTEM_CLOCK
     app.state.blockchain = configured_coordinator(settings)
     app.state.policy_blockchain = configured_policy_coordinator(settings)
+    app.state.delivery_settlement = configured_delivery_settlement(
+        settings, app.state.policy_blockchain,
+    )
     app.state.google_maps_service = GoogleMapsService(
         api_key=settings.google_maps_api_key,
         allow_nominatim_fallback=settings.geocoding_fallback_nominatim,
@@ -202,6 +206,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(ShipmentDeleteConflict)
     async def shipment_delete_conflict(_request: Request, exc: ShipmentDeleteConflict):
+        return error_response(409, exc.code, exc.message)
+
+    @app.exception_handler(ShipmentStateConflict)
+    async def shipment_state_conflict(_request: Request, exc: ShipmentStateConflict):
         return error_response(409, exc.code, exc.message)
 
     @app.exception_handler(IngestionError)

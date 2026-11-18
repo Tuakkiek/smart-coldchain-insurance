@@ -32,7 +32,7 @@ def test_existing_schema_upgrades_and_downgrades_without_losing_legacy_rows(tmp_
                 "integration_outbox", "alembic_version"} <= table_names
         with engine.connect() as connection:
             assert connection.scalar(select(Shipment.name)) == "MIGRATION"
-            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "20261118_08"
+            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "20261119_09"
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
         with engine.begin() as connection:

@@ -4,13 +4,14 @@ import { Activity, ArrowLeft, CheckCircle2, ChevronDown, Cpu, ExternalLink, Laye
 import { getShipmentDevices } from '../api/devices';
 import { getShipmentEvents } from '../api/events';
 import { getIntegrityBatches, verifyBatch } from '../api/integrity';
-import { getShipmentById, getShipmentTelemetry, retryShipmentPolicy } from '../api/shipments';
+import { completeShipment, getShipmentById, getShipmentTelemetry, retryShipmentPolicy } from '../api/shipments';
 import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { EventTimeline } from '../components/data-display/EventTimeline';
 import { AnchorStatusBadge, DeviceOnlineBadge, InsuranceStatusBadge, ShipmentStatusBadge, SignatureStatusBadge, VerificationStatusBadge } from '../components/data-display/StatusBadge';
 import { TelemetryChart } from '../components/data-display/TelemetryChart';
 import { EmptyState } from '../components/feedback/EmptyState';
 import { LoadingState } from '../components/feedback/LoadingState';
+import { ConfirmModal } from '../components/feedback/ConfirmModal';
 import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 import { BatchDetailModal } from '../components/integrity/BatchDetailModal';
 import { BatchVerificationModal } from '../components/integrity/BatchVerificationModal';
@@ -40,6 +41,8 @@ export const ShipmentDetailPage: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [assignOpen, setAssignOpen] = useState(false);
   const [retryingPolicy, setRetryingPolicy] = useState(false);
+  const [completeOpen, setCompleteOpen] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [verifyingBatchId, setVerifyingBatchId] = useState<string | null>(null);
   const [verificationResult, setVerificationResult] = useState<BatchVerifyResultOut | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
@@ -111,6 +114,23 @@ export const ShipmentDetailPage: React.FC = () => {
     } finally { setRetryingPolicy(false); }
   };
 
+  const confirmCompletion = async () => {
+    if (!id || completing) return;
+    setCompleting(true);
+    try {
+      const updated = await completeShipment(id);
+      setShipment(updated);
+      setCompleteOpen(false);
+      setAutoRefresh(false);
+      toast.success(updated.refund_status === 'CONFIRMED'
+        ? 'Đã giao hàng và hoàn ký quỹ bảo hiểm.'
+        : 'Đã xác nhận giao hàng. Backend đang xử lý đánh giá cuối cùng.');
+      void fetchData(true);
+    } catch (error: unknown) {
+      if (!isRequestCancelled(error)) toast.error(formatApiErrorMessage(error, 'Không thể xác nhận giao hàng.'));
+    } finally { setCompleting(false); }
+  };
+
   if (loading && !shipment) return <LoadingState fullPage message="Đang tải chi tiết lô hàng..." />;
   if (loadFailed || !shipment) return <><Button variant="tertiary" size="sm" onClick={() => navigate('/shipments')} icon={<ArrowLeft size={16} />}>Quay lại</Button><EmptyState title="Chưa thể tải lô hàng" description="Lô hàng không tồn tại hoặc Backend đang tạm gián đoạn." actionText="Thử lại" onAction={() => fetchData()} /></>;
 
@@ -142,11 +162,22 @@ export const ShipmentDetailPage: React.FC = () => {
         <div className="flex-row items-center gap-3">
           <label style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}><input type="checkbox" checked={autoRefresh} onChange={(event) => setAutoRefresh(event.target.checked)} /> Tự động (6s)</label>
           <Button size="sm" onClick={() => fetchData(true, true)} loading={refreshing} icon={<RefreshCw size={14} />}>Làm mới</Button>
-          <Button variant="primary" size="sm" onClick={() => setAssignOpen(true)} icon={<Link2 size={14} />}>Gán thiết bị</Button>
+          {shipment.status !== 'delivered' && <Button variant="primary" size="sm" onClick={() => setAssignOpen(true)} icon={<Link2 size={14} />}>Gán thiết bị</Button>}
+          {shipment.status !== 'delivered' && <Button variant="primary" size="sm" onClick={() => setCompleteOpen(true)} icon={<CheckCircle2 size={14} />}>Xác nhận đã giao hàng</Button>}
         </div>
       </div>
 
       <PageHeader title={shipment.name} description={`${shipment.cargo_type} · ${shipment.origin.name} → ${shipment.destination.name}`} action={<div className="flex-row gap-2"><ShipmentStatusBadge status={shipment.status} /><InsuranceStatusBadge status={shipment.insurance.status} payoutStatus={shipment.insurance.payout_status} /></div>} />
+
+      {shipment.status === 'delivered' && <Card title="Kết quả giao hàng" description="Telemetry đã đóng; lịch sử và bằng chứng vẫn được giữ nguyên." style={{ marginBottom: 20 }}>
+        <div className="detail-list">
+          <div className="detail-item"><div className="compact-label">Thời điểm hoàn tất</div><div className="compact-meta">{shipment.delivered_at ? new Date(shipment.delivered_at).toLocaleString('vi-VN') : '—'}</div></div>
+          <div className="detail-item"><div className="compact-label">Đánh giá cuối</div><Badge variant={shipment.delivery_result === 'SAFE' ? 'success' : shipment.delivery_result === 'VIOLATED' ? 'danger' : 'warning'}>{shipment.delivery_result || 'Đang đánh giá'}</Badge><div className="compact-meta">{shipment.delivery_result_reason || '—'}</div></div>
+          <div className="detail-item"><div className="compact-label">Hoàn ký quỹ</div><Badge variant={shipment.refund_status === 'CONFIRMED' ? 'success' : shipment.refund_status === 'FAILED' ? 'danger' : 'neutral'}>{shipment.refund_status || '—'}</Badge></div>
+          <div className="detail-item"><div className="compact-label">Tiến độ</div><div className="vital-value">100%</div></div>
+        </div>
+        {transactionLink(shipment.refund_transaction_hash) && <a className="external-link" href={transactionLink(shipment.refund_transaction_hash)!} target="_blank" rel="noreferrer">Xem giao dịch hoàn tiền <ExternalLink size={12} /></a>}
+      </Card>}
 
       {failedBatches.length > 0 && <IntegrityViolationAlert failedBatches={failedBatches} onVerifyBatch={verifyIntegrity} verifyingBatchId={verifyingBatchId} onSelectBatch={(batch) => { setSelectedBatch(batch); setDetailOpen(true); }} />}
 
@@ -210,6 +241,18 @@ export const ShipmentDetailPage: React.FC = () => {
       <BatchVerificationModal isOpen={verifyOpen} onClose={() => setVerifyOpen(false)} result={verificationResult} batch={batches.find((batch) => batch.batch_id === verifyingBatchId) || selectedBatch} loading={Boolean(verifyingBatchId)} />
       <BatchDetailModal batch={selectedBatch} isOpen={detailOpen} onClose={() => setDetailOpen(false)} onVerify={verifyIntegrity} isVerifying={verifyingBatchId === selectedBatch?.batch_id} />
       <AssignDeviceModal isOpen={assignOpen} initialShipmentId={shipment.id} onClose={() => setAssignOpen(false)} onSuccess={(_device, message) => { toast.success(message); void fetchData(true); }} />
+      <ConfirmModal
+        isOpen={completeOpen}
+        title="Xác nhận đã giao hàng?"
+        message={<>Chuyến hàng <strong>{shipment.name}</strong> sẽ được đánh dấu hoàn tất.</>}
+        description="Backend sẽ đóng telemetry, đánh giá bằng chứng cuối và chỉ hoàn ký quỹ khi policy an toàn. Thao tác này không thể mở lại chuyến hàng."
+        confirmLabel="Xác nhận đã giao hàng"
+        cancelLabel="Hủy"
+        variant="primary"
+        loading={completing}
+        onConfirm={confirmCompletion}
+        onCancel={() => !completing && setCompleteOpen(false)}
+      />
     </div>
   );
 };

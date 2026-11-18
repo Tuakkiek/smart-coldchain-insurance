@@ -31,6 +31,12 @@ class ShipmentDeleteConflict(Exception):
         super().__init__(message)
 
 
+class ShipmentStateConflict(Exception):
+    def __init__(self, code: str, message: str):
+        self.code, self.message = code, message
+        super().__init__(message)
+
+
 def ensure_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
@@ -219,6 +225,11 @@ def add_telemetry(
     ).one_or_none()
     if shipment is None:
         raise ShipmentNotFound
+    if shipment.status == "delivered":
+        session.rollback()
+        raise ShipmentStateConflict(
+            "SHIPMENT_COMPLETED", "Shipment is completed and no longer accepts telemetry",
+        )
     sample_count = session.scalar(
         select(func.count(Telemetry.id)).where(Telemetry.shipment_id == shipment_id)
     ) or 0
@@ -402,7 +413,7 @@ def shipment_dict(
         })
 
     status = shipment.status
-    if latest and utc(clock.now()) - utc(latest.received_at) > timedelta(minutes=gap_minutes):
+    if shipment.status != "delivered" and latest and utc(clock.now()) - utc(latest.received_at) > timedelta(minutes=gap_minutes):
         status = "sensor_data_gap"
     result: dict = {
         "id": shipment.id,
@@ -416,10 +427,24 @@ def shipment_dict(
         "temp_max_c": shipment.temp_max_c,
         "violation_duration_minutes": shipment.violation_duration_minutes,
         "latest_telemetry": latest_dict,
-        "location": location_dict(latest) if latest else None,
+        "location": ({
+            "latitude": shipment.destination_latitude,
+            "longitude": shipment.destination_longitude,
+            "location_source": "admin_simulated",
+            "progress_pct": 100.0,
+        } if shipment.status == "delivered" else (location_dict(latest) if latest else None)),
         "insurance": insurance_data,
         "blockchain": blockchain,
         "created_at": ensure_utc(shipment.created_at),
+        "delivered_at": ensure_utc(shipment.delivered_at),
+        "delivery_source": shipment.delivery_source,
+        "telemetry_closed": shipment.status == "delivered",
+        "delivery_result": shipment.delivery_result,
+        "delivery_result_reason": shipment.delivery_result_reason,
+        "refund_status": shipment.refund_status,
+        "refund_transaction_hash": shipment.refund_transaction_hash,
+        "refunded_amount_wei": shipment.refunded_amount_wei,
+        "refund_recipient_address": shipment.refund_recipient_address,
     }
     if shipment.buyer_wallet_address is not None:
         result["buyer_wallet_address"] = shipment.buyer_wallet_address

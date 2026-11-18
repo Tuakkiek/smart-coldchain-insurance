@@ -75,6 +75,14 @@ class Shipment(Base):
     blockchain_network: Mapped[str | None] = mapped_column(String(100))
     transaction_hash: Mapped[str | None] = mapped_column(String(66))
     confirmation_status: Mapped[str | None] = mapped_column(String(32))
+    delivered_at: Mapped[datetime | None] = mapped_column(UTC_DATETIME)
+    delivery_source: Mapped[str | None] = mapped_column(String(32))
+    delivery_result: Mapped[str | None] = mapped_column(String(32))
+    delivery_result_reason: Mapped[str | None] = mapped_column(String(255))
+    refund_status: Mapped[str | None] = mapped_column(String(32))
+    refund_transaction_hash: Mapped[str | None] = mapped_column(String(66))
+    refunded_amount_wei: Mapped[str | None] = mapped_column(String(78))
+    refund_recipient_address: Mapped[str | None] = mapped_column(String(42))
     created_at: Mapped[datetime] = mapped_column(UTC_DATETIME, nullable=False, default=utc_now)
 
 

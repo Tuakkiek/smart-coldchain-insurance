@@ -323,7 +323,7 @@ class DevicesOut(BaseModel):
 class LocationOut(BaseModel):
     latitude: float
     longitude: float
-    location_source: Literal["backend_simulated"]
+    location_source: Literal["backend_simulated", "admin_simulated"]
     progress_pct: float
 
 
@@ -370,7 +370,7 @@ class ShipmentOut(BaseModel):
     shipment_id: str
     name: str
     cargo_type: str
-    status: Literal["created", "in_transit", "sensor_data_gap", "insurance_triggered"]
+    status: Literal["created", "in_transit", "sensor_data_gap", "insurance_triggered", "delivered"]
     origin: Place
     destination: Place
     temp_min_c: float
@@ -381,6 +381,15 @@ class ShipmentOut(BaseModel):
     location: LocationOut | None
     insurance: InsuranceOut
     blockchain: BlockchainOut | None
+    delivered_at: datetime | None = None
+    delivery_source: Literal["admin_simulated"] | None = None
+    telemetry_closed: bool = False
+    delivery_result: Literal["SAFE", "VIOLATED", "INCOMPLETE"] | None = None
+    delivery_result_reason: str | None = None
+    refund_status: Literal["NOT_APPLICABLE", "PENDING", "WAITING_EXPIRY", "CONFIRMED", "FAILED"] | None = None
+    refund_transaction_hash: str | None = None
+    refunded_amount_wei: str | None = None
+    refund_recipient_address: str | None = None
     created_at: datetime
 
 

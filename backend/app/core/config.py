@@ -135,6 +135,7 @@ class Settings:
     blockchain_contract_address: str = ""
     blockchain_oracle_private_key: str = ""
     blockchain_insurer_private_key: str = ""
+    blockchain_insurance_contract_version: str = "legacy"
     blockchain_default_policy_expiry_days: int = 30
     blockchain_deploy_block: int = 0
     blockchain_abi_path: Path = DEFAULT_ABI_PATH
@@ -172,6 +173,8 @@ class Settings:
         )
         if self.device_provisioning_mode not in {"local", "manual"}:
             raise ValueError("DEVICE_PROVISIONING_MODE must be local or manual")
+        if self.blockchain_insurance_contract_version not in {"legacy", "safe_delivery_v2"}:
+            raise ValueError("BLOCKCHAIN_INSURANCE_CONTRACT_VERSION must be legacy or safe_delivery_v2")
         if self.app_env == "production" and self.device_provisioning_mode == "local":
             raise ValueError("Local ESP32 private keys cannot be generated in production; use manual mode")
         config_path = Path(self.device_config_path)
@@ -403,6 +406,9 @@ def load_settings() -> Settings:
         blockchain_contract_address=contract_address,
         blockchain_oracle_private_key=oracle_private_key,
         blockchain_insurer_private_key=insurer_private_key,
+        blockchain_insurance_contract_version=os.getenv(
+            "BLOCKCHAIN_INSURANCE_CONTRACT_VERSION", "legacy"
+        ).strip().lower(),
         blockchain_default_policy_expiry_days=default_policy_expiry_days,
         blockchain_deploy_block=deploy_block,
         blockchain_abi_path=abi_path,

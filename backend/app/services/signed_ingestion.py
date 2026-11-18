@@ -160,8 +160,10 @@ def set_assignment(session: Session, device_id: str, shipment_id: str, active: b
     # Serialize with signed ingestion and other assignment/key changes on MySQL.
     device = get_device(session, device_id, lock=True)
     _shipment_id(shipment_id)
-    shipments.get_shipment(session, shipment_id)
+    target_shipment = shipments.get_shipment(session, shipment_id)
     if active:
+        if target_shipment.status == "delivered":
+            raise IngestionError(409, "SHIPMENT_COMPLETED", "Completed shipment cannot accept a device assignment")
         if device.status != "active":
             raise IngestionError(403, "DEVICE_NOT_ACTIVE", "Device is not active")
         other = session.scalar(select(DeviceAssignment).where(
