@@ -687,7 +687,7 @@ export const DevicesPage: React.FC = () => {
 
                         {/* Assigned Shipment */}
                         <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                          {dev.assigned_shipment_code ? (
+                          {dev.assigned_shipment_id ? (
                             <Link
                               to={`/shipments/${dev.assigned_shipment_id}`}
                               onClick={(e) => e.stopPropagation()}
@@ -699,7 +699,7 @@ export const DevicesPage: React.FC = () => {
                                 fontWeight: 500,
                               }}
                             >
-                              <Badge variant="info">{dev.assigned_shipment_code}</Badge>
+                              <Badge variant="info">{dev.assigned_shipment_code || dev.assigned_shipment_id}</Badge>
                             </Link>
                           ) : (
                             <span
@@ -887,9 +887,9 @@ export const DevicesPage: React.FC = () => {
                 <div>
                   <div style={{ color: 'var(--color-text-tertiary)' }}>Lô hàng đang gán</div>
                   <div style={{ fontWeight: 600 }}>
-                    {selectedDevice.assigned_shipment_code ? (
+                    {selectedDevice.assigned_shipment_id ? (
                       <Link to={`/shipments/${selectedDevice.assigned_shipment_id}`}>
-                        {selectedDevice.assigned_shipment_code}
+                        {selectedDevice.assigned_shipment_code || selectedDevice.assigned_shipment_id}
                       </Link>
                     ) : (
                       'Chưa gán'

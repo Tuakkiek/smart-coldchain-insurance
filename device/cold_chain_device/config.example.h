@@ -13,10 +13,3 @@ static const char DEVICE_PRIVATE_KEY_PEM[] = R"PEM(-----BEGIN EC PRIVATE KEY----
 GENERATED_BY_LOCAL_BACKEND
 -----END EC PRIVATE KEY-----
 )PEM";
-
-// PEM of the CA that validates API_BASE_URL. Keep this current when the
-// service certificate chain changes. Do not use setInsecure().
-static const char TLS_ROOT_CA_PEM[] = R"PEM(-----BEGIN CERTIFICATE-----
-PASTE_API_TLS_ROOT_CA_HERE
------END CERTIFICATE-----
-)PEM";

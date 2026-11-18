@@ -44,31 +44,35 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
   const [isConflict409, setIsConflict409] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     if (isOpen) {
       setError(null);
       setIsConflict409(false);
       setLoading(true);
+      setDevices([]);
+      setShipments([]);
+      setSelectedDeviceId('');
+      setSelectedShipmentId('');
 
       Promise.all([getDevices(), getShipments()])
         .then(([devicesRes, shipmentsRes]) => {
+          if (cancelled) return;
           setDevices(devicesRes.items);
           setShipments(shipmentsRes.items);
 
-          if (initialDeviceId) {
-            setSelectedDeviceId(initialDeviceId);
-          } else if (devicesRes.items.length > 0) {
-            setSelectedDeviceId(devicesRes.items[0].device_id);
-          }
-
-          if (shipmentsRes.items.length > 0) {
-            setSelectedShipmentId(shipmentsRes.items[0].id);
-          }
+          const initialDevice = devicesRes.items.find((device) => device.device_id === initialDeviceId);
+          setSelectedDeviceId(initialDevice?.device_id ?? devicesRes.items[0]?.device_id ?? '');
+          setSelectedShipmentId(shipmentsRes.items[0]?.id ?? '');
         })
         .catch((err) => {
+          if (cancelled) return;
           setError(err instanceof Error ? err.message : 'Lỗi tải danh mục thiết bị và chuyến hàng');
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     }
+    return () => { cancelled = true; };
   }, [isOpen, initialDeviceId]);
 
   // Lock background scroll when modal is open
@@ -99,10 +103,12 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
 
   const currentDevice = devices.find((d) => d.device_id === selectedDeviceId);
   const currentAssignedShipmentId = currentDevice?.assigned_shipment_id;
-  const currentAssignedShipmentCode = currentDevice?.assigned_shipment_code;
+  const currentAssignedShipmentCode = currentDevice?.assigned_shipment_code
+    || shipments.find((shipment) => shipment.id === currentAssignedShipmentId)?.code;
 
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || submitting) return;
     if (!selectedDeviceId) {
       const msg = 'Vui lòng chọn thiết bị';
       setError(msg);
@@ -155,7 +161,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
   };
 
   const handleUnassignOld = async () => {
-    if (!currentAssignedShipmentId) return;
+    if (loading || submitting || !selectedDeviceId || !currentAssignedShipmentId) return;
     setSubmitting(true);
     setError(null);
     setIsConflict409(false);
@@ -373,7 +379,9 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
             >
               {devices.map((d) => (
                 <option key={d.device_id} value={d.device_id}>
-                  {d.device_id} — {d.device_name || 'Cold Chain Sensor'} {d.assigned_shipment_code ? `[Đang gán: ${d.assigned_shipment_code}]` : '[Chưa gán]'}
+                  {d.device_id} — {d.device_name || 'Cold Chain Sensor'} {d.assigned_shipment_id
+                    ? `[Đang gán: ${d.assigned_shipment_code || shipments.find((s) => s.id === d.assigned_shipment_id)?.code || d.assigned_shipment_id}]`
+                    : '[Chưa gán]'}
                 </option>
               ))}
             </select>
@@ -529,7 +537,7 @@ export const AssignDeviceModal: React.FC<AssignDeviceModalProps> = ({
               type="submit"
               variant="primary"
               loading={submitting}
-              disabled={loading || submitting}
+              disabled={loading || submitting || !selectedDeviceId || !selectedShipmentId}
             >
               {submitting ? 'Đang xử lý...' : 'Liên Kết Chuyến Hàng'}
             </Button>

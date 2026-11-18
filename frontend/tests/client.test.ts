@@ -146,6 +146,16 @@ describe('Bearer API client with refresh-cookie integration', () => {
     expect(getActiveSession()).toBeNull();
   });
 
+  it('keeps a live access token after a temporary refresh outage', async () => {
+    const token = tokenFor('admin', 10_000);
+    startSession(token);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: { message: 'Starting' } }, 503));
+
+    await expect(apiClient.get('/api/v1/devices')).rejects.toMatchObject({ status: 503 });
+    expect(getActiveSession()?.accessToken).toBe(token);
+    expect(localStorage.getItem('coldchain_admin_session')).toBe(token);
+  });
+
   it('never refreshes or retries login failures', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: { code: 'UNAUTHORIZED', message: 'Incorrect' } }, 401));
     await expect(loginAdmin('admin', 'wrong')).rejects.toMatchObject({ status: 401 });

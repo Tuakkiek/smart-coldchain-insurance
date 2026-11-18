@@ -268,22 +268,38 @@ def test_auth_origin_and_credentialed_cors_are_enforced(refresh_api):
     assert preflight.headers["access-control-allow-credentials"] == "true"
 
 
-def test_production_cookie_is_secure(refresh_api):
+@pytest.mark.parametrize("same_site,frontend_origin,backend_origin", [
+    ("lax", "https://app.example.com", "https://api.example.com"),
+    ("none", "https://smart-coldchain-insurance-ea1m.onrender.com", "https://smart-coldchain-insurance.onrender.com"),
+])
+def test_production_cookie_is_secure(refresh_api, same_site, frontend_origin, backend_origin):
     _client, app, development = refresh_api
     production = replace(
         development,
         database_url=development.database_url,
         app_env="production",
         refresh_cookie_secure=True,
-        cors_origins=("https://app.example.com",),
+        refresh_cookie_samesite=same_site,
+        cors_origins=(frontend_origin,),
     )
     prod_app = create_app(production)
     Base.metadata.create_all(prod_app.state.engine)
-    with TestClient(prod_app, base_url="https://api.example.com") as client:
-        response = _login(client, "https://app.example.com")
+    with TestClient(prod_app, base_url=backend_origin) as client:
+        response = _login(client, frontend_origin)
         assert response.status_code == 200
         assert "secure" in response.headers["set-cookie"].lower()
         assert "httponly" in response.headers["set-cookie"].lower()
+        assert f"samesite={same_site}" in response.headers["set-cookie"].lower()
+        assert "domain=" not in response.headers["set-cookie"].lower()
+        assert response.headers["access-control-allow-origin"] == frontend_origin
+        assert response.headers["access-control-allow-credentials"] == "true"
+        refreshed = client.post("/api/v1/auth/refresh", headers={"Origin": frontend_origin})
+        assert refreshed.status_code == 200
+        assert f"samesite={same_site}" in refreshed.headers["set-cookie"].lower()
+        logout = client.post("/api/v1/auth/logout", headers={"Origin": frontend_origin})
+        assert logout.status_code == 204
+        assert "max-age=0" in logout.headers["set-cookie"].lower()
+        assert f"samesite={same_site}" in logout.headers["set-cookie"].lower()
     prod_app.state.engine.dispose()
 
 
