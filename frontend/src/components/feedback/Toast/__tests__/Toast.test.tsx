@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { ToastProvider, useToast } from '../ToastContext';
+import { formatApiErrorMessage, isRequestCancelled } from '../errorMessage';
+import { ApiError } from '../../../../api/client';
 
 // Helper component to trigger toasts in tests
 const TestComponent: React.FC<{
@@ -181,5 +183,26 @@ describe('Toast Notification System', () => {
     expect(handleAction).toHaveBeenCalledTimes(1);
     // Clicking action also dismisses the toast
     expect(screen.queryByText('Có cập nhật mới')).not.toBeInTheDocument();
+  });
+});
+
+describe('Toast error message formatting', () => {
+  it('detects cancelled requests and returns empty string', () => {
+    const cancelled = new ApiError('Yêu cầu đã được hủy.', 0, 'REQUEST_CANCELLED');
+    expect(isRequestCancelled(cancelled)).toBe(true);
+    expect(formatApiErrorMessage(cancelled, 'Fallback')).toBe('');
+  });
+
+  it('sanitizes technical stack/HTML errors to user-friendly fallback', () => {
+    const htmlErr = new ApiError('<html><body>502 Bad Gateway</body></html>', 502, 'HTTP_502');
+    expect(formatApiErrorMessage(htmlErr, 'Lỗi hệ thống.')).toBe('Lỗi hệ thống.');
+
+    const networkErr = new ApiError('Network failed', 0, 'NETWORK_ERROR');
+    expect(formatApiErrorMessage(networkErr, 'Fallback')).toContain('Không thể kết nối tới máy chủ Backend');
+  });
+
+  it('maps cold start errors cleanly', () => {
+    const coldStart = new ApiError('Timeout', 504, 'RENDER_COLD_START_TIMEOUT', undefined, true);
+    expect(formatApiErrorMessage(coldStart, 'Fallback')).toContain('Cold Start');
   });
 });

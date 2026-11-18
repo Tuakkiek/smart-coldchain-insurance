@@ -5,9 +5,8 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { LoadingState } from '../components/feedback/LoadingState';
-import { ErrorState } from '../components/feedback/ErrorState';
 import { EmptyState } from '../components/feedback/EmptyState';
-import { useToast } from '../components/feedback/Toast';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 import { getAllEvents } from '../api/events';
 import { EventOut, EventType } from '../types/api';
 import { BellRing, AlertTriangle, ShieldAlert, WifiOff, ArrowRight, RefreshCw } from 'lucide-react';
@@ -20,24 +19,39 @@ export const EventsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [filterType, setFilterType] = useState<string>('all');
 
-  const fetchEvents = async (isBackground = false) => {
+  const fetchEvents = async (isBackground = false, notifyManual = false) => {
     if (!isBackground && !hasLoadedOnce) {
       setLoading(true);
     } else {
       setRefreshing(true);
     }
-    setError(null);
+    setLoadFailed(false);
     try {
       const data = await getAllEvents();
       setEvents(data.items);
       setFiltered(data.items);
       setHasLoadedOnce(true);
+      if (notifyManual) {
+        toast.success('Đã làm mới dòng sự kiện.', { title: 'Làm mới thành công' });
+      }
     } catch (err: unknown) {
-      if (!isBackground && !hasLoadedOnce) {
-        setError(err instanceof Error ? err.message : 'Lỗi không thể tải danh sách sự kiện');
+      if (isRequestCancelled(err)) return;
+      const msg = formatApiErrorMessage(err, 'Không thể tải danh sách sự kiện. Vui lòng thử lại.');
+      if (!hasLoadedOnce) {
+        setLoadFailed(true);
+      }
+      if (msg && (!isBackground || notifyManual)) {
+        toast.error(msg, {
+          title: 'Lỗi tải sự kiện',
+          dedupKey: 'events-fetch-error',
+          action: {
+            label: 'Thử lại',
+            onClick: () => fetchEvents(false),
+          },
+        });
       }
     } finally {
       setLoading(false);
@@ -61,13 +75,18 @@ export const EventsPage: React.FC = () => {
     return <LoadingState fullPage message="Đang tải dòng sự kiện..." />;
   }
 
-  if (error && !hasLoadedOnce) {
+  if (loadFailed && !hasLoadedOnce) {
     return (
-      <ErrorState
-        title="Lỗi tải sự kiện"
-        message={error}
-        onRetry={() => fetchEvents(false)}
-      />
+      <div>
+        <PageHeader title="Dòng Sự kiện & Vi phạm" />
+        <EmptyState
+          title="Chưa thể tải dòng sự kiện"
+          description="Vui lòng kiểm tra kết nối máy chủ Backend và thử tải lại."
+          actionText="Thử lại"
+          onAction={() => fetchEvents(false)}
+          icon={<BellRing size={24} />}
+        />
+      </div>
     );
   }
 
@@ -101,10 +120,7 @@ export const EventsPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => {
-              fetchEvents(true);
-              toast.info('Đang làm mới dòng sự kiện...', { title: 'Làm mới', duration: 2500 });
-            }}
+            onClick={() => fetchEvents(true, true)}
             loading={refreshing}
             disabled={loading || refreshing}
             icon={<RefreshCw size={14} />}

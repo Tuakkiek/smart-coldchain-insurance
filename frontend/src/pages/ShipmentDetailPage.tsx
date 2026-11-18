@@ -12,7 +12,7 @@ import {
   DeviceOnlineBadge,
 } from '../components/data-display/StatusBadge';
 import { LoadingState } from '../components/feedback/LoadingState';
-import { ErrorState } from '../components/feedback/ErrorState';
+import { EmptyState } from '../components/feedback/EmptyState';
 import { TelemetryChart } from '../components/data-display/TelemetryChart';
 import { EventTimeline } from '../components/data-display/EventTimeline';
 import { getShipmentById, getShipmentTelemetry } from '../api/shipments';
@@ -33,7 +33,7 @@ import { IntegrityViolationAlert } from '../components/integrity/IntegrityViolat
 import { BatchVerificationModal } from '../components/integrity/BatchVerificationModal';
 import { BatchDetailModal } from '../components/integrity/BatchDetailModal';
 import { SendTelemetryModal } from '../components/shipments/SendTelemetryModal';
-import { useToast } from '../components/feedback/Toast';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 import {
   ArrowLeft,
   MapPin,
@@ -68,35 +68,32 @@ export const ShipmentDetailPage: React.FC = () => {
   const [batches, setBatches] = useState<IntegrityBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [isStale, setIsStale] = useState(false);
-  const [staleError, setStaleError] = useState<string | null>(null);
 
   // Send Telemetry Modal
   const [isSendTelemetryOpen, setIsSendTelemetryOpen] = useState(false);
-  const [telemetrySuccessMsg, setTelemetrySuccessMsg] = useState<string | null>(null);
 
   // Batch Verification & Detail Modals
   const [verifyingBatchId, setVerifyingBatchId] = useState<string | null>(null);
   const [verificationResult, setVerificationResult] = useState<BatchVerifyResultOut | null>(null);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [isVerifyingLoading, setIsVerifyingLoading] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState<IntegrityBatch | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   const isMountedRef = useRef(true);
+  const wasStaleRef = useRef(false);
 
-  const fetchData = async (isBackground = false) => {
+  const fetchData = async (isBackground = false, notifyManual = false) => {
     if (!id) return;
     if (!isBackground) {
       setLoading(true);
     } else {
       setRefreshing(true);
     }
-    setError(null);
+    setLoadFailed(false);
     try {
       const [shipmentData, telemetryData, eventsData, batchesData, devicesData] = await Promise.all([
         getShipmentById(id),
@@ -137,16 +134,38 @@ export const ShipmentDetailPage: React.FC = () => {
         setDeviceHealth(devHealth);
         setShipmentDevices(devicesData.items);
         setBatches(batchesData.items);
-        setIsStale(false);
-        setStaleError(null);
+        wasStaleRef.current = false;
+        if (notifyManual) {
+          toast.success('Đã cập nhật chi tiết lô hàng.', { title: 'Làm mới thành công' });
+        }
       }
     } catch (err: unknown) {
+      if (isRequestCancelled(err)) return;
       if (isMountedRef.current) {
+        const msg = formatApiErrorMessage(err, 'Không thể tải chi tiết lô hàng. Vui lòng thử lại.');
         if (!isBackground) {
-          setError(err instanceof Error ? err.message : 'Lỗi tải chi tiết lô hàng');
-        } else {
-          setIsStale(true);
-          setStaleError(err instanceof Error ? err.message : 'Lỗi kết nối khi polling');
+          setLoadFailed(true);
+          if (msg) {
+            toast.error(msg, {
+              title: 'Lỗi tải chi tiết lô hàng',
+              dedupKey: `shipment-detail-error-${id}`,
+              action: { label: 'Thử lại', onClick: () => fetchData(false) },
+            });
+          }
+        } else if (notifyManual) {
+          if (msg) {
+            toast.error(msg, { title: 'Lỗi làm mới lô hàng' });
+          }
+        } else if (!wasStaleRef.current) {
+          wasStaleRef.current = true;
+          toast.warning(
+            'Đồng bộ dữ liệu tự động tạm thời gián đoạn. Đang hiển thị dữ liệu gần nhất.',
+            {
+              title: 'Chưa cập nhật dữ liệu mới',
+              dedupKey: `shipment-detail-polling-error-${id}`,
+              action: { label: 'Thử lại', onClick: () => fetchData(true, true) },
+            }
+          );
         }
       }
     } finally {
@@ -162,8 +181,6 @@ export const ShipmentDetailPage: React.FC = () => {
     setIsVerifyingLoading(true);
     setIsVerifyModalOpen(true);
     setVerificationResult(null);
-    setVerifyError(null);
-
 
     try {
       const result = await verifyBatch(batchId);
@@ -198,12 +215,16 @@ export const ShipmentDetailPage: React.FC = () => {
       }
     } catch (err: unknown) {
       if (isMountedRef.current) {
-        const errorMsg =
-          err instanceof Error
-            ? err.message
-            : 'Lỗi kết nối hoặc quyền truy cập khi gửi yêu cầu xác minh tới Backend';
-        setVerifyError(errorMsg);
-        toast.error(errorMsg, { title: 'Lỗi xác minh Merkle' });
+        setIsVerifyModalOpen(false);
+        if (!isRequestCancelled(err)) {
+          const errorMsg = formatApiErrorMessage(
+            err,
+            'Không thể gửi yêu cầu xác minh tới Backend. Trạng thái toàn vẹn batch vẫn được giữ nguyên.'
+          );
+          if (errorMsg) {
+            toast.error(errorMsg, { title: 'Lỗi xác minh Merkle' });
+          }
+        }
       }
     } finally {
       if (isMountedRef.current) {
@@ -243,13 +264,26 @@ export const ShipmentDetailPage: React.FC = () => {
     return <LoadingState fullPage message="Đang nạp chi tiết lô hàng..." />;
   }
 
-  if (error || !shipment) {
+  if (loadFailed || !shipment) {
     return (
-      <ErrorState
-        title="Không tìm thấy lô hàng"
-        message={error || 'Lô hàng không tồn tại trong hệ thống'}
-        onRetry={() => fetchData(false)}
-      />
+      <div>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <Button
+            variant="tertiary"
+            size="sm"
+            onClick={() => navigate('/shipments')}
+            icon={<ArrowLeft size={16} />}
+          >
+            Quay lại danh sách
+          </Button>
+        </div>
+        <EmptyState
+          title="Chưa thể tải thông tin lô hàng"
+          description="Lô hàng có thể không tồn tại hoặc máy chủ Backend đang tạm gián đoạn."
+          actionText="Thử lại"
+          onAction={() => fetchData(false)}
+        />
+      </div>
     );
   }
 
@@ -310,10 +344,7 @@ export const ShipmentDetailPage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => {
-              fetchData(true);
-              toast.info('Đang làm mới chi tiết lô hàng...', { title: 'Làm mới', duration: 2500 });
-            }}
+            onClick={() => fetchData(true, true)}
             loading={refreshing}
             disabled={loading || refreshing}
             icon={<RefreshCw size={14} />}
@@ -331,67 +362,6 @@ export const ShipmentDetailPage: React.FC = () => {
           </Button>
         </div>
       </div>
-
-      {/* Success alert when telemetry is posted */}
-      {telemetrySuccessMsg && (
-        <div
-          style={{
-            marginBottom: 'var(--space-4)',
-            padding: 'var(--space-3) var(--space-4)',
-            backgroundColor: 'var(--color-success-soft)',
-            border: '1px solid var(--color-success)',
-            borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-            animation: 'fadeIn 0.2s ease-out',
-          }}
-        >
-          <div className="flex-row items-center gap-2">
-            <CheckCircle2 size={16} style={{ color: 'var(--color-success)' }} />
-            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-success)', fontWeight: 500 }}>
-              {telemetrySuccessMsg}
-            </span>
-          </div>
-          <button
-            onClick={() => setTelemetrySuccessMsg(null)}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--color-text-tertiary)',
-              fontSize: 'var(--text-sm)',
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {isStale && (
-        <div
-          style={{
-            padding: 'var(--space-2) var(--space-4)',
-            backgroundColor: '#FFFBEB',
-            border: '1px solid #FCD34D',
-            borderRadius: 'var(--radius-md)',
-            color: '#92400E',
-            fontSize: 'var(--text-xs)',
-            marginBottom: 'var(--space-4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <span>
-            ⚠️ <strong>Dữ liệu chưa cập nhật:</strong> Quá trình polling nền gặp sự cố ({staleError}). Đang hiển thị dữ liệu từ lần tải gần nhất.
-          </span>
-          <Button size="sm" variant="secondary" onClick={() => fetchData(false)}>
-            Thử lại ngay
-          </Button>
-        </div>
-      )}
 
       <PageHeader
         title={`Lô hàng: ${shipment.code}`}
@@ -1190,12 +1160,8 @@ export const ShipmentDetailPage: React.FC = () => {
       {/* Verification & Detail Modals */}
       <BatchVerificationModal
         isOpen={isVerifyModalOpen}
-        onClose={() => {
-          setIsVerifyModalOpen(false);
-          setVerifyError(null);
-        }}
+        onClose={() => setIsVerifyModalOpen(false)}
         result={verificationResult}
-        error={verifyError}
         batch={batches.find((b) => b.batch_id === verifyingBatchId) || selectedBatch}
         loading={isVerifyingLoading}
       />
@@ -1225,7 +1191,6 @@ export const ShipmentDetailPage: React.FC = () => {
         }
         onSuccess={(sample) => {
           const msg = `Đã gửi thành công dữ liệu đo cảm biến: ${sample.temperature_c}°C, độ ẩm ${sample.humidity_pct}% từ thiết bị ${sample.device_id}.`;
-          setTelemetrySuccessMsg(msg);
           toast.success(msg, { title: 'Gửi Telemetry thành công' });
           fetchData(true);
         }}

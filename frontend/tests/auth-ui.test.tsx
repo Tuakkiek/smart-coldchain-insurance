@@ -14,7 +14,15 @@ vi.mock('../src/pages/ShipmentsPage', () => ({ ShipmentsPage: () => <h1>Danh sá
 vi.mock('../src/pages/ShipmentDetailPage', () => ({ ShipmentDetailPage: () => <h1>Chi tiết chuyến hàng</h1> }));
 vi.mock('../src/pages/DataIntegrityPage', () => ({ DataIntegrityPage: () => <h1>Toàn vẹn dữ liệu</h1> }));
 vi.mock('../src/pages/EventsPage', () => ({ EventsPage: () => <h1>Sự kiện riêng tư</h1> }));
-vi.mock('../src/components/feedback/ConnectionStatus', () => ({ ConnectionStatus: () => <span>Backend Online</span> }));
+vi.mock('../src/components/feedback/ConnectionStatus', () => ({
+  ConnectionStatus: () => <span>Backend Online</span>,
+  useBackendHealthMonitor: () => ({
+    connectionState: 'ONLINE' as const,
+    checking: false,
+    checkStatus: vi.fn(),
+  }),
+  useBackendConnectionState: () => 'ONLINE' as const,
+}));
 
 const fetchMock = vi.fn<typeof fetch>();
 const fillLogin = (password = ' demo-password ') => {
@@ -52,9 +60,14 @@ describe('Admin Login and guarded routes', () => {
     fillLogin();
     await screen.findByRole('heading', { name: 'Danh sách thiết bị' });
     expect(window.location.pathname + window.location.search).toBe('/devices?filter=active');
-    expect(screen.getByText('admin')).not.toBeNull();
     expect(getActiveSession()?.accessToken).toBe(token);
-    fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
+    // Default UI shows only the Avatar trigger; account details and Logout live inside the dropdown menu.
+    expect(screen.queryByText('admin')).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Đăng xuất' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Mở menu tài khoản' }));
+    expect(screen.getByText('admin')).not.toBeNull();
+    expect(screen.getByText('Backend Online')).not.toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Đăng xuất' }));
     await screen.findByRole('heading', { name: 'Đăng nhập quản trị' });
     expect(screen.queryByRole('heading', { name: 'Danh sách thiết bị' })).toBeNull();
     expect(sessionStorage.getItem('coldchain_admin_session')).toBeNull();

@@ -5,29 +5,17 @@ import {
   Truck,
   BellRing,
   Shield,
-  Layers,
   Cpu,
   Database,
-  LogOut,
-  RefreshCw,
+  X,
 } from 'lucide-react';
-import { ConnectionStatus } from '../feedback/ConnectionStatus';
-import { useToast } from '../feedback/Toast';
-import { Button } from '../ui/Button';
-import { useAuth } from '../../auth/AuthProvider';
-import { logoutAdmin } from '../../api/auth';
 
 interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
-  onRefresh?: () => void;
-  isRefreshing?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh, isRefreshing }) => {
-  const { session } = useAuth();
-  const { toast } = useToast();
-
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
   const navItems = [
     { label: 'Tổng quan', path: '/', icon: <LayoutDashboard size={18} /> },
     { label: 'Lô hàng', path: '/shipments', icon: <Truck size={18} /> },
@@ -41,32 +29,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh, is
       {/* Mobile overlay */}
       {isOpen && (
         <div
+          className="app-sidebar-overlay"
           onClick={onClose}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.4)',
-            zIndex: 40,
-            backdropFilter: 'blur(2px)',
-          }}
+          aria-hidden="true"
         />
       )}
 
-      <aside
-        style={{
-          width: 'var(--sidebar-width)',
-          backgroundColor: 'var(--color-surface)',
-          borderRight: '1px solid var(--color-border-subtle)',
-          display: 'flex',
-          flexDirection: 'column',
-          height: '100vh',
-          position: 'sticky',
-          top: 0,
-          zIndex: 45,
-          flexShrink: 0,
-          transition: 'transform 0.2s ease',
-        }}
-      >
+      <aside className={`app-sidebar${isOpen ? ' is-open' : ''}`}>
         {/* Brand header */}
         <div
           style={{
@@ -74,36 +43,51 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh, is
             padding: '0 var(--space-5)',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             gap: 'var(--space-3)',
             borderBottom: '1px solid var(--color-border-subtle)',
+            flexShrink: 0,
           }}
         >
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 'var(--radius-md)',
-              backgroundColor: 'var(--color-accent-soft)',
-              color: 'var(--color-accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Shield size={18} />
-          </div>
-          <div>
+          <div className="flex-row items-center gap-3" style={{ minWidth: 0 }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'var(--color-accent-soft)',
+                color: 'var(--color-accent)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Shield size={18} />
+            </div>
             <div
               style={{
                 fontSize: 'var(--text-sm)',
                 fontWeight: 600,
                 color: 'var(--color-text-primary)',
                 letterSpacing: '-0.01em',
+                lineHeight: 1.3,
               }}
             >
               Smart Cold Chain Insurance
             </div>
           </div>
+
+          {onClose && (
+            <button
+              type="button"
+              className="mobile-sidebar-close"
+              onClick={onClose}
+              aria-label="Đóng thanh điều hướng"
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+          )}
         </div>
 
         {/* Navigation items */}
@@ -117,7 +101,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh, is
             overflowY: 'auto',
           }}
         >
-
           {navItems.map((item) => (
             <NavLink
               key={item.path}
@@ -142,90 +125,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onRefresh, is
             </NavLink>
           ))}
         </nav>
-
-        {/* Backend status and admin session */}
-        <div
-          style={{
-            padding: 'var(--space-4) var(--space-5)',
-            borderTop: '1px solid var(--color-border-subtle)',
-            backgroundColor: 'var(--color-surface-secondary)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            gap: 'var(--space-3)',
-          }}
-        >
-          <div
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 'var(--space-2)',
-            }}
-          >
-            <ConnectionStatus onRefresh={onRefresh} />
-            {onRefresh && (
-              <button
-                type="button"
-                onClick={() => {
-                  onRefresh();
-                  toast.info('Đang làm mới dữ liệu hệ thống...', { title: 'Làm mới', duration: 2500 });
-                }}
-                title="Làm mới trang và kết nối"
-                aria-label="Làm mới trang và kết nối"
-                style={{
-                  padding: '4px 6px',
-                  borderRadius: 'var(--radius-sm)',
-                  color: isRefreshing ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  border: '1px solid var(--color-border-subtle)',
-                  backgroundColor: 'var(--color-surface)',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : undefined} />
-              </button>
-            )}
-          </div>
-          <div
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 'var(--space-2)',
-            }}
-          >
-            <span
-              title={session?.username}
-              style={{
-                minWidth: 0,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                fontSize: 'var(--text-sm)',
-                color: 'var(--color-text-secondary)',
-              }}
-            >
-              {session?.username}
-            </span>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<LogOut size={15} aria-hidden="true" />}
-              onClick={() => {
-                void logoutAdmin().catch(() => undefined);
-                toast.info('Bạn đã đăng xuất khỏi hệ thống quản trị.', { title: 'Đăng xuất' });
-              }}
-            >
-              Đăng xuất
-            </Button>
-          </div>
-        </div>
       </aside>
     </>
   );

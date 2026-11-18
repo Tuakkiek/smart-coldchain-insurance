@@ -10,12 +10,9 @@ import {
   DeviceOnlineBadge,
   CompletenessBadge,
 } from '../components/data-display/StatusBadge';
-import {
-  BackendStatusAlert,
-  IntegrityPrincipleNotice,
-} from '../components/feedback/BackendStatusAlert';
 import { LoadingState } from '../components/feedback/LoadingState';
 import { EmptyState } from '../components/feedback/EmptyState';
+import { ConfirmModal } from '../components/feedback/ConfirmModal';
 import { useBackendConnectionState } from '../components/feedback/ConnectionStatus';
 import { deleteDevice, getDevices } from '../api/devices';
 import {
@@ -25,24 +22,20 @@ import { ApiError } from '../api/client';
 import { RegisterDeviceModal } from '../components/devices/RegisterDeviceModal';
 import { AssignDeviceModal } from '../components/devices/AssignDeviceModal';
 import { AdminDeviceDetailModal } from '../components/devices/AdminDeviceDetailModal';
-import { useToast } from '../components/feedback/Toast';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../components/feedback/Toast';
 import {
   Cpu,
   KeyRound,
   ShieldCheck,
   AlertTriangle,
   Wifi,
-  WifiOff,
   Check,
   RefreshCw,
   Search,
   ChevronRight,
-  ShieldAlert,
   Server,
   HelpCircle,
-  ExternalLink,
   Plus,
-  CheckCircle2,
   Link2,
   Trash2,
 } from 'lucide-react';
@@ -54,10 +47,7 @@ export const DevicesPage: React.FC = () => {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [isColdStart, setIsColdStart] = useState(false);
-  const [isStale, setIsStale] = useState(false);
-  const [staleError, setStaleError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Admin modals
@@ -66,8 +56,7 @@ export const DevicesPage: React.FC = () => {
   const [assignModalDeviceId, setAssignModalDeviceId] = useState<string | null>(null);
   const [isAdminDetailModalOpen, setIsAdminDetailModalOpen] = useState(false);
   const [adminModalDeviceId, setAdminModalDeviceId] = useState<string | null>(null);
-  const [adminSuccessMsg, setAdminSuccessMsg] = useState<string | null>(null);
-  const [adminErrorMsg, setAdminErrorMsg] = useState<string | null>(null);
+  const [deviceToDelete, setDeviceToDelete] = useState<DeviceItemOut | null>(null);
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
 
   // Filters
@@ -76,15 +65,15 @@ export const DevicesPage: React.FC = () => {
   const [signatureFilter, setSignatureFilter] = useState<string>('all');
 
   const isMountedRef = useRef(true);
+  const wasStaleRef = useRef(false);
 
   // Determine if backend is experiencing cold start
   const isEffectiveColdStart =
     isColdStart || backendConnectionState === 'COLD_START';
 
-  const fetchDevicesList = async (isBackground = false) => {
+  const fetchDevicesList = async (isBackground = false, notifyManual = false) => {
     if (!isBackground) {
       setLoading(true);
-      setError(null);
     } else {
       setRefreshing(true);
     }
@@ -94,29 +83,48 @@ export const DevicesPage: React.FC = () => {
       const res = await getDevices();
       if (isMountedRef.current) {
         setDevices(res.items);
-        setIsStale(false);
-        setStaleError(null);
+        wasStaleRef.current = false;
         if (!selectedDeviceId && res.items.length > 0) {
           setSelectedDeviceId(res.items[0].device_id);
         }
+        if (notifyManual) {
+          toast.success('Đã cập nhật danh sách thiết bị ESP32.', { title: 'Làm mới thành công' });
+        }
       }
     } catch (err: unknown) {
+      if (isRequestCancelled(err)) return;
       if (isMountedRef.current) {
+        const coldStart = err instanceof ApiError && !!err.isBackendColdStart;
+        setIsColdStart(coldStart);
+        const msg = formatApiErrorMessage(err, 'Không thể tải danh sách thiết bị ESP32. Vui lòng thử lại.');
+
         if (!isBackground) {
-          if (err instanceof ApiError) {
-            setIsColdStart(!!err.isBackendColdStart);
-            setError(err.message);
-          } else {
-            setError(
-              err instanceof Error
-                ? err.message
-                : 'Lỗi không xác định khi tải danh sách thiết bị'
-            );
+          if (coldStart) {
+            toast.warning(msg, {
+              title: 'Backend đang khởi động',
+              dedupKey: 'devices-cold-start',
+              action: { label: 'Thử lại', onClick: () => fetchDevicesList(false) },
+            });
+          } else if (msg) {
+            toast.error(msg, {
+              title: 'Lỗi tải danh sách thiết bị',
+              dedupKey: 'devices-fetch-error',
+              action: { label: 'Thử lại', onClick: () => fetchDevicesList(false) },
+            });
           }
-        } else {
-          setIsStale(true);
-          setStaleError(
-            err instanceof Error ? err.message : 'Lỗi kết nối khi polling dữ liệu thiết bị'
+        } else if (notifyManual) {
+          if (msg) {
+            toast.error(msg, { title: 'Lỗi làm mới thiết bị' });
+          }
+        } else if (!wasStaleRef.current) {
+          wasStaleRef.current = true;
+          toast.warning(
+            'Đồng bộ dữ liệu thiết bị tự động tạm thời gián đoạn. Đang hiển thị dữ liệu gần nhất.',
+            {
+              title: 'Chưa cập nhật dữ liệu mới',
+              dedupKey: 'devices-polling-error',
+              action: { label: 'Thử lại', onClick: () => fetchDevicesList(true, true) },
+            }
           );
         }
       }
@@ -145,41 +153,42 @@ export const DevicesPage: React.FC = () => {
     };
   }, [autoRefresh]);
 
-  const handleDeleteDevice = async (device: DeviceItemOut) => {
-    setAdminSuccessMsg(null);
-    setAdminErrorMsg(null);
-
+  const handleRequestDeleteDevice = (device: DeviceItemOut) => {
     if (device.assigned_shipment_id) {
       const msg = `Thiết bị ${device.device_id} đang liên kết với chuyến hàng ${device.assigned_shipment_code || device.assigned_shipment_id}. Hãy bỏ liên kết trước khi xóa.`;
-      setAdminErrorMsg(msg);
       toast.warning(msg, { title: 'Không thể xóa thiết bị' });
       return;
     }
+    setDeviceToDelete(device);
+  };
 
-    const confirmed = window.confirm(
-      `Xóa thiết bị ${device.device_id}? Public key và các liên kết cũ chưa kích hoạt của thiết bị cũng sẽ bị xóa.`
-    );
-    if (!confirmed) return;
+  const handleConfirmDeleteDevice = async () => {
+    if (!deviceToDelete || deletingDeviceId) return;
+    const device = deviceToDelete;
 
     setDeletingDeviceId(device.device_id);
     try {
       await deleteDevice(device.device_id);
       setDevices((current) => current.filter((item) => item.device_id !== device.device_id));
       if (selectedDeviceId === device.device_id) setSelectedDeviceId(null);
-      const successMsg = `Đã xóa thiết bị ${device.device_id} thành công.`;
-      setAdminSuccessMsg(successMsg);
-      toast.success(successMsg, { title: 'Xóa thiết bị thành công' });
+      setDeviceToDelete(null);
+      toast.success(`Đã xóa thiết bị ${device.device_id} thành công.`, {
+        title: 'Xóa thiết bị thành công',
+      });
     } catch (err: unknown) {
+      setDeviceToDelete(null);
+      if (isRequestCancelled(err)) return;
       let msg = '';
       if (err instanceof ApiError && err.code === 'DEVICE_ASSIGNED') {
         msg = 'Không thể xóa: thiết bị vẫn đang liên kết với một chuyến hàng.';
       } else if (err instanceof ApiError && err.code === 'DEVICE_HAS_DATA') {
         msg = 'Không thể xóa thiết bị đã có dữ liệu telemetry vì cần giữ lịch sử đối soát. Hãy thu hồi thiết bị thay thế.';
       } else {
-        msg = err instanceof Error ? err.message : 'Không thể xóa thiết bị.';
+        msg = formatApiErrorMessage(err, 'Không thể xóa thiết bị. Vui lòng thử lại.');
       }
-      setAdminErrorMsg(msg);
-      toast.error(msg, { title: 'Lỗi xóa thiết bị' });
+      if (msg) {
+        toast.error(msg, { title: 'Lỗi xóa thiết bị' });
+      }
     } finally {
       setDeletingDeviceId(null);
     }
@@ -260,10 +269,7 @@ export const DevicesPage: React.FC = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => {
-                fetchDevicesList(true);
-                toast.info('Đang làm mới danh sách thiết bị...', { title: 'Làm mới', duration: 2500 });
-              }}
+              onClick={() => fetchDevicesList(true, true)}
               loading={refreshing}
               disabled={loading || refreshing}
               icon={<RefreshCw size={14} />}
@@ -292,113 +298,6 @@ export const DevicesPage: React.FC = () => {
           </div>
         }
       />
-
-      {/* Admin action success banner */}
-      {adminSuccessMsg && (
-        <div
-          style={{
-            marginBottom: 'var(--space-4)',
-            padding: 'var(--space-3) var(--space-4)',
-            backgroundColor: 'var(--color-success-soft)',
-            border: '1px solid var(--color-success)',
-            borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-            animation: 'fadeIn 0.2s ease-out',
-          }}
-        >
-          <div className="flex-row items-center gap-2">
-            <CheckCircle2 size={16} style={{ color: 'var(--color-success)' }} />
-            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-success)', fontWeight: 600 }}>
-              {adminSuccessMsg}
-            </span>
-          </div>
-          <button
-            onClick={() => setAdminSuccessMsg(null)}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--color-text-tertiary)',
-              fontSize: 'var(--text-sm)',
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {adminErrorMsg && (
-        <div
-          style={{
-            marginBottom: 'var(--space-4)',
-            padding: 'var(--space-3) var(--space-4)',
-            backgroundColor: 'var(--color-danger-soft)',
-            border: '1px solid var(--color-danger)',
-            borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-          }}
-        >
-          <div className="flex-row items-center gap-2">
-            <AlertTriangle size={16} style={{ color: 'var(--color-danger)' }} />
-            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-danger)', fontWeight: 600 }}>
-              {adminErrorMsg}
-            </span>
-          </div>
-          <button
-            onClick={() => setAdminErrorMsg(null)}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--color-text-tertiary)',
-              fontSize: 'var(--text-sm)',
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Backend Cold Start vs Device Offline Alert */}
-      <BackendStatusAlert
-        isColdStart={isEffectiveColdStart}
-        errorMessage={error}
-        onRetry={() => fetchDevicesList(false)}
-        retrying={loading}
-      />
-
-      {/* Stale Polling Warning Banner */}
-      {isStale && (
-        <div
-          style={{
-            padding: 'var(--space-2) var(--space-4)',
-            backgroundColor: '#FFFBEB',
-            border: '1px solid #FCD34D',
-            borderRadius: 'var(--radius-md)',
-            color: '#92400E',
-            fontSize: 'var(--text-xs)',
-            marginBottom: 'var(--space-4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <span>
-            ⚠️ <strong>Dữ liệu chưa cập nhật:</strong> Quá trình polling nền gặp sự cố ({staleError}). Đang hiển thị danh sách thiết bị từ lần tải gần nhất.
-          </span>
-          <Button size="sm" variant="secondary" onClick={() => fetchDevicesList(false)}>
-            Thử lại ngay
-          </Button>
-        </div>
-      )}
-
-
 
       {/* KPI Cards Grid */}
       <div
@@ -779,7 +678,7 @@ export const DevicesPage: React.FC = () => {
                               <span>{dev.assigned_shipment_id ? 'Đổi chuyến' : 'Gán chuyến'}</span>
                             </button>
                             <button
-                              onClick={() => handleDeleteDevice(dev)}
+                              onClick={() => handleRequestDeleteDevice(dev)}
                               disabled={deletingDeviceId === dev.device_id}
                               style={{
                                 background: 'var(--color-surface)',
@@ -1315,7 +1214,6 @@ export const DevicesPage: React.FC = () => {
           const msg = res.provisioning_status === 'ready'
             ? 'Đăng ký thiết bị thành công. Khóa thiết bị đã được tạo và cấu hình ESP32 đã được cập nhật.'
             : `Thiết bị ${res.device_id} đã được đăng ký nhưng config.h chưa được cập nhật; hãy cấp khóa bằng quy trình local.`;
-          setAdminSuccessMsg(msg);
           if (res.provisioning_status === 'ready') {
             toast.success(msg, { title: 'Đăng ký thiết bị' });
           } else {
@@ -1333,7 +1231,6 @@ export const DevicesPage: React.FC = () => {
         }}
         initialDeviceId={assignModalDeviceId}
         onSuccess={(_res, msg) => {
-          setAdminSuccessMsg(msg);
           toast.success(msg, { title: 'Liên kết thiết bị' });
           fetchDevicesList(true);
         }}
@@ -1345,6 +1242,28 @@ export const DevicesPage: React.FC = () => {
         onClose={() => {
           setIsAdminDetailModalOpen(false);
           setAdminModalDeviceId(null);
+        }}
+      />
+
+      <ConfirmModal
+        isOpen={Boolean(deviceToDelete)}
+        title="Xác nhận xóa thiết bị"
+        message={
+          deviceToDelete ? (
+            <>
+              Bạn có chắc chắn muốn xóa thiết bị{' '}
+              <strong className="font-mono">{deviceToDelete.device_id}</strong> không?
+            </>
+          ) : null
+        }
+        description="Public key và các liên kết cũ chưa kích hoạt của thiết bị cũng sẽ bị xóa. Thiết bị đã có dữ liệu telemetry không thể xóa để bảo toàn lịch sử đối soát."
+        confirmLabel={deletingDeviceId ? 'Đang xóa...' : 'Xác nhận'}
+        cancelLabel="Hủy"
+        variant="danger"
+        loading={Boolean(deletingDeviceId)}
+        onConfirm={handleConfirmDeleteDevice}
+        onCancel={() => {
+          if (!deletingDeviceId) setDeviceToDelete(null);
         }}
       />
     </div>

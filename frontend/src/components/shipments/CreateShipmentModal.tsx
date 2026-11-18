@@ -4,16 +4,12 @@ import { ShipmentCreatePayload, ShipmentOut } from '../../types/api';
 import { createShipment } from '../../api/shipments';
 import { Button } from '../ui/Button';
 import { ApiError } from '../../api/client';
-import { useToast } from '../feedback/Toast';
+import { formatApiErrorMessage, isRequestCancelled, useToast } from '../feedback/Toast';
 import {
   PackagePlus,
   X,
   MapPin,
   Thermometer,
-  Shield,
-  Clock,
-  Sparkles,
-  AlertCircle,
   RefreshCw,
 } from 'lucide-react';
 
@@ -112,7 +108,6 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [apiError, setApiError] = useState<string | null>(null);
 
   // Lock background scroll when modal is open
   useEffect(() => {
@@ -157,7 +152,6 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
       destLng: preset.dest.lng,
     }));
     setErrors({});
-    setApiError(null);
   };
 
   const validate = (): boolean => {
@@ -231,7 +225,6 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
     }
 
     setSubmitting(true);
-    setApiError(null);
 
     const payload: ShipmentCreatePayload = {
       code: form.code.trim(),
@@ -257,6 +250,7 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
       onSuccess(created);
       onClose();
     } catch (err: unknown) {
+      if (isRequestCancelled(err)) return;
       let msg = '';
       if (err instanceof ApiError) {
         if (err.code === 'DUPLICATE_SHIPMENT_CODE') {
@@ -265,13 +259,14 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
           const detailMsg = err.details.map((d) => `${d.field ? d.field + ': ' : ''}${d.message}`).join(', ');
           msg = `Lỗi xác thực: ${detailMsg}`;
         } else {
-          msg = err.message || 'Lỗi khi tạo lô hàng';
+          msg = formatApiErrorMessage(err, 'Lỗi khi tạo lô hàng. Vui lòng thử lại.');
         }
       } else {
-        msg = err instanceof Error ? err.message : 'Lỗi không xác định khi tạo lô hàng';
+        msg = formatApiErrorMessage(err, 'Lỗi không xác định khi tạo lô hàng.');
       }
-      setApiError(msg);
-      toast.error(msg, { title: 'Tạo lô hàng thất bại' });
+      if (msg) {
+        toast.error(msg, { title: 'Tạo lô hàng thất bại' });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -403,28 +398,6 @@ export const CreateShipmentModal: React.FC<CreateShipmentModalProps> = ({
               padding: 'var(--space-5)',
             }}
           >
-
-          {/* API Error Alert */}
-          {apiError && (
-            <div
-              style={{
-                marginBottom: 'var(--space-4)',
-                padding: 'var(--space-3) var(--space-4)',
-                backgroundColor: 'var(--color-danger-soft)',
-                border: '1px solid var(--color-danger)',
-                borderRadius: 'var(--radius-md)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                color: 'var(--color-danger)',
-                fontSize: 'var(--text-sm)',
-              }}
-            >
-              <AlertCircle size={18} style={{ flexShrink: 0 }} />
-              <div>{apiError}</div>
-            </div>
-          )}
-
           {/* Section 1: Thông tin cơ bản */}
           <div style={{ marginBottom: 'var(--space-5)' }}>
             <h4

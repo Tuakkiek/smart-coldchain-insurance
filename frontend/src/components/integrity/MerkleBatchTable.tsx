@@ -3,19 +3,15 @@ import { Link } from 'react-router-dom';
 import { IntegrityBatch, AnchorStatus, VerificationStatus } from '../../types/api';
 import { AnchorStatusBadge, VerificationStatusBadge } from '../data-display/StatusBadge';
 import { Button } from '../ui/Button';
+import { useToast } from '../feedback/Toast';
 import {
   Layers,
   Search,
-  Filter,
   Copy,
   Check,
   RefreshCw,
-  ExternalLink,
-  ShieldAlert,
-  ShieldCheck,
   Clock,
   Eye,
-  AlertTriangle,
 } from 'lucide-react';
 
 interface MerkleBatchTableProps {
@@ -33,6 +29,7 @@ export const MerkleBatchTable: React.FC<MerkleBatchTableProps> = ({
   onSelectBatch,
   showFilters = true,
 }) => {
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [anchorFilter, setAnchorFilter] = useState<string>('all');
   const [verificationFilter, setVerificationFilter] = useState<string>('all');
@@ -40,9 +37,18 @@ export const MerkleBatchTable: React.FC<MerkleBatchTableProps> = ({
 
   const copyToClipboard = (text: string, id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(text);
-    setCopiedRootId(id);
-    setTimeout(() => setCopiedRootId(null), 2000);
+    if (!text) return;
+    const label = id.startsWith('root-') ? 'Merkle Root' : 'Batch ID';
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopiedRootId(id);
+        toast.info(`Đã sao chép ${label} vào bộ nhớ tạm.`, { title: 'Sao chép' });
+        setTimeout(() => setCopiedRootId(null), 2000);
+      })
+      .catch(() => {
+        toast.error('Không thể sao chép vào bộ nhớ tạm.', { title: 'Lỗi sao chép' });
+      });
   };
 
   const filteredBatches = useMemo(() => {
