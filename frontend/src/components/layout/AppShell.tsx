@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Menu } from 'lucide-react';
+import { Menu, Shield } from 'lucide-react';
 import { Sidebar } from './Sidebar';
-import { AccountMenu } from './AccountMenu';
 
 export const AppShell: React.FC = () => {
   const [isNavigating, setIsNavigating] = useState(false);
@@ -30,7 +29,7 @@ export const AppShell: React.FC = () => {
         onClose={() => setIsMobileSidebarOpen(false)}
       />
       <div className="main-wrapper">
-        <header className="app-topbar">
+        <header className="app-mobile-topbar">
           <button
             type="button"
             className="mobile-menu-btn"
@@ -39,8 +38,11 @@ export const AppShell: React.FC = () => {
           >
             <Menu size={20} aria-hidden="true" />
           </button>
-          <div className="app-topbar-right">
-            <AccountMenu />
+          <div className="app-mobile-brand">
+            <span className="app-mobile-brand-icon" aria-hidden="true">
+              <Shield size={16} />
+            </span>
+            <span className="app-mobile-brand-title">Smart Cold Chain Insurance</span>
           </div>
         </header>
 
