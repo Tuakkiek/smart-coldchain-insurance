@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Package, RefreshCw, ShieldAlert, Thermometer, Truck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, Package, RefreshCw, ShieldAlert, Thermometer, Truck } from 'lucide-react';
 import { getDevices } from '../api/devices';
 import { getAllEvents } from '../api/events';
 import { getShipments } from '../api/shipments';
@@ -18,6 +18,7 @@ const eventTitle: Record<string, string> = {
   INSURANCE_TRIGGERED: 'Bảo hiểm đã được kích hoạt',
   TEMPERATURE_BREACH_STARTED: 'Nhiệt độ vượt ngưỡng',
   SENSOR_DATA_GAP: 'Mất tín hiệu cảm biến',
+  SHIPMENT_DELIVERED: 'Đã giao hàng',
 };
 
 export const OverviewPage: React.FC = () => {
@@ -101,7 +102,7 @@ export const OverviewPage: React.FC = () => {
                 const temperature = telemetry?.temperature_c;
                 const isBreach = temperature !== undefined && (temperature < shipment.temp_min_c || temperature > shipment.temp_max_c);
                 const onlineStatus = telemetry?.device_id ? deviceStatus.get(telemetry.device_id) : undefined;
-                const isStale = onlineStatus === 'OFFLINE';
+                const isStale = shipment.status !== 'delivered' && onlineStatus === 'OFFLINE';
                 return (
                   <div key={shipment.id} className="compact-row compact-row-clickable" role="link" tabIndex={0} onClick={() => navigate(`/shipments/${shipment.id}`)} onKeyDown={(event) => event.key === 'Enter' && navigate(`/shipments/${shipment.id}`)}>
                     <div className="compact-main">
@@ -127,7 +128,7 @@ export const OverviewPage: React.FC = () => {
                 const shipment = shipments.find((item) => item.id === event.shipment_id || item.shipment_id === event.shipment_id);
                 return (
                   <div key={event.id} className="compact-row">
-                    <div className="compact-icon" style={{ color: event.type === 'INSURANCE_TRIGGERED' ? 'var(--color-danger)' : 'var(--color-warning)' }}><AlertTriangle size={17} /></div>
+                    <div className="compact-icon" style={{ color: event.type === 'INSURANCE_TRIGGERED' ? 'var(--color-danger)' : event.type === 'SHIPMENT_DELIVERED' ? 'var(--color-success)' : 'var(--color-warning)' }}>{event.type === 'SHIPMENT_DELIVERED' ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />}</div>
                     <div className="compact-main">
                       <div className="compact-title">{eventTitle[event.type] ?? 'Sự kiện hệ thống'}</div>
                       <div className="compact-meta">{shipment?.name ?? 'Lô hàng'} · {new Date(event.occurred_at).toLocaleString('vi-VN')}</div>

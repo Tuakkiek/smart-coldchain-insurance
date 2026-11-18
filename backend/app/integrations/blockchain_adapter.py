@@ -264,6 +264,8 @@ class Web3BlockchainAdapter:
                         transaction_hash = Web3.to_hex(paid["transactionHash"])
                         break
             raise PolicyAlreadyPaid(matches, transaction_hash)
+        if policy[4] == 3:
+            raise BlockchainError("POLICY_ALREADY_REFUNDED")
         if policy[4] != 1:
             raise BlockchainError("POLICY_NOT_ACTIVE")
         report_fn = contract.functions.reportViolation(
@@ -445,13 +447,20 @@ class Web3PolicyAdapter:
     def supports_early_refund(self) -> bool:
         return self.settings.blockchain_insurance_contract_version == "safe_delivery_v2"
 
-    def _contract(self):
+    def _supports_early_refund_for(self, target_address: str) -> bool:
+        if not self.supports_early_refund:
+            return False
+        configured = self.contract_address
+        return not configured or target_address.lower() == configured.lower()
+
+    def _contract(self, contract_address: str | None = None):
         settings = self.settings
         web3 = Web3(Web3.HTTPProvider(settings.blockchain_rpc_url, request_kwargs={"timeout": 8}))
         if web3.eth.chain_id != settings.blockchain_chain_id:
             raise BlockchainError("CHAIN_ID_MISMATCH")
+        raw_address = contract_address or settings.blockchain_contract_address
         try:
-            address = Web3.to_checksum_address(settings.blockchain_contract_address)
+            address = Web3.to_checksum_address(raw_address)
         except ValueError as exc:
             raise BlockchainError("INVALID_CONTRACT_ADDRESS") from exc
         if not web3.eth.get_code(address):
@@ -463,8 +472,8 @@ class Web3PolicyAdapter:
     def _shipment_key(shipment_id: str) -> bytes:
         return bytes(Web3.keccak(text=shipment_id))
 
-    def read_policy(self, shipment_id: str) -> OnChainPolicy:
-        _web3, contract, _address = self._contract()
+    def read_policy(self, shipment_id: str, contract_address: str | None = None) -> OnChainPolicy:
+        _web3, contract, _address = self._contract(contract_address)
         policy = contract.functions.getPolicy(self._shipment_key(shipment_id)).call()
         return OnChainPolicy(
             insurer=Web3.to_checksum_address(policy[0]),
@@ -575,8 +584,9 @@ class Web3PolicyAdapter:
 
     def prepare_refund(
         self, shipment_id: str, evidence_id: str, delivered_at: datetime,
+        contract_address: str | None = None,
     ) -> PreparedRefund:
-        web3, contract, _address = self._contract()
+        web3, contract, resolved_address = self._contract(contract_address)
         shipment_key = self._shipment_key(shipment_id)
         policy = contract.functions.getPolicy(shipment_key).call()
         if int(policy[4]) == 3:
@@ -593,7 +603,9 @@ class Web3PolicyAdapter:
 
         if delivered_at.tzinfo is None:
             delivered_at = delivered_at.replace(tzinfo=timezone.utc)
-        if self.supports_early_refund:
+        if self._supports_early_refund_for(resolved_address):
+            if not self.settings.blockchain_oracle_private_key:
+                raise BlockchainError("ORACLE_SIGNER_NOT_CONFIGURED")
             account = web3.eth.account.from_key(self.settings.blockchain_oracle_private_key)
             if contract.functions.oracle().call().lower() != account.address.lower():
                 raise BlockchainError("ORACLE_MISMATCH")

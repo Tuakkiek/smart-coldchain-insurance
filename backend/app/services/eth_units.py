@@ -92,6 +92,20 @@ def validate_and_checksum_wallet(raw: object) -> str:
     return Web3.to_checksum_address(cleaned)
 
 
+def format_wei_to_eth(raw_wei: str | int | None) -> str | None:
+    """Convert a wei integer or decimal string into a normalized ETH decimal string."""
+    if raw_wei is None or raw_wei == "":
+        return None
+    try:
+        dec = Decimal(str(raw_wei)) / WEI_PER_ETH
+    except (InvalidOperation, ValueError):
+        return None
+    normalized = format(dec.normalize(), "f")
+    if "." in normalized:
+        normalized = normalized.rstrip("0").rstrip(".")
+    return normalized
+
+
 def validate_tx_hash(raw: object) -> str:
     """Validate a 32-byte Ethereum transaction hash (0x + 64 hex)."""
     if not isinstance(raw, str):

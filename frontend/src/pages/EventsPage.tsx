@@ -23,6 +23,7 @@ const eventMessage = (event: EventOut) => {
   const details = event.details as Record<string, unknown>;
   if (event.type === 'TEMPERATURE_BREACH_STARTED') return `Ghi nhận ${details.temperature_c ?? '—'}°C, ngoài khoảng ${details.temp_min_c ?? '—'}–${details.temp_max_c ?? '—'}°C.`;
   if (event.type === 'INSURANCE_TRIGGERED') return `Điều kiện bảo hiểm được xác nhận sau ${details.duration_minutes ?? '—'} phút vi phạm liên tục.`;
+  if (event.type === 'SHIPMENT_DELIVERED') return `Admin xác nhận chuyến hàng đã đến điểm đích (tiến độ ${details.progress_pct ?? 100}%).`;
   return `Không nhận được dữ liệu trong ${details.gap_minutes ?? '—'} phút.`;
 };
 
@@ -66,7 +67,7 @@ export const EventsPage: React.FC = () => {
   return (
     <div>
       <PageHeader title="Sự kiện" description="Dòng thời gian các cảnh báo và thay đổi quan trọng." action={<Button size="sm" onClick={() => fetchEvents(true, true)} loading={refreshing} icon={<RefreshCw size={14} />}>Làm mới</Button>} />
-      <div className="filter-bar"><select className="minimal-select" value={filterType} onChange={(event) => setFilterType(event.target.value)} aria-label="Lọc loại sự kiện"><option value="all">Tất cả sự kiện ({events.length})</option><option value="TEMPERATURE_BREACH_STARTED">Nhiệt độ vượt ngưỡng</option><option value="INSURANCE_TRIGGERED">Kích hoạt bảo hiểm</option><option value="SENSOR_DATA_GAP">Mất tín hiệu</option></select></div>
+      <div className="filter-bar"><select className="minimal-select" value={filterType} onChange={(event) => setFilterType(event.target.value)} aria-label="Lọc loại sự kiện"><option value="all">Tất cả sự kiện ({events.length})</option><option value="TEMPERATURE_BREACH_STARTED">Nhiệt độ vượt ngưỡng</option><option value="INSURANCE_TRIGGERED">Kích hoạt bảo hiểm</option><option value="SENSOR_DATA_GAP">Mất tín hiệu</option><option value="SHIPMENT_DELIVERED">Đã giao hàng</option></select></div>
       {filtered.length === 0 ? <EmptyState title="Không có sự kiện" description="Không có cảnh báo phù hợp với bộ lọc hiện tại." icon={<BellRing size={24} />} /> : (
         <Card style={{ padding: '4px 20px' }}>
           <div className="stack-list">

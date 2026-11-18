@@ -44,7 +44,7 @@ export interface BlockchainPublicConfigOut {
   server_policy_creation_enabled: boolean;
 }
 
-export type LocationSource = 'backend_simulated';
+export type LocationSource = 'backend_simulated' | 'admin_simulated';
 
 export type SignatureStatus = 'VALID' | 'INVALID' | 'UNKNOWN_KEY' | 'UNSIGNED' | 'UNKNOWN';
 export type DataStatus = 'DATA_VERIFIED' | 'DATA_INCOMPLETE' | 'INVALID';
@@ -321,6 +321,8 @@ export interface ShipmentOut {
   refund_status?: 'NOT_APPLICABLE' | 'PENDING' | 'WAITING_EXPIRY' | 'CONFIRMED' | 'FAILED' | null;
   refund_transaction_hash?: string | null;
   refunded_amount_wei?: string | null;
+  refunded_amount?: string | null;
+  currency?: 'SepoliaETH' | 'VND' | null;
   refund_recipient_address?: string | null;
   created_at: string;
 }

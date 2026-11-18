@@ -116,6 +116,9 @@ class BlockchainCoordinator:
         if shipment is None or event is None or shipment.blockchain_network is None:
             session.rollback()
             return
+        if shipment.refund_status == "CONFIRMED":
+            session.rollback()
+            return
         if shipment.confirmation_status == "success":
             session.rollback()
             return

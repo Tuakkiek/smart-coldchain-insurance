@@ -109,6 +109,7 @@ export const ShipmentsPage: React.FC = () => {
           <option value="in_transit">Đang vận chuyển</option>
           <option value="sensor_data_gap">Mất tín hiệu</option>
           <option value="insurance_triggered">Đã kích hoạt bảo hiểm</option>
+          <option value="delivered">Đã giao hàng</option>
         </select>
       </div>
 
