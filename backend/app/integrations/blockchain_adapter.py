@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Protocol
 
 from web3 import Web3
-from web3.exceptions import TransactionNotFound
+from web3.exceptions import TransactionNotFound, Web3Exception
 
 from app.core.config import Settings
 
@@ -106,6 +107,72 @@ class IntegrityGateway(Protocol):
     def anchored_transaction_hash(self, batch_id: str) -> str | None: ...
 
 
+def _load_abi(abi_path: Path, error_code: str) -> list[dict]:
+    """Load ABI from either a wrapped {'abi': [...]} artifact or a raw Remix [...] array."""
+    try:
+        payload = json.loads(abi_path.read_text(encoding="utf-8"))
+        abi = payload["abi"] if isinstance(payload, dict) else payload
+        if not isinstance(abi, list):
+            raise ValueError("ABI JSON must be a list or an object containing an 'abi' list")
+        return abi
+    except (OSError, ValueError, KeyError) as exc:
+        raise BlockchainError(error_code) from exc
+
+
+def _tx_fee_fields(web3: Web3) -> dict[str, int]:
+    """Build EIP-1559 fee fields when supported (e.g. Sepolia), else buffered legacy gasPrice."""
+    try:
+        latest_block = web3.eth.get_block("latest")
+        base_fee = latest_block.get("baseFeePerGas") if latest_block else None
+    except Web3Exception:
+        base_fee = None
+    if base_fee is not None:
+        try:
+            priority_fee = int(web3.eth.max_priority_fee)
+        except Web3Exception:
+            priority_fee = 1_500_000_000
+        return {
+            "maxPriorityFeePerGas": priority_fee,
+            "maxFeePerGas": int(base_fee) * 2 + priority_fee,
+        }
+    return {"gasPrice": max(1, int(web3.eth.gas_price * 1.2))}
+
+
+def _find_event_logs(
+    web3: Web3,
+    event_factory,
+    argument_filters: dict,
+    start_block: int,
+    chunk_size: int = 2000,
+) -> list:
+    """Query logs backwards in bounded chunks so Alchemy Sepolia range limits are respected."""
+    try:
+        latest = int(web3.eth.block_number)
+    except Web3Exception:
+        return []
+    floor = max(0, start_block)
+    if floor == 0 and latest > 50_000:
+        floor = latest - 10_000
+    if floor > latest:
+        return []
+
+    to_block = latest
+    while to_block >= floor:
+        from_block = max(floor, to_block - chunk_size + 1)
+        try:
+            logs = event_factory().get_logs(
+                from_block=from_block,
+                to_block=to_block,
+                argument_filters=argument_filters,
+            )
+            if logs:
+                return list(logs)
+        except (Web3Exception, ValueError):
+            return []
+        to_block = from_block - 1
+    return []
+
+
 class Web3BlockchainAdapter:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -121,11 +188,7 @@ class Web3BlockchainAdapter:
             raise BlockchainError("INVALID_CONTRACT_ADDRESS") from exc
         if not web3.eth.get_code(address):
             raise BlockchainError("CONTRACT_NOT_DEPLOYED")
-        try:
-            with settings.blockchain_abi_path.open(encoding="utf-8") as artifact_file:
-                abi = json.load(artifact_file)["abi"]
-        except (OSError, ValueError, KeyError) as exc:
-            raise BlockchainError("ABI_UNAVAILABLE") from exc
+        abi = _load_abi(settings.blockchain_abi_path, "ABI_UNAVAILABLE")
         return web3, web3.eth.contract(address=address, abi=abi)
 
     @staticmethod
@@ -149,9 +212,11 @@ class Web3BlockchainAdapter:
             matches = bytes(policy[5]) == evidence_hash and policy[6] == self._detected_seconds(detected_at)
             transaction_hash = None
             if matches:
-                logs = contract.events.InsurancePaid().get_logs(
-                    from_block=self.settings.blockchain_deploy_block,
-                    argument_filters={"shipmentKey": shipment_key},
+                logs = _find_event_logs(
+                    web3,
+                    contract.events.InsurancePaid,
+                    {"shipmentKey": shipment_key},
+                    self.settings.blockchain_start_block or self.settings.blockchain_deploy_block,
                 )
                 for paid in logs:
                     if bytes(paid["args"]["evidenceHash"]) == evidence_hash and paid["args"]["detectedAt"] == self._detected_seconds(detected_at):
@@ -167,7 +232,7 @@ class Web3BlockchainAdapter:
             "nonce": web3.eth.get_transaction_count(account.address, "pending"),
             "chainId": self.settings.blockchain_chain_id,
             "gas": 300000,
-            "gasPrice": web3.eth.gas_price,
+            **_tx_fee_fields(web3),
         })
         signed = account.sign_transaction(transaction)
         return PreparedReport(Web3.to_hex(signed.hash), Web3.to_hex(signed.raw_transaction))
@@ -212,11 +277,7 @@ class Web3IntegrityAdapter:
             raise BlockchainError("INVALID_INTEGRITY_CONTRACT_ADDRESS") from exc
         if not web3.eth.get_code(address):
             raise BlockchainError("INTEGRITY_CONTRACT_NOT_DEPLOYED")
-        try:
-            with settings.data_integrity_abi_path.open(encoding="utf-8") as artifact_file:
-                abi = json.load(artifact_file)["abi"]
-        except (OSError, ValueError, KeyError) as exc:
-            raise BlockchainError("INTEGRITY_ABI_UNAVAILABLE") from exc
+        abi = _load_abi(settings.data_integrity_abi_path, "INTEGRITY_ABI_UNAVAILABLE")
         return web3, web3.eth.contract(address=address, abi=abi)
 
     @staticmethod
@@ -260,7 +321,7 @@ class Web3IntegrityAdapter:
             "nonce": web3.eth.get_transaction_count(account.address, "pending"),
             "chainId": self.settings.blockchain_chain_id,
             "gas": 400000,
-            "gasPrice": web3.eth.gas_price,
+            **_tx_fee_fields(web3),
         })
         signed = account.sign_transaction(transaction)
         return PreparedAnchor(Web3.to_hex(signed.hash), Web3.to_hex(signed.raw_transaction))
@@ -298,9 +359,11 @@ class Web3IntegrityAdapter:
     def anchored_transaction_hash(self, batch_id: str) -> str | None:
         web3, contract = self._contract()
         batch_key = bytes(Web3.keccak(text=batch_id))
-        logs = contract.events.BatchAnchored().get_logs(
-            from_block=self.settings.blockchain_deploy_block,
-            argument_filters={"batchKey": batch_key},
+        logs = _find_event_logs(
+            web3,
+            contract.events.BatchAnchored,
+            {"batchKey": batch_key},
+            self.settings.blockchain_start_block or self.settings.blockchain_deploy_block,
         )
         return Web3.to_hex(logs[-1]["transactionHash"]) if logs else None
 

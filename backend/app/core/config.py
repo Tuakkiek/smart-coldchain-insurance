@@ -142,6 +142,7 @@ class Settings:
     data_integrity_abi_path: Path = DEFAULT_INTEGRITY_ABI_PATH
     blockchain_confirmations: int = 1
     blockchain_receipt_timeout_seconds: int = 15
+    blockchain_start_block: int = 0
     google_maps_api_key: str = ""
     geocoding_fallback_nominatim: bool = True
     public_api_base_url: str = ""
@@ -322,6 +323,9 @@ def load_settings() -> Settings:
     receipt_timeout = int(os.getenv("BLOCKCHAIN_RECEIPT_TIMEOUT_SECONDS", "15"))
     if receipt_timeout <= 0:
         raise ValueError("BLOCKCHAIN_RECEIPT_TIMEOUT_SECONDS must be positive")
+    blockchain_start_block = int(os.getenv("BLOCKCHAIN_START_BLOCK", "0"))
+    if blockchain_start_block < 0:
+        raise ValueError("BLOCKCHAIN_START_BLOCK must be non-negative")
     sensor_gap_minutes = int(os.getenv("SENSOR_GAP_MINUTES", "5"))
     if sensor_gap_minutes <= 0:
         raise ValueError("SENSOR_GAP_MINUTES must be positive")
@@ -387,6 +391,7 @@ def load_settings() -> Settings:
         data_integrity_abi_path=integrity_abi_path,
         blockchain_confirmations=confirmations,
         blockchain_receipt_timeout_seconds=receipt_timeout,
+        blockchain_start_block=blockchain_start_block,
         google_maps_api_key=google_maps_api_key,
         geocoding_fallback_nominatim=nominatim_fallback_text == "true",
         public_api_base_url=os.getenv("PUBLIC_API_BASE_URL", "").strip().rstrip("/"),

@@ -4,7 +4,6 @@ Never stores private keys, mnemonics, or RPC API keys.
 
 Usage:
     python blockchain/scripts_py/create_sepolia_manifest.py \
-        --token-address 0x... --token-tx 0x... --token-block 123456 \
         --integrity-address 0x... --integrity-tx 0x... --integrity-block 123457 \
         --insurance-address 0x... --insurance-tx 0x... --insurance-block 123458 \
         --owner 0x... --anchorer 0x... --oracle 0x...
@@ -31,9 +30,9 @@ def _checksum(addr: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create Sepolia deployment manifest without secrets.")
-    parser.add_argument("--token-address", required=True)
-    parser.add_argument("--token-tx", required=True)
-    parser.add_argument("--token-block", required=True, type=int)
+    parser.add_argument("--token-address", default=None)
+    parser.add_argument("--token-tx", default=None)
+    parser.add_argument("--token-block", default=None, type=int)
     parser.add_argument("--integrity-address", required=True)
     parser.add_argument("--integrity-tx", required=True)
     parser.add_argument("--integrity-block", required=True, type=int)
@@ -49,9 +48,36 @@ def main() -> int:
     compiler_cfg = json.loads(COMPILER_SETTINGS_PATH.read_text(encoding="utf-8"))
     toolchain = compiler_cfg["toolchain"]
 
+    contracts_manifest: dict[str, dict] = {}
+    if args.token_address:
+        contracts_manifest["MockInsuranceToken"] = {
+            "address": _checksum(args.token_address),
+            "deployTxHash": args.token_tx,
+            "deployBlockNumber": args.token_block,
+            "abiPath": "blockchain/deployments/abi/MockInsuranceToken.abi.json",
+            "note": "Legacy optional ERC-20; ColdChainInsurance now uses native SepoliaETH.",
+        }
+    contracts_manifest["ColdChainDataIntegrity"] = {
+        "address": _checksum(args.integrity_address),
+        "deployTxHash": args.integrity_tx,
+        "deployBlockNumber": args.integrity_block,
+        "abiPath": "blockchain/deployments/abi/ColdChainDataIntegrity.abi.json",
+        "backendAbiPath": "backend/app/integrations/abi/ColdChainDataIntegrity.json",
+    }
+    contracts_manifest["ColdChainInsurance"] = {
+        "address": _checksum(args.insurance_address),
+        "deployTxHash": args.insurance_tx,
+        "deployBlockNumber": args.insurance_block,
+        "abiPath": "blockchain/deployments/abi/ColdChainInsurance.abi.json",
+        "backendAbiPath": "backend/app/integrations/abi/ColdChainInsurance.json",
+    }
+
     manifest = {
         "network": "sepolia",
         "chainId": 11155111,
+        "currency": "SepoliaETH (Native)",
+        "recommendedPolicyDepositETH": "0.01",
+        "recommendedPolicyDepositWei": "10000000000000000",
         "explorer": "https://sepolia.etherscan.io",
         "confirmations": args.confirmations,
         "deployedVia": "Remix IDE + Browser Extension (MetaMask)",
@@ -62,28 +88,7 @@ def main() -> int:
             "viaIR": toolchain["viaIR"],
             "openzeppelin": compiler_cfg["dependencies"]["@openzeppelin/contracts"]["pinnedVersion"],
         },
-        "contracts": {
-            "MockInsuranceToken": {
-                "address": _checksum(args.token_address),
-                "deployTxHash": args.token_tx,
-                "deployBlockNumber": args.token_block,
-                "abiPath": "blockchain/deployments/abi/MockInsuranceToken.abi.json",
-            },
-            "ColdChainDataIntegrity": {
-                "address": _checksum(args.integrity_address),
-                "deployTxHash": args.integrity_tx,
-                "deployBlockNumber": args.integrity_block,
-                "abiPath": "blockchain/deployments/abi/ColdChainDataIntegrity.abi.json",
-                "backendAbiPath": "backend/app/integrations/abi/ColdChainDataIntegrity.json",
-            },
-            "ColdChainInsurance": {
-                "address": _checksum(args.insurance_address),
-                "deployTxHash": args.insurance_tx,
-                "deployBlockNumber": args.insurance_block,
-                "abiPath": "blockchain/deployments/abi/ColdChainInsurance.abi.json",
-                "backendAbiPath": "backend/app/integrations/abi/ColdChainInsurance.json",
-            },
-        },
+        "contracts": contracts_manifest,
         "roles": {
             "owner": _checksum(args.owner),
             "anchorer": _checksum(args.anchorer),

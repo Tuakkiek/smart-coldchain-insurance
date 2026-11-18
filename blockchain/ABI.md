@@ -694,11 +694,6 @@ ColdChainInsurance: [
 		"inputs": [
 			{
 				"internalType": "address",
-				"name": "_payoutToken",
-				"type": "address"
-			},
-			{
-				"internalType": "address",
 				"name": "_oracle",
 				"type": "address"
 			}
@@ -735,6 +730,27 @@ ColdChainInsurance: [
 			}
 		],
 		"name": "ColdChain__ContractInsufficientBalance",
+		"type": "error"
+	},
+	{
+		"inputs": [],
+		"name": "ColdChain__ETHTransferFailed",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "sent",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "expected",
+				"type": "uint256"
+			}
+		],
+		"name": "ColdChain__IncorrectETHDeposit",
 		"type": "error"
 	},
 	{
@@ -823,19 +839,36 @@ ColdChainInsurance: [
 		"type": "error"
 	},
 	{
-		"inputs": [],
-		"name": "ReentrancyGuardReentrantCall",
-		"type": "error"
-	},
-	{
 		"inputs": [
 			{
+				"internalType": "bytes32",
+				"name": "_shipmentKey",
+				"type": "bytes32"
+			},
+			{
 				"internalType": "address",
-				"name": "token",
+				"name": "_beneficiary",
 				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "_payoutAmount",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "_expiry",
+				"type": "uint256"
 			}
 		],
-		"name": "SafeERC20FailedOperation",
+		"name": "createPolicy",
+		"outputs": [],
+		"stateMutability": "payable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "ReentrancyGuardReentrantCall",
 		"type": "error"
 	},
 	{
@@ -962,24 +995,45 @@ ColdChainInsurance: [
 				"internalType": "bytes32",
 				"name": "_shipmentKey",
 				"type": "bytes32"
+			}
+		],
+		"name": "refundExpiredPolicy",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "bytes32",
+				"name": "_shipmentKey",
+				"type": "bytes32"
 			},
 			{
-				"internalType": "address",
-				"name": "_beneficiary",
-				"type": "address"
+				"internalType": "bytes32",
+				"name": "_evidenceHash",
+				"type": "bytes32"
 			},
 			{
 				"internalType": "uint256",
-				"name": "_payoutAmount",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "_expiry",
+				"name": "_detectedAt",
 				"type": "uint256"
 			}
 		],
-		"name": "createPolicy",
+		"name": "reportViolation",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_newOracle",
+				"type": "address"
+			}
+		],
+		"name": "setOracle",
 		"outputs": [],
 		"stateMutability": "nonpayable",
 		"type": "function"
@@ -1092,19 +1146,6 @@ ColdChainInsurance: [
 		"type": "function"
 	},
 	{
-		"inputs": [],
-		"name": "payoutToken",
-		"outputs": [
-			{
-				"internalType": "contract IERC20",
-				"name": "",
-				"type": "address"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
 		"inputs": [
 			{
 				"internalType": "bytes32",
@@ -1151,55 +1192,6 @@ ColdChainInsurance: [
 			}
 		],
 		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "bytes32",
-				"name": "_shipmentKey",
-				"type": "bytes32"
-			}
-		],
-		"name": "refundExpiredPolicy",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "bytes32",
-				"name": "_shipmentKey",
-				"type": "bytes32"
-			},
-			{
-				"internalType": "bytes32",
-				"name": "_evidenceHash",
-				"type": "bytes32"
-			},
-			{
-				"internalType": "uint256",
-				"name": "_detectedAt",
-				"type": "uint256"
-			}
-		],
-		"name": "reportViolation",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "_newOracle",
-				"type": "address"
-			}
-		],
-		"name": "setOracle",
-		"outputs": [],
-		"stateMutability": "nonpayable",
 		"type": "function"
 	}
 ]
