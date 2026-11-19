@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -280,8 +280,17 @@ def ingest(session: Session, shipment_id: str, payload: SignedTelemetryCreate, c
         device.rate_window_count = 0
     if device.rate_window_count >= rate_limit_per_minute:
         _reject(session, payload, "RATE_LIMITED", 429, "Device telemetry rate limit exceeded", shipment_id=shipment_id)
-    gap = ((device.last_sequence_number + 1, payload.sequence_number - 1)
-           if payload.sequence_number > device.last_sequence_number + 1 else None)
+    last_shipment_seq = session.scalar(
+        select(func.max(SignedTelemetryReceipt.sequence_number)).where(
+            SignedTelemetryReceipt.shipment_id == shipment_id,
+            SignedTelemetryReceipt.device_id == device.id,
+        )
+    )
+    gap = (
+        (last_shipment_seq + 1, payload.sequence_number - 1)
+        if last_shipment_seq is not None and payload.sequence_number > last_shipment_seq + 1
+        else None
+    )
     sample = shipments.add_telemetry(
         session, shipment_id,
         TelemetryCreate(device_id=device.id, temperature_c=float(payload.temperature_c),

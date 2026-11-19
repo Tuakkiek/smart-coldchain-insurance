@@ -18,7 +18,7 @@
     "openzeppelin": "5.6.1"
   },
   "contracts": {
-    "ColdChainDataIntegrity": {
+    "   ": {
       "address": "0xE04F6f1bb80C438D356E0547ec10337F33ecD81f",
       "deployTxHash": "0x669df621fdbd5962f2e3e6cf4311b7686da0f62a28e04b36f8c5f5a39450b3f0",
       "deployBlockNumber": 12145351,
