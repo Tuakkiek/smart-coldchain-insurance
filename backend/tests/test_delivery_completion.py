@@ -122,8 +122,14 @@ class FakeSettlementGateway:
         early_ok = self._supports_early_refund and target_contract.lower() == self._contract_address.lower()
         if not early_ok and int(datetime.now(timezone.utc).timestamp()) <= entry["expiry"]:
             raise BlockchainError("REFUND_WAITING_EXPIRY")
+        tx_hash = REFUND_TX if not hasattr(self, "tx_by_shipment") else self.tx_by_shipment.get(shipment_id)
+        if not hasattr(self, "tx_by_shipment"):
+            self.tx_by_shipment = {}
+        if shipment_id not in self.tx_by_shipment:
+            self.tx_by_shipment[shipment_id] = REFUND_TX if not self.tx_by_shipment else ("0x" + f"{len(self.tx_by_shipment):064x}")
+        tx_hash = self.tx_by_shipment[shipment_id]
         return PreparedRefund(
-            transaction_hash=REFUND_TX,
+            transaction_hash=tx_hash,
             raw_transaction=f"0xrefund:{shipment_id}:{len(self.prepare_calls)}",
             recipient=entry["insurer"],
             amount_wei=entry["amount_wei"],
@@ -140,6 +146,10 @@ class FakeSettlementGateway:
     def refund_receipt_state(self, transaction_hash: str, confirmations: int = 1) -> str:
         if self.receipt_state_override is not None:
             return self.receipt_state_override
+        tx_map = getattr(self, "tx_by_shipment", {})
+        for sid, h in tx_map.items():
+            if h == transaction_hash:
+                return "confirmed" if self.policies[sid]["status"] == 3 else "missing"
         return "confirmed" if self.broadcasts else "missing"
 
 
@@ -407,11 +417,21 @@ def test_safe_delivery_v2_refunds_early_and_preserves_history_and_allows_reassig
         # Cannot assign device to completed shipment
         assert client.post("/api/v1/devices/ESP32-01/assignments", json={"shipment_id": shipment_id, "active": False}).status_code == 200
         assert client.post("/api/v1/devices/ESP32-01/assignments", json={"shipment_id": shipment_id, "active": True}).status_code == 409
+        # Packets sent while unassigned (seq 4) are rejected without poisoning the next shipment
+        unassigned_pkt = client.post("/api/v1/devices/ESP32-01/telemetry", json=_signed_v2(priv, 4, temp_c=4.5))
+        assert unassigned_pkt.status_code == 403
         assert client.post("/api/v1/devices/ESP32-01/assignments", json={"shipment_id": shipment_2, "active": True}).status_code == 200
 
-        r_new = client.post("/api/v1/devices/ESP32-01/telemetry", json=_signed_v2(priv, 4, temp_c=4.5))
+        r_new = client.post("/api/v1/devices/ESP32-01/telemetry", json=_signed_v2(priv, 5, temp_c=4.5))
         assert r_new.status_code == 201
         assert r_new.json()["shipment_id"] == shipment_2
+        assert r_new.json()["completeness_status"] == "COMPLETE"
+        assert r_new.json()["missing_sequences"] is None
+        _advance(app.state.clock, minutes=1)
+        assert client.post("/api/v1/devices/ESP32-01/telemetry", json=_signed_v2(priv, 6, temp_c=4.6)).status_code == 201
+        done_2 = client.post(f"/api/v1/shipments/{shipment_2}/complete").json()
+        assert done_2["delivery_result"] == "SAFE"
+        assert done_2["refund_status"] == "CONFIRMED"
 
 
 def test_violated_shipment_never_refunds_and_reconciles_pending_payout(tmp_path):
